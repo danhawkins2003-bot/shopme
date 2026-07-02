@@ -1,0 +1,21 @@
+[
+  {
+    "id": "blog_1",
+    "titre": "Pourquoi consommer Local est le futur du développement au Togo ?",
+    "contenu": "Consommer togolais n'est pas qu'un effet de mode ou un slogan politique. C'est un puissant levier d'émancipation financière collective. En achetant le miel sauvage de Kpalimé ou le riz de Kovié, vous financez directement la sécurité d'une famille de producteurs locaux, et réduisez la facture d'importation de notre pays. À Lomé, la dynamique est déjà lancée à travers les restaurants, marchés éco-responsables et les boutiques d'artisanat d'excellence.",
+    "date": "2026-05-12",
+    "auteur": "Léopold S. Gnininvi",
+    "image": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=600",
+    "estSponsorise": false
+  },
+  {
+    "id": "blog_2",
+    "titre": "Les vertus insoupçonnées du Beurre de Karité brut des Savanes",
+    "contenu": "L'or blanc de l'Afrique de l'Ouest est réputé à travers le globe pour ses bienfaits réparateurs incomparables. Au Togo, la récolte traditionnelle par les groupements de femmes permet de préserver toutes ses vitamines essentielles (A, D, E, F). Que ce soit pour nourrir des cheveux crépus, soigner les gerçures ou protéger la peau délicate des bébés contre les agressions, le beurre brut de karité non raffiné est l'allié incontournable de votre maison.",
+    "date": "2026-05-24",
+    "auteur": "Dovi Akpedje",
+    "image": "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&q=80&w=600",
+    "estSponsorise": true,
+    "lienSponsorise": "https://asime.tg/catalogue"
+  }
+]

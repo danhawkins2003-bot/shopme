@@ -1,0 +1,8 @@
+{
+  "name": "Asime",
+  "description": "E-commerce 100% en ligne — Livraison express à domicile ou au bureau à Lomé & envois internationaux",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

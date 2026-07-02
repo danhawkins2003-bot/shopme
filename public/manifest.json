@@ -1,0 +1,36 @@
+{
+  "short_name": "Asime",
+  "name": "Asime Togo - Consommer Local",
+  "description": "La vitrine par excellence des produits nobles togolais.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0F5132",
+  "theme_color": "#0F5132",
+  "display": "standalone",
+  "orientation": "portrait"
+}
