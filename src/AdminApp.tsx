@@ -108,7 +108,7 @@ export default function AdminApp() {
   const [adminPartnerFilter, setAdminPartnerFilter] = useState("Tous");
 
   const [whatsappDisplaySetting, setWhatsappDisplaySetting] = useState("22890000000");
-  const [activeLogoId, setActiveLogoId] = useState("palmier");
+  const [activeLogoId, setActiveLogoId] = useState("prestige");
   const [saveConfigSuccess, setSaveConfigSuccess] = useState(false);
 
   // Real-time admin operational states

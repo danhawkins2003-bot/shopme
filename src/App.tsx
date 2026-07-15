@@ -293,7 +293,7 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
 export default function App() {
   const { language, setLanguage, t } = useLanguage();
   const [activeLogoId, setActiveLogoId] = useState(() => {
-    return safeLocalStorage.getItem("asime-active-logo-id") || "palmier";
+    return safeLocalStorage.getItem("asime-active-logo-id") || "prestige";
   });
 
   // Navigation & Tab State
@@ -1421,7 +1421,7 @@ export default function App() {
       const localWhatsapp = safeLocalStorage.getItem("asime_whatsapp_merchant_number");
       
       // Load server settings first
-      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "palmier" };
+      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "prestige" };
       try {
         const settingsRes = await fetch("/api/settings");
         if (settingsRes.ok) {
@@ -1432,7 +1432,7 @@ export default function App() {
       }
       
       // If we have local settings that differ from default, and differ from server settings, let's push them to the server
-      const hasLocalCustomLogo = localLogoId && localLogoId !== "palmier";
+      const hasLocalCustomLogo = localLogoId && localLogoId !== "prestige";
       const hasLocalCustomWhatsapp = localWhatsapp && localWhatsapp !== "22890000000";
       
       if ((hasLocalCustomLogo && localLogoId !== serverSettings.activeLogoId) || 

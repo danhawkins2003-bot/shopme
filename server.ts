@@ -2289,7 +2289,7 @@ app.post("/api/messages/:threadId/read", (req, res) => {
 app.get("/api/settings", (req, res) => {
   const defaultSettings = {
     whatsappMerchantNumber: "22890000000",
-    activeLogoId: "palmier"
+    activeLogoId: "prestige"
   };
   const settings = readJSONFile(SETTINGS_FILE, defaultSettings);
   res.json(settings);
@@ -2304,13 +2304,13 @@ app.post("/api/settings", (req, res) => {
 
   const defaultSettings = {
     whatsappMerchantNumber: "22890000000",
-    activeLogoId: "palmier"
+    activeLogoId: "prestige"
   };
   const currentSettings = readJSONFile(SETTINGS_FILE, defaultSettings);
 
   const newSettings = {
     whatsappMerchantNumber: whatsappMerchantNumber || currentSettings.whatsappMerchantNumber || "22890000000",
-    activeLogoId: activeLogoId || currentSettings.activeLogoId || "palmier"
+    activeLogoId: activeLogoId || currentSettings.activeLogoId || "prestige"
   };
 
   const success = writeJSONFile(SETTINGS_FILE, newSettings);
