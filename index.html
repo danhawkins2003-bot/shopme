@@ -11,13 +11,24 @@
     <meta name="theme-color" content="#0F5132" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <!-- Service Worker registration script -->
+    <!-- Force Service Worker unregistration & Cache clearance to ensure instant live updates on mobile -->
     <script>
       if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js")
-            .then((reg) => console.log("Service Worker enregistré avec succès", reg))
-            .catch((err) => console.error("Échec d'enregistrement du Service Worker", err));
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (let registration of registrations) {
+            registration.unregister().then((success) => {
+              if (success) console.log("Service Worker désenregistré pour assurer les mises à jour en direct.");
+            });
+          }
+        });
+      }
+      if ("caches" in window) {
+        caches.keys().then((names) => {
+          for (let name of names) {
+            caches.delete(name).then(() => {
+              console.log("Cache nettoyé :", name);
+            });
+          }
         });
       }
     </script>
