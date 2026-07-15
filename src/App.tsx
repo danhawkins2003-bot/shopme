@@ -909,6 +909,20 @@ export default function App() {
   const [editQuartier, setEditQuartier] = useState("");
 
   const renderLogoNode = (sizeClass = "w-9 h-9") => {
+    const selectedLogo = LOGO_DESIGNS.find(l => l.id === activeLogoId);
+    if (selectedLogo) {
+      return (
+        <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
+          <img 
+            src={selectedLogo.src} 
+            alt={selectedLogo.name} 
+            className="w-full h-full object-contain rounded-md" 
+            referrerPolicy="no-referrer" 
+          />
+        </div>
+      );
+    }
+
     return (
       <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
@@ -1400,12 +1414,106 @@ export default function App() {
     }
   };
 
+  const syncLocalDataWithServer = async () => {
+    try {
+      // 1. Sync Logo and Settings
+      const localLogoId = safeLocalStorage.getItem("asime-active-logo-id");
+      const localWhatsapp = safeLocalStorage.getItem("asime_whatsapp_merchant_number");
+      
+      // Load server settings first
+      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "palmier" };
+      try {
+        const settingsRes = await fetch("/api/settings");
+        if (settingsRes.ok) {
+          serverSettings = await settingsRes.json();
+        }
+      } catch (err) {
+        console.error("Failed to fetch server settings:", err);
+      }
+      
+      // If we have local settings that differ from default, and differ from server settings, let's push them to the server
+      const hasLocalCustomLogo = localLogoId && localLogoId !== "palmier";
+      const hasLocalCustomWhatsapp = localWhatsapp && localWhatsapp !== "22890000000";
+      
+      if ((hasLocalCustomLogo && localLogoId !== serverSettings.activeLogoId) || 
+          (hasLocalCustomWhatsapp && localWhatsapp !== serverSettings.whatsappMerchantNumber)) {
+        try {
+          const syncSettingsRes = await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              auth: "asime2026",
+              whatsappMerchantNumber: localWhatsapp || serverSettings.whatsappMerchantNumber,
+              activeLogoId: localLogoId || serverSettings.activeLogoId
+            })
+          });
+          if (syncSettingsRes.ok) {
+            const result = await syncSettingsRes.json();
+            serverSettings = result.settings;
+            console.log("Successfully synchronized local settings to server:", serverSettings);
+          }
+        } catch (err) {
+          console.error("Failed to sync settings to server:", err);
+        }
+      }
+      
+      // Update our local state and configuration with the server settings
+      if (serverSettings.activeLogoId) {
+        setActiveLogoId(serverSettings.activeLogoId);
+        // Ensure local storage is kept in sync as cache
+        safeLocalStorage.setItem("asime-active-logo-id", serverSettings.activeLogoId);
+      }
+      if (serverSettings.whatsappMerchantNumber) {
+        ASIME_SETTINGS.WHATSAPP_MERCHANT_NUMBER = serverSettings.whatsappMerchantNumber;
+        safeLocalStorage.setItem("asime_whatsapp_merchant_number", serverSettings.whatsappMerchantNumber);
+      }
+      
+      // 2. Sync Products Catalog
+      const emulatedProductsStr = safeLocalStorage.getItem("asime_emulated_products");
+      if (emulatedProductsStr) {
+        try {
+          const localProducts = JSON.parse(emulatedProductsStr);
+          // If the user customized products (e.g., they deleted default ones and left exactly 3, or modified them)
+          if (Array.isArray(localProducts) && localProducts.length > 0 && localProducts.length < 100) {
+            console.log("Found customized local emulated products catalog. Syncing to backend server...", localProducts.length);
+            const syncProductsRes = await fetch("/api/admin/sync-products", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                auth: "asime2026",
+                products: localProducts
+              })
+            });
+            if (syncProductsRes.ok) {
+              console.log("Successfully synchronized local products catalog to server!");
+              // Clear emulated products since they are now stored safely on the server!
+              safeLocalStorage.removeItem("asime_emulated_products");
+              safeLocalStorage.removeItem("asime_emulated_partners");
+              safeLocalStorage.removeItem("asime_emulated_blogs");
+            }
+          } else {
+            // Just clear it if it's default/empty/huge
+            safeLocalStorage.removeItem("asime_emulated_products");
+          }
+        } catch (e) {
+          console.error("Error parsing local products for sync:", e);
+        }
+      }
+    } catch (e) {
+      console.error("Error in syncLocalDataWithServer:", e);
+    }
+  };
+
   // Load products & blogs from server API
   useEffect(() => {
-    fetchProducts();
-    fetchBlogs();
-    fetchPartners();
-    fetchReviews();
+    const initializeAndSync = async () => {
+      await syncLocalDataWithServer();
+      await fetchProducts();
+      await fetchBlogs();
+      await fetchPartners();
+      await fetchReviews();
+    };
+    initializeAndSync();
     
     // Load cart from LocalStorage
     const savedCart = localStorage.getItem("asime_cart");

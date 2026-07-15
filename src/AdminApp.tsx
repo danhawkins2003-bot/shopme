@@ -1,6 +1,40 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion } from "motion/react";
 
+// @ts-ignore
+import logoOrganic from "./assets/images/logo_asime_organic_1781086774790.png";
+// @ts-ignore
+import logoMonogram from "./assets/images/logo_asime_monogram_1781086746857.png";
+// @ts-ignore
+import logoPrestige from "./assets/images/logo_asime_prestige_1781086799630.png";
+// @ts-ignore
+import logoTradition from "./assets/images/logo_asime_tradition_1781086787788.png";
+// @ts-ignore
+import logoPalmier from "./assets/images/logo_asime_palmier_crest_1781087278648.png";
+// @ts-ignore
+import logoBouclier from "./assets/images/logo_asime_bouclier_sacred_1781087291885.png";
+// @ts-ignore
+import logoCorbeille from "./assets/images/logo_asime_corbeille_or_1781087305413.png";
+// @ts-ignore
+import logoEbene from "./assets/images/logo_asime_ebene_1781087249311.png";
+// @ts-ignore
+import logoMonogramRefined from "./assets/images/logo_asime_monogram_refined_1781087265797.png";
+// @ts-ignore
+import logoModern from "./assets/images/logo_asime_modern_1781086760951.png";
+
+const LOGO_DESIGNS = [
+  { id: "palmier", name: "Palmier National 🌴", src: logoPalmier },
+  { id: "prestige", name: "Édition Prestige 👑", src: logoPrestige },
+  { id: "monogram_refined", name: "Monogramme Raffiné 🌟", src: logoMonogramRefined },
+  { id: "corbeille", name: "Corbeille d'Or 🧺", src: logoCorbeille },
+  { id: "bouclier", name: "Bouclier Sacré 🛡️", src: logoBouclier },
+  { id: "ebene", name: "Ébène Précieux ✨", src: logoEbene },
+  { id: "tradition", name: "Tradition Togolaise 🇹🇬", src: logoTradition },
+  { id: "organic", name: "Asime Organique 🌱", src: logoOrganic },
+  { id: "modern", name: "Asime Moderne ⚡", src: logoModern },
+  { id: "monogram", name: "Monogramme Classique 🏷️", src: logoMonogram }
+];
+
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
   getItem(key: string): string | null {
@@ -74,6 +108,7 @@ export default function AdminApp() {
   const [adminPartnerFilter, setAdminPartnerFilter] = useState("Tous");
 
   const [whatsappDisplaySetting, setWhatsappDisplaySetting] = useState("22890000000");
+  const [activeLogoId, setActiveLogoId] = useState("palmier");
   const [saveConfigSuccess, setSaveConfigSuccess] = useState(false);
 
   // Real-time admin operational states
@@ -486,8 +521,17 @@ export default function AdminApp() {
     if (token === "asime2026-auth-session") {
       setIsAdminAuthenticated(true);
     }
-    const storedWp = localStorage.getItem("asime_whatsapp_merchant_number") || "22890000000";
-    setWhatsappDisplaySetting(storedWp);
+    
+    // Fetch global server-side settings
+    fetch("/api/settings")
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          if (data.whatsappMerchantNumber) setWhatsappDisplaySetting(data.whatsappMerchantNumber);
+          if (data.activeLogoId) setActiveLogoId(data.activeLogoId);
+        }
+      })
+      .catch(err => console.error("Error fetching settings:", err));
   }, []);
 
   const formatFCFA = (amount: number | null) => {
@@ -1505,19 +1549,20 @@ export default function AdminApp() {
 ) : activeTab === "stats" ? (
           <AdminStats />
             ) : (
-              <div className="bg-white border border-neutral-200 p-8 rounded-sm shadow-sm max-w-xl mx-auto animate-fade-in">
+              <div className="bg-white border border-neutral-200 p-8 rounded-sm shadow-sm max-w-3xl mx-auto animate-fade-in">
                 <div className="flex items-center gap-3 mb-6 pb-3 border-b border-neutral-100">
                   <div className="bg-[#d4af37]/10 p-2.5 text-[#b8901c] rounded-sm">
                     <Settings className="w-5 h-5" />
                   </div>
                   <div>
                     <h2 className="font-display font-bold text-base uppercase text-neutral-950">Configuration de l'Application</h2>
-                    <p className="text-neutral-400 text-[10px] uppercase tracking-wider font-semibold font-mono">Numéros de redirections et coordonnées</p>
+                    <p className="text-neutral-400 text-[10px] uppercase tracking-wider font-semibold font-mono">Numéros de redirections et style de logo</p>
                   </div>
                 </div>
 
-                <div className="space-y-6 text-xs text-neutral-800">
-                  <div>
+                <div className="space-y-8 text-xs text-neutral-800">
+                  {/* WhatsApp Redirection Setting */}
+                  <div className="pb-6 border-b border-neutral-100">
                     <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-2">
                       Numéro WhatsApp de validation de commande & redirection <span className="text-red-500">*</span>
                     </label>
@@ -1533,20 +1578,86 @@ export default function AdminApp() {
                     </p>
                   </div>
 
+                  {/* Logo Style Selection */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-3">
+                      Design Officiel du Logo de l'Application <span className="text-red-500">*</span>
+                    </label>
+                    <p className="text-[10px] text-neutral-500 mb-4 leading-relaxed">
+                      Sélectionnez le style de logo haut de gamme à appliquer globalement sur l'en-tête de la boutique pour tous vos visiteurs sur ordinateur et mobile.
+                    </p>
+                    
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                      {LOGO_DESIGNS.map((logo) => {
+                        const isSelected = activeLogoId === logo.id;
+                        return (
+                          <div 
+                            key={logo.id}
+                            onClick={() => setActiveLogoId(logo.id)}
+                            className={`group relative flex flex-col items-center justify-between p-3 border rounded-md cursor-pointer transition-all bg-white hover:shadow-md ${
+                              isSelected 
+                                ? "border-[#d4af37] bg-amber-50/20 shadow-xs ring-1 ring-[#d4af37]" 
+                                : "border-neutral-200 hover:border-neutral-400"
+                            }`}
+                          >
+                            <div className="w-16 h-16 flex items-center justify-center p-1 rounded bg-white shadow-3xs mb-2.5">
+                              <img 
+                                src={logo.src} 
+                                alt={logo.name} 
+                                className="w-full h-full object-contain rounded" 
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                            <span className="text-[9px] text-center font-bold text-neutral-800 leading-tight group-hover:text-neutral-950">
+                              {logo.name}
+                            </span>
+                            {isSelected && (
+                              <div className="absolute top-1.5 right-1.5 bg-[#d4af37] text-neutral-955 text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                                Actif
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {saveConfigSuccess && (
-                    <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 p-3.5 text-xs rounded-sm font-bold animate-fade-in flex items-center gap-2">
-                      <span>✓</span>
-                      <span>Numéro WhatsApp mis à jour avec succès ! Les validations de paniers redirigeront désormais vers ce numéro.</span>
+                    <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 p-4 text-xs rounded-sm font-bold animate-fade-in flex items-center gap-2">
+                      <span className="text-sm">✓</span>
+                      <span>Configuration enregistrée avec succès ! Le logo et le numéro WhatsApp ont été mis à jour globalement sur le serveur.</span>
                     </div>
                   )}
 
                   <button
-                    onClick={() => {
-                      localStorage.setItem("asime_whatsapp_merchant_number", whatsappDisplaySetting);
-                      setSaveConfigSuccess(true);
-                      setTimeout(() => setSaveConfigSuccess(false), 4000);
+                    onClick={async () => {
+                      try {
+                        const response = await fetch("/api/settings", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            auth: "asime2026",
+                            whatsappMerchantNumber: whatsappDisplaySetting,
+                            activeLogoId: activeLogoId
+                          })
+                        });
+                        
+                        if (response.ok) {
+                          // Keep local caches updated too
+                          localStorage.setItem("asime_whatsapp_merchant_number", whatsappDisplaySetting);
+                          localStorage.setItem("asime-active-logo-id", activeLogoId);
+                          
+                          setSaveConfigSuccess(true);
+                          setTimeout(() => setSaveConfigSuccess(false), 5000);
+                        } else {
+                          alert("Erreur lors de la sauvegarde des paramètres.");
+                        }
+                      } catch (err) {
+                        console.error("Save settings network error:", err);
+                        alert("Erreur réseau : impossible de joindre le serveur.");
+                      }
                     }}
-                    className="w-full bg-neutral-950 text-white hover:bg-[#d4af37] hover:text-neutral-950 py-3 rounded-sm font-bold text-xs uppercase tracking-widest transition-colors cursor-pointer"
+                    className="w-full bg-neutral-950 text-white hover:bg-[#d4af37] hover:text-neutral-950 py-3.5 rounded-sm font-bold text-xs uppercase tracking-widest transition-colors cursor-pointer"
                   >
                     Enregistrer la Configuration
                   </button>

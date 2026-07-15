@@ -1,0 +1,12 @@
+[
+  {
+    "id": "user_1784131050413",
+    "name": "Test User",
+    "email": "test12345@gmail.com",
+    "passwordHash": "89e01536ac207279409d4de1e5253e01f4a1769e696db0d6062ca9b8f56767c8",
+    "phone": "",
+    "quartier": "",
+    "favorites": [],
+    "createdAt": "2026-07-15T15:57:30.413Z"
+  }
+]

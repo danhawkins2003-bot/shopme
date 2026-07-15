@@ -46,7 +46,7 @@ const isStaticHost = typeof window !== "undefined" && (
   window.location.hostname.includes("netlify.app") ||
   window.location.hostname.includes("shopme-eosin")
 );
-let useLocalEmulation: boolean | null = isStaticHost ? true : null;
+let useLocalEmulation: boolean | null = isStaticHost ? true : false;
 
 // Helper to construct a standard mock JSON Response using standard browser Response
 function makeResponse(data: any, status: number = 200, ok: boolean = true): Response {

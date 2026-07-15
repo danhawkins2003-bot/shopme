@@ -21,6 +21,7 @@ const ORDERS_FILE = path.join(process.cwd(), "orders.json");
 const WITHDRAWALS_FILE = path.join(process.cwd(), "withdrawals.json");
 const REVIEWS_FILE = path.join(process.cwd(), "reviews.json");
 const MESSAGES_FILE = path.join(process.cwd(), "messages.json");
+const SETTINGS_FILE = path.join(process.cwd(), "settings.json");
 
 // Helper to hash password
 function hashPassword(password: string): string {
@@ -2284,6 +2285,62 @@ app.post("/api/messages/:threadId/read", (req, res) => {
   res.json({ success: true });
 });
 
+// GET /api/settings - Fetch global app configuration (WhatsApp and active logo ID)
+app.get("/api/settings", (req, res) => {
+  const defaultSettings = {
+    whatsappMerchantNumber: "22890000000",
+    activeLogoId: "palmier"
+  };
+  const settings = readJSONFile(SETTINGS_FILE, defaultSettings);
+  res.json(settings);
+});
+
+// POST /api/settings - Save global app configuration (WhatsApp and active logo ID)
+app.post("/api/settings", (req, res) => {
+  const { auth, whatsappMerchantNumber, activeLogoId } = req.body;
+  if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé." });
+  }
+
+  const defaultSettings = {
+    whatsappMerchantNumber: "22890000000",
+    activeLogoId: "palmier"
+  };
+  const currentSettings = readJSONFile(SETTINGS_FILE, defaultSettings);
+
+  const newSettings = {
+    whatsappMerchantNumber: whatsappMerchantNumber || currentSettings.whatsappMerchantNumber || "22890000000",
+    activeLogoId: activeLogoId || currentSettings.activeLogoId || "palmier"
+  };
+
+  const success = writeJSONFile(SETTINGS_FILE, newSettings);
+  if (success) {
+    res.json({ success: true, settings: newSettings });
+  } else {
+    res.status(500).json({ success: false, error: "Impossible de sauvegarder la configuration." });
+  }
+});
+
+// POST /api/admin/sync-products - Synchronize and overwrite products catalog from client localStorage
+app.post("/api/admin/sync-products", (req, res) => {
+  const { auth, products } = req.body;
+  if (auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé. Non autorisé." });
+  }
+
+  if (!Array.isArray(products)) {
+    return res.status(400).json({ success: false, error: "Le catalogue de produits doit être un tableau." });
+  }
+
+  const success = writeJSONFile(PRODUCTS_FILE, products);
+  if (success) {
+    console.log(`[Sync] Catalogue synchronisé avec succès. Nombre de produits : ${products.length}`);
+    res.json({ success: true, count: products.length });
+  } else {
+    res.status(500).json({ success: false, error: "Impossible d'écrire le catalogue synchronisé dans la base de données." });
+  }
+});
+
 // --- Vite Middleware Integration ---
 async function start() {
   // Sync from Supabase on startup
@@ -2297,7 +2354,8 @@ async function start() {
       { file: ORDERS_FILE, key: "orders.json" },
       { file: WITHDRAWALS_FILE, key: "withdrawals.json" },
       { file: REVIEWS_FILE, key: "reviews.json" },
-      { file: MESSAGES_FILE, key: "messages.json" }
+      { file: MESSAGES_FILE, key: "messages.json" },
+      { file: SETTINGS_FILE, key: "settings.json" }
     ];
 
     const timeoutMs = 4000;
