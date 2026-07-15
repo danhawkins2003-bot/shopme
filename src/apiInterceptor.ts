@@ -36,8 +36,8 @@ const safeLocalStorage = {
 };
 const localStorage = safeLocalStorage;
 
-// Keep a reference to the native fetch
-const originalFetch = window.fetch;
+// Keep a reference to the native fetch, bound to window to prevent "Illegal invocation" errors in browsers
+const originalFetch = typeof window !== "undefined" && window.fetch ? window.fetch.bind(window) : fetch;
 
 // Custom emulator state
 const isStaticHost = typeof window !== "undefined" && (
