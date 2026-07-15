@@ -4,6 +4,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { PaymentGateway } from "./paymentGateway";
 import { WalletManager } from "./walletHelper";
+import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions } from "./supabaseHelper";
 
 const app = express();
 const PORT = 3000;
@@ -19,6 +20,7 @@ const PARTNERS_FILE = path.join(process.cwd(), "partners.json");
 const ORDERS_FILE = path.join(process.cwd(), "orders.json");
 const WITHDRAWALS_FILE = path.join(process.cwd(), "withdrawals.json");
 const REVIEWS_FILE = path.join(process.cwd(), "reviews.json");
+const MESSAGES_FILE = path.join(process.cwd(), "messages.json");
 
 // Helper to hash password
 function hashPassword(password: string): string {
@@ -483,6 +485,15 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
 function writeJSONFile<T>(filePath: string, data: T): boolean {
   try {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    
+    // Background replication to Supabase cloud if active
+    if (isSupabaseConfigured()) {
+      const keyName = path.basename(filePath);
+      saveToSupabaseStore(keyName, data).catch((err) => {
+        console.error(`🔴 [Supabase Sync Error] Could not replicate "${keyName}":`, err.message || err);
+      });
+    }
+    
     return true;
   } catch (err) {
     console.error(`Error writing ${filePath}:`, err);
@@ -608,7 +619,7 @@ app.post("/api/auth/update-profile", (req, res) => {
     return res.status(401).json({ success: false, error: "Session non valide." });
   }
 
-  const { name, phone, quartier } = req.body;
+  const { name, phone, quartier, vendeurPin, affiliatePin } = req.body;
   const users = readJSONFile<any[]>(USERS_FILE, []);
   const userIndex = users.findIndex(u => u.id === userId);
 
@@ -619,6 +630,8 @@ app.post("/api/auth/update-profile", (req, res) => {
   if (name) users[userIndex].name = String(name).trim();
   if (typeof phone !== "undefined") users[userIndex].phone = String(phone).trim();
   if (typeof quartier !== "undefined") users[userIndex].quartier = String(quartier).trim();
+  if (typeof vendeurPin !== "undefined") users[userIndex].vendeurPin = String(vendeurPin).trim();
+  if (typeof affiliatePin !== "undefined") users[userIndex].affiliatePin = String(affiliatePin).trim();
 
   const success = writeJSONFile(USERS_FILE, users);
   if (success) {
@@ -626,6 +639,35 @@ app.post("/api/auth/update-profile", (req, res) => {
     res.json({ success: true, user: userResponse });
   } else {
     res.status(500).json({ success: false, error: "Impossible de mettre à jour le profil." });
+  }
+});
+
+// Vérifier le code PIN (vendeur ou affilié)
+app.post("/api/auth/verify-pin", (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: "Accès non autorisé." });
+  }
+
+  const userId = getUserIdFromToken(authHeader);
+  if (!userId) {
+    return res.status(401).json({ success: false, error: "Session non valide." });
+  }
+
+  const { pin, type } = req.body; // type can be 'vendeur' or 'affiliate'
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const user = users.find(u => u.id === userId);
+
+  if (!user) {
+    return res.status(404).json({ success: false, error: "Utilisateur non trouvé." });
+  }
+
+  const correctPin = type === "affiliate" ? user.affiliatePin : user.vendeurPin;
+
+  if (correctPin === pin) {
+    res.json({ success: true });
+  } else {
+    res.status(400).json({ success: false, error: "Code PIN incorrect." });
   }
 });
 
@@ -819,7 +861,7 @@ app.post("/api/auth/role-upgrade", (req, res) => {
     };
     user.contactPhone = contactPhone || sellerPhone || user.phone || "";
     user.vendeurSubscription = vendeurSubscription || "Offre 1";
-    user.vendeurPaymentMethod = vendeurPaymentMethod || "TMoney";
+    user.vendeurPaymentMethod = vendeurPaymentMethod || "Asime Pay";
     user.vendeurPaymentTxId = vendeurPaymentTxId || "";
     user.vendeurStatus = "En attente d'activation";
     
@@ -872,13 +914,20 @@ app.post(["/api/products", "/api/products/:id"], (req, res) => {
     return res.status(401).json({ success: false, error: "Accès non autorisé. Veuillez vous connecter." });
   }
 
-  const userId = getUserIdFromToken(authHeader);
+  let userId = getUserIdFromToken(authHeader);
+  if (!userId && (authHeader === "asime2026" || authHeader === "asime2026-auth-session" || authHeader === "shopme2026" || authHeader === "shopme2026-auth-session")) {
+    userId = "user_admin";
+  }
+
   if (!userId) {
     return res.status(401).json({ success: false, error: "Session non valide ou expirée." });
   }
 
   const users = readJSONFile<any[]>(USERS_FILE, []);
-  const user = users.find(u => u.id === userId);
+  let user = users.find(u => u.id === userId);
+  if (!user && userId === "user_admin") {
+    user = { id: "user_admin", role: "admin", name: "Administrateur Asime", businessName: "Asime Togo", vendeurSubscription: "Offre 3" };
+  }
   if (!user) {
     return res.status(404).json({ success: false, error: "Utilisateur non trouvé." });
   }
@@ -891,27 +940,21 @@ app.post(["/api/products", "/api/products/:id"], (req, res) => {
   // Validate price limits based on seller's subscription
   if (isSeller && userSubscription) {
     if (userSubscription === "Offre 1") {
-      if (prix < 500 || prix > 1000) {
+      if (prix > 1000) {
         return res.status(400).json({
           success: false,
-          error: "Votre abonnement (Offre 1) limite le prix de vos produits entre 500 FCFA et 1 000 FCFA. Veuillez modifier le prix ou changer d'abonnement."
+          error: "Votre abonnement (Offre 1) limite le prix de vos produits à un maximum de 1 000 FCFA. Veuillez modifier le prix ou changer d'abonnement."
         });
       }
     } else if (userSubscription === "Offre 2") {
-      if (prix < 1001 || prix > 5000) {
+      if (prix > 5000) {
         return res.status(400).json({
           success: false,
-          error: "Votre abonnement (Offre 2) limite le prix de vos produits entre 1 001 FCFA et 5 000 FCFA. Veuillez modifier le prix ou changer d'abonnement."
-        });
-      }
-    } else if (userSubscription === "Offre 3") {
-      if (prix < 5001) {
-        return res.status(400).json({
-          success: false,
-          error: "Votre abonnement (Offre 3) exige que le prix de vos produits soit supérieur ou égal à 5 001 FCFA. Veuillez modifier le prix ou changer d'abonnement."
+          error: "Votre abonnement (Offre 2) limite le prix de vos produits à un maximum de 5 000 FCFA. Veuillez modifier le prix ou changer d'abonnement."
         });
       }
     }
+    // Offre 3 is premium and has absolutely no price limits!
   }
 
   const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
@@ -926,6 +969,7 @@ app.post(["/api/products", "/api/products/:id"], (req, res) => {
     existingIndex = products.findIndex((p: any) => p.id === prodId);
   }
 
+  const existingProduct = existingIndex > -1 ? products[existingIndex] : null;
   const savedProduct = {
     id: prodId || "prod_" + Date.now().toString(),
     nom: String(prodDetails.nom || "").trim(),
@@ -937,7 +981,10 @@ app.post(["/api/products", "/api/products/:id"], (req, res) => {
     phare: !!prodDetails.phare,
     stock: typeof prodDetails.stock !== "undefined" ? Math.max(0, Math.floor(Number(prodDetails.stock))) : 10,
     partenaire: prodDetails.partenaire || user.businessName || user.name,
-    lienAffilie: prodDetails.lienAffilie || ""
+    vendeurId: existingProduct?.vendeurId || prodDetails.vendeurId || userId,
+    lienAffilie: prodDetails.lienAffilie || "",
+    valide: typeof prodDetails.valide !== "undefined" ? !!prodDetails.valide : true,
+    status: prodDetails.status || "actif"
   };
 
   if (existingIndex > -1) {
@@ -1169,6 +1216,43 @@ app.post("/api/orders/create", (req, res) => {
   res.json({ success: true, order: newOrder });
 });
 
+// Track Order publicly (no authentication required, safe since IDs are hard to guess or shared directly via secure WhatsApp message)
+app.get("/api/orders/track/:id", (req, res) => {
+  const orderId = req.params.id;
+  if (!orderId) {
+    return res.status(400).json({ success: false, error: "ID de commande requis." });
+  }
+
+  const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+  const order = orders.find(o => o.id.toLowerCase() === orderId.toLowerCase());
+
+  if (!order) {
+    return res.status(404).json({ success: false, error: "Commande non trouvée." });
+  }
+
+  // Find images and extra details for the items
+  const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+  const enrichedItems = order.items.map((item: any) => {
+    const prod = products.find(p => p.id === item.product.id);
+    return {
+      ...item,
+      product: {
+        ...item.product,
+        images: prod ? prod.images : ["/placeholder.jpg"],
+        categorie: prod ? prod.categorie : ""
+      }
+    };
+  });
+
+  res.json({
+    success: true,
+    order: {
+      ...order,
+      items: enrichedItems
+    }
+  });
+});
+
 // --- NEW PAYMENT GATEWAY & WALLET ENDPOINTS ---
 
 // GET list of active payment providers
@@ -1392,8 +1476,8 @@ app.post("/api/withdrawals/create", (req, res) => {
     return res.status(400).json({ success: false, error: "Le montant minimum de retrait est de 5 000 FCFA." });
   }
 
-  if (!method || !["TMoney", "Flooz"].includes(method)) {
-    return res.status(400).json({ success: false, error: "Méthode de retrait invalide (TMoney ou Flooz uniquement)." });
+  if (!method || !["Asime Pay", "Asime Pay (En Ligne)", "EnLigne", "PayDunya", "Paydunya", "Mobile Money", "Virement", "Espèces"].includes(method)) {
+    return res.status(400).json({ success: false, error: "Méthode de retrait invalide (Asime Pay uniquement)." });
   }
 
   if (!phone) {
@@ -1562,6 +1646,51 @@ app.post("/api/products/:id/reviews", (req, res) => {
   res.json({ success: true, review: newReview });
 });
 
+// Get all reviews grouped by product (used by the frontend)
+app.get("/api/reviews", (req, res) => {
+  const reviews = readJSONFile<any[]>(REVIEWS_FILE, []);
+  const result: Record<string, any[]> = {};
+  for (const r of reviews) {
+    const pId = r.productId;
+    if (pId) {
+      if (!result[pId]) {
+        result[pId] = [];
+      }
+      result[pId].push({
+        id: r.id,
+        author: r.author || r.userName || "Client Anonyme",
+        rating: r.rating,
+        text: r.text || r.comment || "",
+        date: r.date || "Récemment"
+      });
+    }
+  }
+  res.json(result);
+});
+
+// Submit a general review (used by the frontend)
+app.post("/api/reviews/submit", (req, res) => {
+  const { productId, author, rating, text } = req.body;
+  if (!productId) {
+    return res.status(400).json({ success: false, error: "Product ID is required" });
+  }
+  const reviews = readJSONFile<any[]>(REVIEWS_FILE, []);
+  const newReview = {
+    id: "rev_" + Date.now().toString(),
+    productId: productId,
+    rating: Number(rating || 5),
+    comment: String(text || "").trim(),
+    userName: String(author || "Client Anonyme").trim(),
+    author: String(author || "Client Anonyme").trim(),
+    text: String(text || "").trim(),
+    date: "À l'instant",
+    createdAt: new Date().toISOString()
+  };
+  reviews.unshift(newReview);
+  writeJSONFile(REVIEWS_FILE, reviews);
+  res.json({ success: true, review: newReview });
+});
+
 
 // --- ADMIN-SPECIFIC MANAGEMENT API ENDPOINTS ---
 
@@ -1616,6 +1745,68 @@ app.get("/api/admin/users", (req, res) => {
   const users = readJSONFile<any[]>(USERS_FILE, []);
   const usersResponse = users.map(({ passwordHash, ...u }) => u);
   res.json(usersResponse);
+});
+
+// Admin approve seller
+app.post("/api/admin/users/:id/approve-seller", (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé." });
+  }
+
+  const { id } = req.params;
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const index = users.findIndex(u => u.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ success: false, error: "Utilisateur non trouvé." });
+  }
+
+  const user = users[index];
+  user.vendeurStatus = "Actif";
+  user.role = "vendeur";
+  user.notifications = user.notifications || [];
+  user.notifications.unshift({
+    id: "notif_" + Date.now().toString() + Math.floor(Math.random() * 100).toString(),
+    text: `Votre espace vendeur (${user.vendeurMode === "autonome" ? "Autonome" : "Assisté"}) avec l'abonnement ${user.vendeurSubscription || "choisi"} a été activé avec succès ! Vous pouvez maintenant configurer votre boutique.`,
+    type: "system",
+    read: false,
+    date: new Date().toISOString()
+  });
+
+  writeJSONFile(USERS_FILE, users);
+  res.json({ success: true });
+});
+
+// Admin reject seller
+app.post("/api/admin/users/:id/reject-seller", (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé." });
+  }
+
+  const { id } = req.params;
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const index = users.findIndex(u => u.id === id);
+
+  if (index === -1) {
+    return res.status(404).json({ success: false, error: "Utilisateur non trouvé." });
+  }
+
+  const user = users[index];
+  user.vendeurStatus = "Rejeté";
+  user.role = "client"; // Revert to client
+  user.notifications = user.notifications || [];
+  user.notifications.unshift({
+    id: "notif_" + Date.now().toString() + Math.floor(Math.random() * 100).toString(),
+    text: `Votre demande d'activation d'espace vendeur a été refusée après vérification du paiement. Veuillez contacter le support.`,
+    type: "system",
+    read: false,
+    date: new Date().toISOString()
+  });
+
+  writeJSONFile(USERS_FILE, users);
+  res.json({ success: true });
 });
 
 // Admin list of all orders
@@ -1724,7 +1915,7 @@ app.get("/api/admin/withdrawals", (req, res) => {
 });
 
 // Admin validate/approve withdrawal
-app.post("/api/admin/withdrawals/:id/approve", (req, res) => {
+app.post("/api/admin/withdrawals/:id/approve", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
     return res.status(403).json({ success: false, error: "Accès refusé." });
@@ -1738,21 +1929,41 @@ app.post("/api/admin/withdrawals/:id/approve", (req, res) => {
     return res.status(404).json({ success: false, error: "Demande de retrait introuvable." });
   }
 
-  withdrawals[index].status = "Payé";
+  const withdrawal = withdrawals[index];
+  if (withdrawal.status === "Payé") {
+    return res.status(400).json({ success: false, error: "Ce retrait est déjà marqué comme Payé." });
+  }
+
+  // Real PayDunya Disbursment trigger
+  if (["PayDunya", "Paydunya", "Asime Pay", "Asime Pay (En Ligne)", "EnLigne"].includes(withdrawal.method)) {
+    const paydunya = PaymentGateway.getInstance().getProvider("paydunya") as any;
+    if (paydunya && typeof paydunya.disbursePayout === "function") {
+      const payoutResult = await paydunya.disbursePayout(withdrawal.phone, withdrawal.amount, withdrawal.method);
+      if (!payoutResult.success) {
+        return res.status(500).json({ 
+          success: false, 
+          error: `Échec du transfert d'argent réel via la passerelle : ${payoutResult.error || "Raison inconnue"}` 
+        });
+      }
+      withdrawal.paymentGatewayTxId = payoutResult.txId;
+    }
+  }
+
+  withdrawal.status = "Payé";
   writeJSONFile(WITHDRAWALS_FILE, withdrawals);
 
   // Mark complete in wallets.json
-  WalletManager.completeWithdrawal(withdrawals[index].userId, id);
+  WalletManager.completeWithdrawal(withdrawal.userId, id);
 
   // Notify user
-  const targetUserId = withdrawals[index].userId;
+  const targetUserId = withdrawal.userId;
   const users = readJSONFile<any[]>(USERS_FILE, []);
   const userIndex = users.findIndex(u => u.id === targetUserId);
   if (userIndex > -1) {
     users[userIndex].notifications = users[userIndex].notifications || [];
     users[userIndex].notifications.unshift({
       id: "notif_" + Date.now().toString(),
-      text: `Votre demande de retrait de ${withdrawals[index].amount.toLocaleString()} FCFA via ${withdrawals[index].method} a été validée et envoyée !`,
+      text: `Votre demande de retrait de ${withdrawal.amount.toLocaleString()} FCFA via ${withdrawal.method} a été validée et envoyée !`,
       type: "withdrawal",
       read: false,
       date: new Date().toISOString()
@@ -1760,7 +1971,7 @@ app.post("/api/admin/withdrawals/:id/approve", (req, res) => {
     writeJSONFile(USERS_FILE, users);
   }
 
-  res.json({ success: true, withdrawal: withdrawals[index] });
+  res.json({ success: true, withdrawal });
 });
 
 // Admin reject withdrawal
@@ -1961,8 +2172,168 @@ app.post("/api/price-alerts", (req, res) => {
   }
 });
 
+// --- MESSAGING ENDPOINTS ---
+
+app.get("/api/messages", (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: "Non autorisé." });
+  }
+  const userId = getUserIdFromToken(authHeader);
+  if (!userId) {
+    return res.status(401).json({ success: false, error: "Session invalide." });
+  }
+
+  const threads = readJSONFile<any[]>(MESSAGES_FILE, []);
+  
+  // Filter threads for this user (either as customer or seller)
+  const userThreads = threads.filter(t => t.customerId === userId || t.sellerId === userId);
+  res.json({ success: true, threads: userThreads });
+});
+
+app.post("/api/messages", (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: "Non autorisé." });
+  }
+  const userId = getUserIdFromToken(authHeader);
+  if (!userId) {
+    return res.status(401).json({ success: false, error: "Session invalide." });
+  }
+
+  const { threadId, sellerId, sellerName, productName, text } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ success: false, error: "Le message ne peut pas être vide." });
+  }
+
+  const threads = readJSONFile<any[]>(MESSAGES_FILE, []);
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const currentUser = users.find(u => u.id === userId);
+  const currentUserName = currentUser ? currentUser.name : "Client Asime";
+
+  let thread;
+  if (threadId) {
+    thread = threads.find(t => t.id === threadId);
+  } else if (sellerId) {
+    // Look for existing thread between this customer and seller
+    thread = threads.find(t => t.customerId === userId && t.sellerId === sellerId);
+    if (!thread) {
+      // Create new thread
+      const targetSeller = users.find(u => u.id === sellerId);
+      const targetSellerName = sellerName || (targetSeller ? (targetSeller.businessName || targetSeller.name) : "Boutique Asime");
+      
+      thread = {
+        id: "thread_" + Date.now().toString() + Math.floor(Math.random() * 100),
+        customerId: userId,
+        customer: currentUserName,
+        avatar: currentUserName.substring(0, 2).toUpperCase(),
+        sellerId: sellerId,
+        sellerName: targetSellerName,
+        product: productName || "Produit Asime",
+        lastMessage: text,
+        unread: true,
+        messages: []
+      };
+      threads.push(thread);
+    }
+  } else {
+    return res.status(400).json({ success: false, error: "threadId ou sellerId est requis." });
+  }
+
+  if (!thread) {
+    return res.status(404).json({ success: false, error: "Discussion introuvable." });
+  }
+
+  // Determine sender type
+  const senderType = (userId === thread.customerId) ? "customer" : "seller";
+
+  // Add the message
+  const newMessage = {
+    sender: senderType,
+    text: text,
+    date: new Date().toISOString()
+  };
+
+  thread.messages.push(newMessage);
+  thread.lastMessage = text;
+  thread.unread = true; // Mark as unread for the recipient
+
+  writeJSONFile(MESSAGES_FILE, threads);
+  res.json({ success: true, thread });
+});
+
+app.post("/api/messages/:threadId/read", (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: "Non autorisé." });
+  }
+  const userId = getUserIdFromToken(authHeader);
+  if (!userId) {
+    return res.status(401).json({ success: false, error: "Session invalide." });
+  }
+
+  const { threadId } = req.params;
+  const threads = readJSONFile<any[]>(MESSAGES_FILE, []);
+  const index = threads.findIndex(t => t.id === threadId);
+
+  if (index !== -1) {
+    threads[index].unread = false;
+    writeJSONFile(MESSAGES_FILE, threads);
+  }
+
+  res.json({ success: true });
+});
+
 // --- Vite Middleware Integration ---
 async function start() {
+  // Sync from Supabase on startup
+  if (isSupabaseConfigured()) {
+    console.log("🔄 [Startup] Synchronisation initiale avec Supabase (en parallèle)...");
+    const collections = [
+      { file: PRODUCTS_FILE, key: "produits.json" },
+      { file: BLOGS_FILE, key: "blogs.json" },
+      { file: USERS_FILE, key: "users.json" },
+      { file: PARTNERS_FILE, key: "partners.json" },
+      { file: ORDERS_FILE, key: "orders.json" },
+      { file: WITHDRAWALS_FILE, key: "withdrawals.json" },
+      { file: REVIEWS_FILE, key: "reviews.json" },
+      { file: MESSAGES_FILE, key: "messages.json" }
+    ];
+
+    const timeoutMs = 4000;
+    const syncPromises = collections.map(async (col) => {
+      try {
+        // Fetch with a timeout of 4 seconds to prevent blocking
+        const cloudData = await Promise.race([
+          loadFromSupabaseStore(col.key),
+          new Promise<null>((resolve) => setTimeout(() => {
+            console.warn(`⏳ [Startup] Timeout de synchronisation pour ${col.key} après ${timeoutMs}ms.`);
+            resolve(null);
+          }, timeoutMs))
+        ]);
+
+        if (cloudData) {
+          fs.writeFileSync(col.file, JSON.stringify(cloudData, null, 2), "utf-8");
+          console.log(`✅ [Startup] Restauré depuis Supabase : ${col.key}`);
+        } else {
+          // If Supabase is connected but this key is not found, seed current local file to Supabase
+          if (fs.existsSync(col.file)) {
+            const localData = JSON.parse(fs.readFileSync(col.file, "utf-8"));
+            console.log(`🌱 [Startup] Seeding de ${col.key} vers Supabase...`);
+            await saveToSupabaseStore(col.key, localData);
+          }
+        }
+      } catch (err: any) {
+        console.error(`❌ [Startup] Erreur lors de la synchronisation de ${col.key} :`, err.message || err);
+      }
+    });
+
+    // Run all syncs concurrently but let them resolve within the timeout
+    await Promise.all(syncPromises);
+  } else {
+    printSetupInstructions();
+  }
+
   let vite: any = null;
 
   if (process.env.NODE_ENV !== "production") {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   Package,
@@ -28,7 +28,13 @@ import {
   X,
   XCircle,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Megaphone,
+  MessageCircle,
+  Store,
+  Settings,
+  ArrowLeft,
+  Lock
 } from "lucide-react";
 
 interface SellerWorkspaceProps {
@@ -41,13 +47,14 @@ interface SellerWorkspaceProps {
   formatFCFA: (amount: number) => string;
   wallet: any;
   withdrawalHistory: any[];
-  onWithdrawalRequest: (amount: string, method: "TMoney" | "Flooz", phone: string) => void;
+  onWithdrawalRequest: (amount: string, method: "Flooz" | "Mix by Yas" | "PayDunya", phone: string) => void;
   handleProductSubmit: (e: React.FormEvent) => void;
   handleDeleteProduct: (id: string) => void;
   isAddProductOpen: boolean;
   setIsAddProductOpen: (open: boolean) => void;
   isEditingProduct: any;
   setIsEditingProduct: (prod: any) => void;
+  onBackToSite?: () => void;
 
   // New product form states so they remain in sync
   newProdName: string;
@@ -56,12 +63,16 @@ interface SellerWorkspaceProps {
   setNewProdDesc: (v: string) => void;
   newProdPrice: string;
   setNewProdPrice: (v: string) => void;
+  newProdPriceBarre: string;
+  setNewProdPriceBarre: (v: string) => void;
   newProdStock: string;
   setNewProdStock: (v: string) => void;
   newProdCategory: string;
   setNewProdCategory: (v: string) => void;
   newProdImageUrl: string;
   setNewProdImageUrl: (v: string) => void;
+  newProdImages: string[];
+  setNewProdImages: React.Dispatch<React.SetStateAction<string[]>>;
   categories: string[];
 }
 
@@ -73,7 +84,7 @@ export default function SellerWorkspace({
   setProducts,
   showToast,
   formatFCFA,
-  wallet,
+  wallet: propWallet,
   withdrawalHistory,
   onWithdrawalRequest,
   handleProductSubmit,
@@ -88,15 +99,27 @@ export default function SellerWorkspace({
   setNewProdDesc,
   newProdPrice,
   setNewProdPrice,
+  newProdPriceBarre,
+  setNewProdPriceBarre,
   newProdStock,
   setNewProdStock,
   newProdCategory,
   setNewProdCategory,
   newProdImageUrl,
   setNewProdImageUrl,
-  categories
+  newProdImages,
+  setNewProdImages,
+  categories,
+  onBackToSite
 }: SellerWorkspaceProps) {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "products" | "orders" | "promos" | "reviews" | "wallet">("dashboard");
+  const wallet = propWallet || { balance: 0, pending: 0 };
+  const [activeTab, setActiveTab] = useState<"dashboard" | "products" | "orders" | "messages" | "ads" | "promos" | "shop_profile" | "reviews" | "wallet">("dashboard");
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
   const [sellerSearchQuery, setSellerSearchQuery] = useState("");
   const [orderFilter, setOrderFilter] = useState<"all" | "today" | "pending" | "completed">("all");
   const [reviewFilter, setReviewFilter] = useState<number | null>(null);
@@ -104,6 +127,118 @@ export default function SellerWorkspace({
   const [reviewReplies, setReviewReplies] = useState<{ [key: string]: string }>({
     "rev-1": "Merci beaucoup pour votre retour ! C'est un plaisir de vous savoir satisfait de notre miel pur."
   });
+
+  // Shop Profile Customization States
+  const [shopSlogan, setShopSlogan] = useState("Artisanat authentique & Trésors du Togo");
+  const [shopAnnouncement, setShopAnnouncement] = useState("Bienvenue chez nous ! Toutes nos créations sont confectionnées à la main avec passion et amour dans notre atelier de Lomé. Livraison gratuite à partir de 20 000 FCFA.");
+  const [shopStory, setShopStory] = useState("Notre voyage a commencé dans un petit atelier familial. Aujourd'hui, nous collaborons avec des tisserands et artisans locaux pour vous apporter le meilleur du terroir togolais sur Asime.");
+  const [shopBanner, setShopBanner] = useState("https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=1200&q=80");
+  const [shopLogoText, setShopLogoText] = useState(user?.businessName ? user.businessName.substring(0, 2) : (user?.name ? user.name.substring(0, 2) : "AS"));
+  const [shopName, setShopName] = useState(user?.businessName || user?.name || "Boutique d'Artisanat");
+
+  // Sponsored Ads Simulator States
+  const [adsEnabled, setAdsEnabled] = useState(true);
+  const [dailyBudget, setDailyBudget] = useState(1500); // FCFA
+  const [advertisedProducts, setAdvertisedProducts] = useState<string[]>([]);
+
+  // Security PIN states in workspace
+  const [currentPinCheck, setCurrentPinCheck] = useState("");
+  const [newPinValue, setNewPinValue] = useState("");
+  const [confirmNewPinValue, setConfirmNewPinValue] = useState("");
+  const [isUpdatingPin, setIsUpdatingPin] = useState(false);
+
+  // Internal Messaging Inbox States
+  const [activeThread, setActiveThread] = useState("thread-1");
+  const [chatMessage, setChatMessage] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [threads, setThreads] = useState([
+    {
+      id: "thread-1",
+      customer: "Adjoa S. (Lomé)",
+      avatar: "AS",
+      product: "Robe sur-mesure en Pagne Kente",
+      lastMessage: "Bonjour, est-ce que vos pagnes sont 100% coton biologique ?",
+      unread: true,
+      messages: [
+        { sender: "customer", text: "Bonjour ! J'adore vos créations de robes.", date: "Aujourd'hui, 09:12" },
+        { sender: "seller", text: "Bonjour Adjoa ! Merci beaucoup, toutes nos créations sont faites main dans notre atelier de Lomé.", date: "Aujourd'hui, 09:15" },
+        { sender: "customer", text: "Super ! Est-ce que vos pagnes sont 100% coton biologique ?", date: "Aujourd'hui, 10:02" }
+      ]
+    },
+    {
+      id: "thread-2",
+      customer: "Koffi T. (Kpalimé)",
+      avatar: "KT",
+      product: "Miel Pur de Dapaong (Lot de 3)",
+      lastMessage: "Pouvez-vous m'envoyer un colis par le réseau de bus ?",
+      unread: false,
+      messages: [
+        { sender: "customer", text: "Salut, j'aimerais commander 3 pots de miel de Dapaong.", date: "Hier, 14:20" },
+        { sender: "seller", text: "Bonjour Koffi, avec plaisir ! Nous pouvons expédier via le réseau de colis Asime.", date: "Hier, 14:45" },
+        { sender: "customer", text: "Pouvez-vous m'envoyer un colis par le réseau de bus ?", date: "Hier, 15:10" }
+      ]
+    },
+    {
+      id: "thread-3",
+      customer: "Sena K. (Aného)",
+      avatar: "SK",
+      product: "Statue en teck sculptée main",
+      lastMessage: "Merci pour les précisions, je valide l'achat !",
+      unread: false,
+      messages: [
+        { sender: "customer", text: "Bonsoir, quel est le poids exact de la statue en teck ?", date: "02 Juil, 18:30" },
+        { sender: "seller", text: "Bonsoir Sena, elle pèse environ 1.8 kg. C'est du bois de teck massif du Togo.", date: "02 Juil, 19:10" },
+        { sender: "customer", text: "Merci pour les précisions, je valide l'achat !", date: "03 Juil, 10:15" }
+      ]
+    }
+  ]);
+
+  useEffect(() => {
+    if (activeTab === "messages") {
+      scrollToBottom();
+    }
+  }, [activeTab, activeThread, threads]);
+
+  const fetchThreads = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/messages", {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.threads && data.threads.length > 0) {
+          setThreads(data.threads);
+          // Auto select first thread if activeThread is not in the list
+          if (!data.threads.some((t: any) => t.id === activeThread)) {
+            setActiveThread(data.threads[0].id);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching threads:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchThreads();
+    const interval = setInterval(fetchThreads, 6000);
+    return () => clearInterval(interval);
+  }, [token, activeTab]);
+
+  const handleSelectThread = async (threadId: string) => {
+    setActiveThread(threadId);
+    setThreads(prev => prev.map(t => t.id === threadId ? { ...t, unread: false } : t));
+    if (!token) return;
+    try {
+      await fetch(`/api/messages/${threadId}/read`, {
+        method: "POST",
+        headers: { Authorization: token }
+      });
+    } catch (e) {
+      console.error("Error marking thread as read:", e);
+    }
+  };
 
   // Local state for Promo Codes
   const [promos, setPromos] = useState<any[]>([
@@ -119,11 +254,22 @@ export default function SellerWorkspace({
   const [orders, setOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
+  // Deletion Confirmation States
+  const [productToDeleteId, setProductToDeleteId] = useState<string | null>(null);
+  const [promoToDeleteId, setPromoToDeleteId] = useState<string | null>(null);
+
   // Stats
-  const sellerProducts = products.filter(p => p.vendeurId === user.id || p.partenaire === user.businessName);
+  const sellerProducts = products.filter(p => p.vendeurId === user?.id || p.partenaire === user?.businessName);
   const totalProductsCount = sellerProducts.length;
   const outOfStockCount = sellerProducts.filter(p => !p.stock || Number(p.stock) <= 0).length;
   const pendingValidationCount = sellerProducts.filter(p => p.valide === false || p.status === "attente").length;
+
+  // Sync advertised products
+  useEffect(() => {
+    if (sellerProducts.length > 0 && advertisedProducts.length === 0) {
+      setAdvertisedProducts(sellerProducts.slice(0, 3).map(p => p.id));
+    }
+  }, [products]);
 
   // Real-time calculated sales
   const [activeTooltip, setActiveTooltip] = useState<{ x: number; y: number; label: string; value: string } | null>(null);
@@ -334,28 +480,28 @@ export default function SellerWorkspace({
   return (
     <div className="flex h-full bg-stone-50 text-neutral-900 font-sans antialiased overflow-hidden">
       {/* 2. FIXED PREMIUM SIDEBAR */}
-      <aside className="w-64 bg-neutral-900 text-stone-200 flex flex-col justify-between select-none border-r border-neutral-800 shrink-0 h-full">
+      <aside className="w-64 bg-stone-900 text-stone-200 flex flex-col justify-between select-none border-r border-stone-800 shrink-0 h-full font-sans">
         <div>
           {/* Header */}
-          <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
+          <div className="p-5 border-b border-stone-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-[#d4af37] flex items-center justify-center font-black text-neutral-900 text-sm tracking-tighter">
-                As
+              <div className="w-9 h-9 flex items-center justify-center bg-[#0B4D26] rounded-lg p-1 text-white shadow-[0_2px_6px_rgba(11,77,38,0.3)]">
+                <Store className="w-5 h-5" />
               </div>
               <div className="text-left">
-                <h2 className="text-sm font-black tracking-widest text-white uppercase">ASIME SELLER</h2>
-                <span className="text-[9px] font-bold text-[#d4af37] uppercase tracking-wider">Espace Artisan</span>
+                <h2 className="text-sm font-black tracking-widest text-white uppercase font-sans">ASIME SHOP</h2>
+                <span className="text-[9px] font-bold text-[#d4af37] uppercase tracking-wider font-sans">Studio Artisan</span>
               </div>
             </div>
           </div>
 
           {/* Profile Quick Glance */}
-          <div className="p-4 bg-neutral-950/40 border-b border-neutral-800 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-white font-extrabold text-sm uppercase">
-              {user.businessName ? user.businessName.substring(0, 2) : user.name.substring(0, 2)}
+          <div className="p-4 bg-stone-950/40 border-b border-stone-800 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-[#d4af37] font-black text-sm uppercase">
+              {shopLogoText}
             </div>
-            <div className="text-left min-w-0">
-              <p className="text-xs font-bold text-white truncate">{user.businessName || user.name}</p>
+            <div className="text-left min-w-0 font-sans">
+              <p className="text-xs font-bold text-white truncate">{shopName || user?.businessName || user?.name || "Boutique Artisanale"}</p>
               <span className="inline-flex items-center gap-1 text-[8.5px] font-black text-[#d4af37] uppercase tracking-wider mt-0.5">
                 <Sparkles className="w-2.5 h-2.5 animate-pulse" />
                 Vendeur Certifié
@@ -365,12 +511,22 @@ export default function SellerWorkspace({
 
           {/* Menu Items */}
           <nav className="p-3 space-y-1 text-left">
+            {onBackToSite && (
+              <button
+                onClick={onBackToSite}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-black uppercase tracking-wider text-amber-500 hover:bg-stone-850 hover:text-amber-400 transition-all cursor-pointer border border-amber-500/20 bg-amber-500/5 mb-3"
+              >
+                <ArrowLeft className="w-4 h-4 shrink-0" />
+                <span>Retour au site</span>
+              </button>
+            )}
+
             <button
               onClick={() => setActiveTab("dashboard")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeTab === "dashboard"
-                  ? "bg-[#d4af37] text-neutral-950 font-bold shadow-md shadow-[#d4af37]/10"
-                  : "text-neutral-400 hover:bg-neutral-800/60 hover:text-white"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
               }`}
             >
               <LayoutDashboard className="w-4 h-4 shrink-0" />
@@ -379,16 +535,16 @@ export default function SellerWorkspace({
 
             <button
               onClick={() => setActiveTab("products")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeTab === "products"
-                  ? "bg-[#d4af37] text-neutral-950 font-bold shadow-md shadow-[#d4af37]/10"
-                  : "text-neutral-400 hover:bg-neutral-800/60 hover:text-white"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
               }`}
             >
               <Package className="w-4 h-4 shrink-0" />
               <div className="flex-grow flex items-center justify-between">
-                <span>Catalogue & Produits</span>
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === "products" ? "bg-neutral-900 text-white" : "bg-neutral-800 text-stone-300"}`}>
+                <span>Fiches produits</span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === "products" ? "bg-stone-900 text-white" : "bg-stone-800 text-stone-300"}`}>
                   {totalProductsCount}
                 </span>
               </div>
@@ -396,66 +552,111 @@ export default function SellerWorkspace({
 
             <button
               onClick={() => setActiveTab("orders")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeTab === "orders"
-                  ? "bg-[#d4af37] text-neutral-950 font-bold shadow-md shadow-[#d4af37]/10"
-                  : "text-neutral-400 hover:bg-neutral-800/60 hover:text-white"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
               }`}
             >
               <ShoppingCart className="w-4 h-4 shrink-0" />
               <div className="flex-grow flex items-center justify-between">
-                <span>Commandes</span>
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === "orders" ? "bg-neutral-900 text-white" : "bg-neutral-800 text-stone-300"}`}>
+                <span>Commandes & Envois</span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${activeTab === "orders" ? "bg-stone-900 text-white" : "bg-stone-800 text-stone-300"}`}>
                   {totalOrdersCount}
                 </span>
               </div>
             </button>
 
             <button
+              onClick={() => {
+                setActiveTab("messages");
+                // Clear notification badge
+                setThreads(prev => prev.map(t => t.id === "thread-1" ? { ...t, unread: false } : t));
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === "messages"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
+              }`}
+            >
+              <MessageCircle className="w-4 h-4 shrink-0" />
+              <div className="flex-grow flex items-center justify-between">
+                <span>Messages clients</span>
+                {threads.some(t => t.unread) && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#d4af37]" />
+                )}
+              </div>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("ads")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === "ads"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
+              }`}
+            >
+              <Megaphone className="w-4 h-4 shrink-0" />
+              <span>Publicité Asime Ads</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("promos")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeTab === "promos"
-                  ? "bg-[#d4af37] text-neutral-950 font-bold shadow-md shadow-[#d4af37]/10"
-                  : "text-neutral-400 hover:bg-neutral-800/60 hover:text-white"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
               }`}
             >
               <Percent className="w-4 h-4 shrink-0" />
-              <span>Codes Promo</span>
+              <span>Codes Promo & Coupons</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("shop_profile")}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                activeTab === "shop_profile"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
+              }`}
+            >
+              <Store className="w-4 h-4 shrink-0" />
+              <span>Ma Boutique (Profil)</span>
             </button>
 
             <button
               onClick={() => setActiveTab("reviews")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeTab === "reviews"
-                  ? "bg-[#d4af37] text-neutral-950 font-bold shadow-md shadow-[#d4af37]/10"
-                  : "text-neutral-400 hover:bg-neutral-800/60 hover:text-white"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
               }`}
             >
-              <MessageSquare className="w-4 h-4 shrink-0" />
+              <Star className="w-4 h-4 shrink-0" />
               <span>Avis Clients</span>
             </button>
 
             <button
               onClick={() => setActiveTab("wallet")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${
                 activeTab === "wallet"
-                  ? "bg-[#d4af37] text-neutral-950 font-bold shadow-md shadow-[#d4af37]/10"
-                  : "text-neutral-400 hover:bg-neutral-800/60 hover:text-white"
+                  ? "bg-[#0B4D26] text-white font-bold shadow-md shadow-[#0B4D26]/20"
+                  : "text-stone-400 hover:bg-stone-850 hover:text-white"
               }`}
             >
               <Wallet className="w-4 h-4 shrink-0" />
-              <span>Portefeuille & Retraits</span>
+              <span>Comptabilité & Payouts</span>
             </button>
           </nav>
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-neutral-800 text-left">
-          <p className="text-[9px] text-neutral-500 uppercase tracking-widest font-mono">
-            Mode Boutique : <strong className="text-[#d4af37]">{user.vendeurMode || "AUTONOME"}</strong>
+        <div className="p-4 border-t border-stone-800 text-left">
+          <p className="text-[9px] text-stone-500 uppercase tracking-widest font-mono">
+            Mode Boutique : <strong className="text-[#d4af37]">{user?.vendeurMode || "AUTONOME"}</strong>
           </p>
-          <p className="text-[8px] text-neutral-600 mt-1">
-            Asime Dashboard v2.0 • Premium
+          <p className="text-[8px] text-stone-600 mt-1">
+            Asime Shop Studio • Lomé, Togo
           </p>
         </div>
       </aside>
@@ -482,7 +683,7 @@ export default function SellerWorkspace({
             </div>
             <button
               onClick={() => setActiveTab("wallet")}
-              className="bg-neutral-900 hover:bg-[#d4af37] hover:text-neutral-950 text-white font-bold text-[10px] uppercase tracking-widest px-3 py-2 rounded-lg transition-all"
+              className="bg-[#0B4D26] hover:bg-[#0B4D26]/90 text-white font-bold text-[10px] uppercase tracking-widest px-3 py-2 rounded-lg transition-all"
             >
               Retirer
             </button>
@@ -647,7 +848,7 @@ export default function SellerWorkspace({
                     </div>
                     <div className="flex gap-2">
                       <span className="inline-flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-neutral-500">
-                        <span className="w-2.5 h-2.5 bg-[#d4af37] rounded-xs inline-block"></span>
+                        <span className="w-2.5 h-2.5 bg-[#0B4D26] rounded-xs inline-block"></span>
                         Ventes directes
                       </span>
                     </div>
@@ -688,7 +889,7 @@ export default function SellerWorkspace({
                               y={y}
                               width="40"
                               height={height}
-                              fill="#d4af37"
+                              fill="#0B4D26"
                               opacity="0.85"
                               className="transition-all duration-300 hover:opacity-100 hover:fill-neutral-950"
                               rx="4"
@@ -708,7 +909,7 @@ export default function SellerWorkspace({
                         className="absolute z-50 bg-neutral-950 text-white p-2 rounded-lg text-[10px] font-mono shadow-xl border border-neutral-800 pointer-events-none"
                         style={{ left: `${activeTooltip.x - 160}px`, top: `${activeTooltip.y - 120}px` }}
                       >
-                        <p className="font-bold text-[#d4af37] uppercase">{activeTooltip.label}</p>
+                        <p className="font-bold text-[#0B4D26] uppercase">{activeTooltip.label}</p>
                         <p className="mt-0.5">{activeTooltip.value}</p>
                       </div>
                     )}
@@ -719,7 +920,7 @@ export default function SellerWorkspace({
                 <div className="bg-white border border-stone-200 p-5 rounded-xl text-left">
                   <h4 className="text-xs font-black text-neutral-900 uppercase tracking-wider mb-4 flex items-center justify-between">
                     <span>Vos Best-Sellers</span>
-                    <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />
+                    <Sparkles className="w-3.5 h-3.5 text-[#0B4D26]" />
                   </h4>
 
                   <div className="space-y-3.5">
@@ -733,7 +934,7 @@ export default function SellerWorkspace({
                           />
                           <div className="min-w-0">
                             <h5 className="text-xs font-bold text-neutral-900 truncate">{prod.nom}</h5>
-                            <span className="text-[9px] font-extrabold text-[#d4af37] uppercase tracking-wider block mt-0.5">{prod.categorie}</span>
+                            <span className="text-[9px] font-extrabold text-[#0B4D26] uppercase tracking-wider block mt-0.5">{prod.categorie}</span>
                           </div>
                         </div>
                         <div className="text-right shrink-0">
@@ -753,14 +954,19 @@ export default function SellerWorkspace({
 
               </div>
 
-              {/* Quick Navigation Help Alert */}
-              <div className="bg-[#d4af37]/5 border border-[#d4af37]/20 p-4 rounded-xl flex items-start gap-3">
-                <Sparkles className="w-5 h-5 text-[#d4af37] shrink-0 mt-0.5" />
+              {/* Quick Navigation Help Alert (Asime Advisor Checklist Style) */}
+              <div className="bg-[#0B4D26]/5 border border-[#0B4D26]/20 p-4 rounded-xl flex items-start gap-3">
+                <Store className="w-5 h-5 text-[#0B4D26] shrink-0 mt-0.5" />
                 <div>
-                  <h5 className="text-xs font-bold text-neutral-950 uppercase tracking-wide">Conseil de Vente Asime</h5>
-                  <p className="text-xs text-neutral-600 mt-1 leading-relaxed font-sans">
-                    Les articles marqués en <strong>Coup de Cœur (Phare)</strong> apparaissent directement en première page de la marketplace Asime et génèrent en moyenne 3 fois plus de trafic ! Utilisez le bouton d'étoile dans votre catalogue pour les activer.
-                  </p>
+                  <h5 className="text-xs font-bold text-neutral-950 uppercase tracking-wide">Conseils & Recommandations pour votre Boutique</h5>
+                  <div className="mt-2 space-y-2 text-xs text-stone-600 leading-relaxed font-sans">
+                    <p className="flex items-center gap-1.5">
+                      <span className="text-[#0B4D26] font-extrabold">🌟 Améliorez vos fiches</span> : Les produits avec des photos claires et lumineuses et au moins 5 mots-clés de recherche enregistrent 3x plus d'intérêt des clients togolais.
+                    </p>
+                    <p className="flex items-center gap-1.5">
+                      <span className="text-[#0B4D26] font-extrabold">📦 Livraison gratuite</span> : Proposer la livraison gratuite à Lomé en créant le coupon `LOMEGRATUIT` dans l'onglet des promotions attire 40% de commandes supplémentaires !
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -791,9 +997,11 @@ export default function SellerWorkspace({
                       setNewProdName("");
                       setNewProdDesc("");
                       setNewProdPrice("");
+                      setNewProdPriceBarre("");
                       setNewProdStock("");
                       setNewProdCategory(categories[0] || "");
                       setNewProdImageUrl("");
+                      setNewProdImages([]);
                       setIsAddProductOpen(!isAddProductOpen);
                     }}
                     className="bg-neutral-900 hover:bg-[#d4af37] hover:text-neutral-950 text-white font-black uppercase tracking-widest text-[9.5px] px-4 py-2.5 rounded-lg flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
@@ -872,6 +1080,16 @@ export default function SellerWorkspace({
                         />
                       </div>
                       <div>
+                        <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">Prix barré (FCFA) - Optionnel</label>
+                        <input
+                          type="number"
+                          value={newProdPriceBarre}
+                          onChange={(e) => setNewProdPriceBarre(e.target.value)}
+                          placeholder="Ex: 20000"
+                          className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs font-mono text-neutral-900 focus:outline-none focus:border-neutral-950"
+                        />
+                      </div>
+                      <div>
                         <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">Stock disponible</label>
                         <input
                           type="number"
@@ -882,16 +1100,78 @@ export default function SellerWorkspace({
                           className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs font-mono text-neutral-900 focus:outline-none focus:border-neutral-950"
                         />
                       </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">URL de la photo</label>
-                        <input
-                          type="text"
-                          required
-                          value={newProdImageUrl}
-                          onChange={(e) => setNewProdImageUrl(e.target.value)}
-                          placeholder="Ex: https://image.com/kente.jpg"
-                          className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-neutral-950"
-                        />
+                      <div className="md:col-span-3">
+                        <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                          <span>Photos du produit (Recommandé, optionnel)</span>
+                          <span className="text-[9.5px] font-bold text-emerald-600">
+                            {newProdImages.length} photo(s) ajoutée(s)
+                          </span>
+                        </label>
+                        
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {/* File Selection Box */}
+                          <div className="border-2 border-dashed border-stone-200 hover:border-neutral-900 rounded-xl flex flex-col items-center justify-center p-4 transition-all duration-300 relative cursor-pointer min-h-[120px] bg-stone-50 group">
+                            <input
+                              type="file"
+                              multiple
+                              accept="image/*"
+                              onChange={(e) => {
+                                const files = e.target.files;
+                                if (files) {
+                                  Array.from(files).forEach((file) => {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => {
+                                      if (typeof reader.result === "string") {
+                                        setNewProdImages((prev) => [...prev, reader.result as string]);
+                                      }
+                                    };
+                                    reader.readAsDataURL(file);
+                                  });
+                                }
+                              }}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            />
+                            <div className="text-center flex flex-col items-center gap-1">
+                              <Plus className="w-6 h-6 text-stone-400 group-hover:text-neutral-900 transition-colors" />
+                              <span className="text-[10px] font-black uppercase tracking-wider text-stone-500 group-hover:text-neutral-900">Ajouter des photos</span>
+                              <span className="text-[8px] text-stone-400 font-medium">Format: JPG, PNG, WEBP</span>
+                            </div>
+                          </div>
+
+                          {/* Previews */}
+                          {newProdImages.map((img, idx) => (
+                            <div key={idx} className="relative rounded-xl overflow-hidden border border-stone-200 group aspect-square bg-stone-100 flex items-center justify-center">
+                              <img
+                                src={img}
+                                alt={`Aperçu ${idx + 1}`}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 z-20">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNewProdImages((prev) => prev.filter((_, i) => i !== idx));
+                                  }}
+                                  className="p-1 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors cursor-pointer"
+                                  title="Supprimer la photo"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                              <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[8px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider z-10 font-sans">
+                                {idx === 0 ? "Principale" : `Photo ${idx + 1}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {newProdImages.length < 1 && (
+                          <p className="text-[10px] text-amber-600 font-medium mt-2 flex items-center gap-1 font-sans">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            <span>Ajouter des photos permet d'augmenter vos ventes de 80%.</span>
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -946,7 +1226,12 @@ export default function SellerWorkspace({
                           </div>
 
                           <h4 className="text-xs font-extrabold text-neutral-950 truncate mt-1">{prod.nom}</h4>
-                          <p className="text-xs font-mono font-black text-neutral-900 mt-1">{formatFCFA(prod.prix)}</p>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-xs font-mono font-black text-neutral-900">{formatFCFA(prod.prix)}</span>
+                            {prod.prixBarre && (
+                              <span className="text-[10px] font-mono text-stone-400 line-through">{formatFCFA(prod.prixBarre)}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -987,9 +1272,11 @@ export default function SellerWorkspace({
                               setNewProdName(prod.nom);
                               setNewProdDesc(prod.description || "");
                               setNewProdPrice(String(prod.prix));
+                              setNewProdPriceBarre(prod.prixBarre ? String(prod.prixBarre) : "");
                               setNewProdStock(String(prod.stock || 0));
                               setNewProdCategory(prod.categorie);
                               setNewProdImageUrl(prod.images[0]);
+                              setNewProdImages(prod.images || []);
                               setIsAddProductOpen(true);
                             }}
                             className="text-stone-500 hover:text-neutral-950 p-1.5 hover:bg-white rounded-lg border border-transparent hover:border-stone-200 transition-all cursor-pointer"
@@ -1010,9 +1297,7 @@ export default function SellerWorkspace({
                           {/* Delete button */}
                           <button
                             onClick={() => {
-                              if (window.confirm(`Voulez-vous vraiment supprimer "${prod.nom}" ?`)) {
-                                handleDeleteProduct(prod.id);
-                              }
+                              setProductToDeleteId(prod.id);
                             }}
                             className="text-red-500 hover:text-red-700 p-1.5 hover:bg-white rounded-lg border border-transparent hover:border-stone-200 transition-all cursor-pointer"
                             title="Supprimer"
@@ -1295,8 +1580,8 @@ export default function SellerWorkspace({
                             </td>
                             <td className="py-3.5 text-right">
                               <button
-                                onClick={() => deletePromo(p.id)}
-                                className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition-all"
+                                onClick={() => setPromoToDeleteId(p.id)}
+                                className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg transition-all cursor-pointer"
                                 title="Supprimer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -1467,7 +1752,7 @@ export default function SellerWorkspace({
                       e.preventDefault();
                       const target = e.currentTarget;
                       const amount = (target.elements.namedItem("amount") as HTMLInputElement).value;
-                      const method = (target.elements.namedItem("method") as HTMLSelectElement).value as "TMoney" | "Flooz";
+                      const method = "PayDunya";
                       const phone = (target.elements.namedItem("phone") as HTMLInputElement).value;
                       onWithdrawalRequest(amount, method, phone);
                       target.reset();
@@ -1488,17 +1773,13 @@ export default function SellerWorkspace({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">Réseau Mobile</label>
-                        <select
-                          name="method"
-                          className="w-full px-2 py-2 border border-stone-200 rounded-lg text-xs text-neutral-900 focus:outline-none focus:border-neutral-950 font-semibold"
-                        >
-                          <option value="TMoney">TMoney (Togocel)</option>
-                          <option value="Flooz">Flooz (Moov)</option>
-                        </select>
+                        <label className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">Réseau / Mode de reversement</label>
+                        <div className="w-full px-3 py-2 border border-stone-200 bg-stone-100 rounded-lg text-xs text-neutral-800 font-bold">
+                          Transfert Mobile (T-Money, Flooz, Wave)
+                        </div>
                       </div>
                       <div>
-                        <label className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">Numéro (+228)</label>
+                        <label className="block text-[8.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">Numéro de téléphone (+228)</label>
                         <input
                           type="tel"
                           name="phone"
@@ -1583,8 +1864,869 @@ export default function SellerWorkspace({
             </div>
           )}
 
+          {/* 7. CONVERSATIONS (MESSAGES VIEW) */}
+          {activeTab === "messages" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[580px] bg-white border border-stone-200 rounded-xl overflow-hidden animate-fade-in font-sans">
+              
+              {/* Left Sidebar: Thread List */}
+              <div className="border-r border-stone-200 flex flex-col h-full bg-stone-50/50">
+                <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+                  <h4 className="text-xs font-black text-stone-700 uppercase tracking-wider">Boîte de réception</h4>
+                  <span className="text-[10px] bg-[#0B4D26]/10 text-[#0B4D26] font-bold px-2 py-0.5 rounded-full">
+                    {threads.filter(t => t.unread).length} non lus
+                  </span>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
+                  {threads.map((thread) => (
+                    <button
+                      key={thread.id}
+                      onClick={() => {
+                        handleSelectThread(thread.id);
+                      }}
+                      className={`w-full text-left p-4 transition-colors flex items-start gap-3 cursor-pointer border-0 ${
+                        activeThread === thread.id ? "bg-[#0B4D26]/5 border-l-4 border-[#0B4D26]" : "bg-transparent hover:bg-stone-50 border-l-4 border-transparent"
+                      }`}
+                    >
+                      <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 font-bold flex items-center justify-center text-xs uppercase shrink-0">
+                        {thread.avatar}
+                      </div>
+                      <div className="min-w-0 flex-grow">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-stone-900 truncate">{thread.customer}</span>
+                          {thread.unread && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#0B4D26]" />
+                          )}
+                        </div>
+                        <p className="text-[10px] text-[#0B4D26] font-semibold truncate mt-0.5">{thread.product}</p>
+                        <p className="text-[11px] text-stone-500 truncate mt-1 leading-tight">{thread.lastMessage}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Panel: Active Chat Thread */}
+              <div className="lg:col-span-2 flex flex-col h-full bg-white">
+                {(() => {
+                  const currentThread = threads.find(t => t.id === activeThread);
+                  if (!currentThread) return (
+                    <div className="flex flex-col items-center justify-center h-full text-stone-400 text-xs">
+                      Sélectionnez une conversation pour démarrer
+                    </div>
+                  );
+
+                  return (
+                    <>
+                      {/* Thread Header */}
+                      <div className="p-4 border-b border-stone-200 flex items-center justify-between bg-stone-50/30">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 font-bold flex items-center justify-center text-xs uppercase">
+                            {currentThread.avatar}
+                          </div>
+                          <div className="text-left">
+                            <h5 className="text-xs font-extrabold text-stone-900">{currentThread.customer}</h5>
+                            <span className="text-[10px] text-stone-400 font-medium">Sujet : <strong className="text-stone-700">{currentThread.product}</strong></span>
+                          </div>
+                        </div>
+                        <span className="text-[9px] font-black uppercase text-stone-400 tracking-wider">Messagerie Interne</span>
+                      </div>
+
+                      {/* Messages History List */}
+                      <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-stone-50/20 max-h-[340px] min-h-[340px] scrollbar-thin scrollbar-thumb-stone-300">
+                        {currentThread.messages.map((msg, index) => (
+                          <div
+                            key={index}
+                            className={`flex flex-col ${msg.sender === "seller" ? "items-end" : "items-start"}`}
+                          >
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-[9px] font-bold text-stone-400">
+                                {msg.sender === "seller" ? "Vous" : currentThread.customer.split(" ")[0]}
+                              </span>
+                              <span className="text-[8px] text-stone-300 font-mono">{msg.date}</span>
+                            </div>
+                            <div
+                                className={`max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed ${
+                                msg.sender === "seller"
+                                  ? "bg-[#0B4D26] text-white rounded-tr-none"
+                                  : "bg-white border border-stone-200 text-stone-800 rounded-tl-none"
+                              }`}
+                            >
+                              {msg.text}
+                            </div>
+                          </div>
+                        ))}
+                        {isTyping && (
+                          <div className="flex flex-col items-start animate-pulse">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-[9px] font-bold text-stone-400">
+                                {currentThread.customer.split(" ")[0]}
+                              </span>
+                              <span className="text-[8px] text-stone-300 font-mono">En train d'écrire...</span>
+                            </div>
+                            <div className="bg-white border border-stone-200 text-stone-500 rounded-xl rounded-tl-none px-3 py-1.5 text-xs flex items-center gap-1">
+                              <span className="w-1 h-1 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1 h-1 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1 h-1 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </div>
+                          </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                      </div>
+
+                      {/* Saved Templates Assistant */}
+                      <div className="p-3 border-t border-stone-100 bg-stone-50 flex items-center gap-2 flex-wrap select-none">
+                        <span className="text-[9px] font-black text-stone-400 uppercase tracking-widest block">Modèles rapides :</span>
+                        <button
+                          onClick={() => setChatMessage("Bonjour ! Merci beaucoup d'avoir choisi Asime Togo. Votre commande est bien enregistrée et nous préparons vos produits artisanaux faits main avec le plus grand soin. À très bientôt !")}
+                          className="bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] px-2.5 py-1 rounded-full cursor-pointer transition-colors"
+                        >
+                          ✉️ Merci & Accueil
+                        </button>
+                        <button
+                          onClick={() => setChatMessage("Bonjour ! Nous vous informons que votre colis Asime a été expédié aujourd'hui depuis notre atelier de Lomé. Vous recevrez une notification par SMS très bientôt. Merci pour votre confiance !")}
+                          className="bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] px-2.5 py-1 rounded-full cursor-pointer transition-colors"
+                        >
+                          📦 Expédition
+                        </button>
+                        <button
+                          onClick={() => setChatMessage("Bonjour ! Oui, tout à fait ! Nous pouvons adapter les dimensions et couleurs selon vos souhaits. Veuillez nous envoyer vos mesures exactes ou préférences par message. Cordialement.")}
+                          className="bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] px-2.5 py-1 rounded-full cursor-pointer transition-colors"
+                        >
+                          🎨 Personnalisé
+                        </button>
+                      </div>
+
+                      {/* Message Input Box */}
+                      <form
+                      onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!chatMessage.trim()) return;
+
+                          const textToSend = chatMessage;
+                          setChatMessage("");
+
+                          // Append seller message locally first for responsive feel
+                          setThreads(prev => prev.map(t => {
+                            if (t.id === activeThread) {
+                              return {
+                                ...t,
+                                lastMessage: textToSend,
+                                messages: [...t.messages, { sender: "seller", text: textToSend, date: "À l'instant" }]
+                              };
+                            }
+                            return t;
+                          }));
+
+                          // Post seller message to backend API
+                          try {
+                            const response = await fetch("/api/messages", {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": token || ""
+                              },
+                              body: JSON.stringify({
+                                threadId: activeThread,
+                                text: textToSend
+                              })
+                            });
+                            if (response.ok) {
+                              const data = await response.json();
+                              if (data.success && data.thread) {
+                                setThreads(prev => prev.map(t => t.id === activeThread ? data.thread : t));
+                              }
+                            }
+                          } catch (err) {
+                            console.error("Error sending reply:", err);
+                          }
+
+                          // Simulate buyer typing reply
+                          setTimeout(() => {
+                            setIsTyping(true);
+                          }, 1000);
+
+                          setTimeout(async () => {
+                            setIsTyping(false);
+                            
+                            const replyText = "Parfait ! Merci beaucoup pour votre réactivité légendaire et ce service sur-mesure. Je valide mon achat immédiatement !";
+                            
+                            // Send emulated reply to the database so it's fully saved and persistent!
+                            try {
+                              const customerAuthToken = "user-token-" + btoa("client-adjoa");
+                              const response = await fetch("/api/messages", {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  "Authorization": customerAuthToken
+                                },
+                                body: JSON.stringify({
+                                  threadId: activeThread,
+                                  text: replyText
+                                })
+                              });
+                              if (response.ok) {
+                                const data = await response.json();
+                                if (data.success && data.thread) {
+                                  setThreads(prev => prev.map(t => t.id === activeThread ? data.thread : t));
+                                  if (currentThread) {
+                                    showToast("Nouveau message reçu de " + currentThread.customer.split(" ")[0]);
+                                  }
+                                  return;
+                                }
+                              }
+                            } catch (e) {
+                              console.error(e);
+                            }
+
+                            // Fallback local update
+                            setThreads(prev => prev.map(t => {
+                              if (t.id === activeThread) {
+                                return {
+                                  ...t,
+                                  lastMessage: replyText,
+                                  messages: [...t.messages, {
+                                    sender: "customer",
+                                    text: replyText,
+                                    date: "À l'instant"
+                                  }]
+                                };
+                              }
+                              return t;
+                            }));
+                            if (currentThread) {
+                              showToast("Nouveau message reçu de " + currentThread.customer.split(" ")[0]);
+                            }
+                          }, 3500);
+                        }}
+                        className="p-4 border-t border-stone-200 flex gap-2"
+                      >
+                        <input
+                          type="text"
+                          value={chatMessage}
+                          onChange={(e) => setChatMessage(e.target.value)}
+                          placeholder="Écrivez votre réponse artisanale ici..."
+                          className="flex-grow px-3 py-2 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-[#0B4D26]"
+                        />
+                        <button
+                          type="submit"
+                          className="bg-[#0B4D26] hover:bg-[#0B4D26]/90 text-white font-extrabold uppercase tracking-widest px-4 text-[10px] rounded-lg transition-colors cursor-pointer"
+                        >
+                          Envoyer
+                        </button>
+                      </form>
+                    </>
+                  );
+                })()}
+              </div>
+
+            </div>
+          )}
+
+          {/* 8. SPONSORED ADS CAMPAIGN SIMULATOR (ADS VIEW) */}
+          {activeTab === "ads" && (
+            <div className="space-y-6 animate-fade-in text-left font-sans">
+              
+              {/* Header Title Banner */}
+              <div className="bg-[#0B4D26]/5 border border-[#0B4D26]/15 p-5 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2 text-[#0B4D26]">
+                    <Megaphone className="w-5 h-5" />
+                    <h4 className="text-xs font-black uppercase tracking-wider">Asime Ads</h4>
+                  </div>
+                  <p className="text-xs text-stone-600 mt-1 leading-relaxed">
+                    Boostez la visibilité de vos fiches produits sur le catalogue Asime Togo. Payez uniquement lorsque des acheteurs cliquent sur vos annonces.
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-stone-500">Campagne active :</span>
+                  <button
+                    onClick={() => setAdsEnabled(!adsEnabled)}
+                    className="focus:outline-none cursor-pointer border-0 bg-transparent"
+                  >
+                    {adsEnabled ? (
+                      <div className="w-12 h-6 rounded-full bg-[#0B4D26] p-0.5 flex justify-end transition-colors">
+                        <div className="w-5 h-5 rounded-full bg-white shadow-sm" />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-6 rounded-full bg-stone-200 p-0.5 flex justify-start transition-colors">
+                        <div className="w-5 h-5 rounded-full bg-white shadow-sm" />
+                      </div>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats & Controls Panel */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Budget Slider Card */}
+                <div className="bg-white border border-stone-200 p-5 rounded-xl flex flex-col justify-between">
+                  <div>
+                    <h5 className="text-[10px] font-black text-stone-400 uppercase tracking-widest block mb-1">Configuration du budget</h5>
+                    <p className="text-[11px] text-stone-500 leading-normal mb-4">
+                      Définissez votre budget publicitaire quotidien. Vous pouvez l'augmenter ou le baisser à tout moment.
+                    </p>
+                    
+                    <div className="bg-stone-50 border border-stone-200 p-4 rounded-xl text-center mb-4 select-none">
+                      <span className="text-[9px] font-bold text-stone-400 block uppercase tracking-wider">BUDGET PAR JOUR</span>
+                      <p className="text-2xl font-mono font-black text-[#0B4D26] mt-1">{formatFCFA(dailyBudget)}</p>
+                    </div>
+
+                    <input
+                      type="range"
+                      min="200"
+                      max="5000"
+                      step="100"
+                      value={dailyBudget}
+                      onChange={(e) => setDailyBudget(Number(e.target.value))}
+                      disabled={!adsEnabled}
+                      className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#0B4D26] mb-3"
+                    />
+                    
+                    <div className="flex justify-between text-[10px] text-stone-400 font-bold font-mono">
+                      <span>200 F</span>
+                      <span>2 500 F</span>
+                      <span>5 000 F</span>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-neutral-400 font-medium leading-relaxed mt-4 pt-4 border-t border-stone-100">
+                    💡 Avec un budget de {formatFCFA(dailyBudget)}/jour, vos fiches publicitaires apparaîtront environ <strong className="text-stone-700">{Math.floor(dailyBudget * 0.12 * 5.4)} fois</strong> par jour en haut du catalogue d'Asime.
+                  </p>
+                </div>
+
+                {/* Simulated Campaign Performance Metrics */}
+                <div className="lg:col-span-2 bg-white border border-stone-200 p-5 rounded-xl space-y-4">
+                  <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                    <h5 className="text-xs font-black text-stone-700 uppercase tracking-wide">Indicateurs de Performance (Est. 30j)</h5>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-700 font-mono font-bold px-2 py-0.5 rounded-full">ROAS moyen : {(adsEnabled ? "3.2x" : "0.0x")}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-1">
+                    
+                    {/* Stat 1: Impressions */}
+                    <div className="bg-stone-50/50 p-3 rounded-lg border border-stone-150 text-left">
+                      <span className="text-[9px] font-bold text-stone-400 block uppercase">Impressions</span>
+                      <p className="text-lg font-mono font-black text-stone-800 mt-1">
+                        {(adsEnabled ? Math.floor(dailyBudget * 0.15 * 5.4 * 30).toLocaleString() : 0)}
+                      </p>
+                      <span className="text-[9px] text-stone-400 block mt-0.5">Vues sur le site</span>
+                    </div>
+
+                    {/* Stat 2: Clics */}
+                    <div className="bg-stone-50/50 p-3 rounded-lg border border-stone-150 text-left">
+                      <span className="text-[9px] font-bold text-stone-400 block uppercase">Clics reçus</span>
+                      <p className="text-lg font-mono font-black text-[#0B4D26] mt-1">
+                        {(adsEnabled ? Math.floor(dailyBudget * 0.15 * 0.28 * 30).toLocaleString() : 0)}
+                      </p>
+                      <span className="text-[9px] text-stone-400 block mt-0.5">CTR : 5.18%</span>
+                    </div>
+
+                    {/* Stat 3: Budget Dépensé */}
+                    <div className="bg-stone-50/50 p-3 rounded-lg border border-stone-150 text-left">
+                      <span className="text-[9px] font-bold text-stone-400 block uppercase">Budget dépensé</span>
+                      <p className="text-lg font-mono font-black text-stone-800 mt-1">
+                        {formatFCFA(adsEnabled ? dailyBudget * 30 : 0)}
+                      </p>
+                      <span className="text-[9px] text-stone-400 block mt-0.5">Sur 30 jours</span>
+                    </div>
+
+                    {/* Stat 4: Chiffre d'affaires publicitaire */}
+                    <div className="bg-stone-50/50 p-3 rounded-lg border border-stone-150 text-left">
+                      <span className="text-[9px] font-bold text-emerald-600 block uppercase">CA Publicitaire</span>
+                      <p className="text-lg font-mono font-black text-emerald-600 mt-1">
+                        {formatFCFA(adsEnabled ? Math.floor(dailyBudget * 0.15 * 0.035 * 30) * 4500 : 0)}
+                      </p>
+                      <span className="text-[9px] text-stone-400 block mt-0.5">Ventes attribuées</span>
+                    </div>
+
+                  </div>
+
+                  <div className="bg-[#0B4D26]/5 p-3.5 rounded-lg border border-[#0B4D26]/15 text-xs text-stone-600 leading-relaxed font-sans mt-2">
+                    📢 <strong>Lancement express :</strong> Les fiches sponsorisées apparaissent avec le petit badge <span className="bg-[#0B4D26] text-white text-[8px] uppercase tracking-wider font-extrabold px-1.5 py-0.5 rounded-xs ml-1">Annonce</span> en haut des recherches de produits locaux au Togo.
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Toggle Advertising for Specific Listings */}
+              <div className="bg-white border border-stone-200 p-5 rounded-xl">
+                <div className="flex items-center justify-between mb-4 border-b border-stone-100 pb-2">
+                  <h5 className="text-xs font-black text-stone-700 uppercase tracking-wide">Fiches produits annoncées ({advertisedProducts.length})</h5>
+                  <p className="text-[10px] text-stone-400">Sélectionnez les articles individuels à promouvoir avec votre budget actif.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {sellerProducts.map((prod) => {
+                    const isAdvertised = advertisedProducts.includes(prod.id);
+                    return (
+                      <div
+                        key={prod.id}
+                        className={`border rounded-xl p-3.5 flex items-center justify-between gap-3 transition-all ${
+                          isAdvertised ? "border-[#0B4D26] bg-[#0B4D26]/5" : "border-stone-200 hover:border-stone-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={prod.images && prod.images[0] ? prod.images[0] : "/images/placeholder.jpg"}
+                            alt={prod.nom}
+                            className="w-10 h-10 object-cover rounded-md border border-stone-150 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-stone-900 truncate">{prod.nom}</p>
+                            <span className="text-[10px] font-mono font-black text-stone-600 block mt-0.5">{formatFCFA(prod.prix)}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            if (isAdvertised) {
+                              setAdvertisedProducts(prev => prev.filter(id => id !== prod.id));
+                            } else {
+                              setAdvertisedProducts(prev => [...prev, prod.id]);
+                            }
+                          }}
+                          className={`text-[9.5px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                            isAdvertised
+                              ? "bg-[#0B4D26] border-[#0B4D26] text-white hover:bg-[#0B4D26]/80"
+                              : "border-stone-200 text-stone-600 bg-white hover:bg-stone-50"
+                          }`}
+                        >
+                          {isAdvertised ? "Sponsorisé" : "Annoncer"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* 9. MA BOUTIQUE (PROFILE CUSTOMIZATION VIEW & LIVE PREVIEW) */}
+          {activeTab === "shop_profile" && (
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-fade-in text-left font-sans">
+              
+              {/* Profile Config Form Card */}
+              <div className="xl:col-span-1 flex flex-col gap-6">
+                <div className="bg-white border border-stone-200 p-5 rounded-xl h-fit space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black text-stone-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                      <Store className="w-4 h-4 text-[#0B4D26]" />
+                      <span>Modifier ma Vitrine</span>
+                    </h4>
+                    <p className="text-[10px] text-stone-400 font-medium">
+                      Configurez le logo, la bannière, le slogan et l'annonce publique de votre boutique de créateur.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-[8.5px] font-bold text-stone-500 uppercase tracking-widest mb-1">Nom Public de la boutique</label>
+                      <input
+                        type="text"
+                        value={shopName}
+                        onChange={(e) => {
+                          setShopName(e.target.value);
+                          if (e.target.value) {
+                            setShopLogoText(e.target.value.substring(0, 2).toUpperCase());
+                          }
+                        }}
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs font-semibold text-stone-800 focus:outline-none focus:border-[#0B4D26]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[8.5px] font-bold text-stone-500 uppercase tracking-widest mb-1">Slogan</label>
+                      <input
+                        type="text"
+                        value={shopSlogan}
+                        onChange={(e) => setShopSlogan(e.target.value)}
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs text-stone-800 focus:outline-none focus:border-[#0B4D26]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[8.5px] font-bold text-stone-500 uppercase tracking-widest mb-1">Annonce de la boutique</label>
+                      <textarea
+                        value={shopAnnouncement}
+                        onChange={(e) => setShopAnnouncement(e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs text-stone-800 focus:outline-none focus:border-[#0B4D26] leading-relaxed resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[8.5px] font-bold text-stone-500 uppercase tracking-widest mb-1">Histoire de l'Artisan</label>
+                      <textarea
+                        value={shopStory}
+                        onChange={(e) => setShopStory(e.target.value)}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs text-stone-800 focus:outline-none focus:border-[#0B4D26] leading-relaxed resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[8.5px] font-bold text-stone-500 uppercase tracking-widest mb-1">Photo de couverture (Bannière URL)</label>
+                      <input
+                        type="text"
+                        value={shopBanner}
+                        onChange={(e) => setShopBanner(e.target.value)}
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs font-mono text-stone-600 focus:outline-none focus:border-[#0B4D26]"
+                      />
+                      <div className="flex gap-2 mt-1.5 select-none">
+                        <button
+                          type="button"
+                          onClick={() => setShopBanner("https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=1200&q=80")}
+                          className="bg-stone-100 text-stone-600 hover:bg-stone-200 text-[8.5px] font-bold px-2 py-1 rounded-sm border-0 cursor-pointer"
+                        >
+                          Atelier Bois
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShopBanner("https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=1200&q=80")}
+                          className="bg-stone-100 text-stone-600 hover:bg-stone-200 text-[8.5px] font-bold px-2 py-1 rounded-sm border-0 cursor-pointer"
+                        >
+                          Tissage & Pagne
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShopBanner("https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=1200&q=80")}
+                          className="bg-stone-100 text-stone-600 hover:bg-stone-200 text-[8.5px] font-bold px-2 py-1 rounded-sm border-0 cursor-pointer"
+                        >
+                          Miel & Épices
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => showToast("Vitrine de la boutique mise à jour avec succès !")}
+                      className="w-full bg-[#0B4D26] hover:bg-[#0B4D26]/90 text-white font-black uppercase tracking-widest py-2 px-4 rounded-lg cursor-pointer text-[10px] transition-all"
+                    >
+                      Enregistrer les modifications
+                    </button>
+                  </div>
+                </div>
+
+                {/* PIN Code Security Card */}
+                <div className="bg-white border border-stone-200 p-5 rounded-xl h-fit space-y-4">
+                  <div>
+                    <h4 className="text-xs font-black text-stone-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                      <Lock className="w-4 h-4 text-amber-600" />
+                      <span>Sécurité & Code PIN</span>
+                    </h4>
+                    <p className="text-[10px] text-stone-400 font-medium">
+                      Sécurisez l'accès à votre espace vendeur, votre solde de compte et vos retraits d'argent.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3 pt-1">
+                    {user?.vendeurPin ? (
+                      <div className="bg-emerald-50 border border-emerald-200/50 p-2.5 rounded-lg flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                        <span className="text-[10.5px] font-bold text-emerald-800">Votre espace de vente est actuellement sécurisé par un code PIN.</span>
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50 border border-amber-200/50 p-2.5 rounded-lg flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />
+                        <span className="text-[10.5px] font-bold text-amber-800">Aucun code PIN de sécurité configuré. Votre espace n'est pas protégé !</span>
+                      </div>
+                    )}
+
+                    {user?.vendeurPin && (
+                      <div>
+                        <label className="block text-[8.5px] font-bold text-stone-500 uppercase tracking-widest mb-1">Code PIN Actuel</label>
+                        <input
+                          type="password"
+                          placeholder="Saisissez votre code PIN à 4 chiffres actuel"
+                          maxLength={4}
+                          value={currentPinCheck}
+                          onChange={(e) => setCurrentPinCheck(e.target.value.replace(/\D/g, ""))}
+                          className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs font-mono text-stone-800 focus:outline-none focus:border-[#0B4D26]"
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-[8.5px] font-bold text-stone-500 uppercase tracking-widest mb-1">
+                        {user?.vendeurPin ? "Nouveau Code PIN à 4 chiffres" : "Code PIN à 4 chiffres de sécurité"}
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Ex: 1234"
+                        maxLength={4}
+                        value={newPinValue}
+                        onChange={(e) => setNewPinValue(e.target.value.replace(/\D/g, ""))}
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs font-mono text-stone-800 focus:outline-none focus:border-[#0B4D26]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[8.5px] font-bold text-stone-500 uppercase tracking-widest mb-1">Confirmer le Code PIN</label>
+                      <input
+                        type="password"
+                        placeholder="Saisissez à nouveau"
+                        maxLength={4}
+                        value={confirmNewPinValue}
+                        onChange={(e) => setConfirmNewPinValue(e.target.value.replace(/\D/g, ""))}
+                        className="w-full px-3 py-2 border border-stone-200 rounded-lg text-xs font-mono text-stone-800 focus:outline-none focus:border-[#0B4D26]"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (user?.vendeurPin && currentPinCheck !== user.vendeurPin) {
+                          showToast("❌ Le code PIN actuel saisi est incorrect.");
+                          return;
+                        }
+                        if (newPinValue.length !== 4) {
+                          showToast("❌ Le code PIN doit comporter exactement 4 chiffres.");
+                          return;
+                        }
+                        if (newPinValue !== confirmNewPinValue) {
+                          showToast("❌ Les deux codes saisis ne correspondent pas.");
+                          return;
+                        }
+
+                        setIsUpdatingPin(true);
+                        try {
+                          const res = await fetch("/api/auth/update-profile", {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              "Authorization": token || ""
+                            },
+                            body: JSON.stringify({ vendeurPin: newPinValue })
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            setUser(data.user);
+                            setCurrentPinCheck("");
+                            setNewPinValue("");
+                            setConfirmNewPinValue("");
+                            showToast("🔒 Code PIN mis à jour avec succès ! Votre espace est sécurisé.");
+                          } else {
+                            showToast(`Erreur : ${data.error}`);
+                          }
+                        } catch {
+                          showToast("Erreur lors de la mise à jour du code PIN.");
+                        } finally {
+                          setIsUpdatingPin(false);
+                        }
+                      }}
+                      disabled={isUpdatingPin}
+                      className="w-full bg-[#0B4D26] hover:bg-emerald-850 text-white font-black uppercase tracking-widest py-2 px-4 rounded-lg cursor-pointer text-[10px] transition-all disabled:opacity-50"
+                    >
+                      {isUpdatingPin ? "Mise à jour..." : "Enregistrer le Code PIN"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Public Shop Live Preview Area */}
+              <div className="xl:col-span-2 bg-[#FAF9F6] border border-stone-200 rounded-xl overflow-hidden shadow-xs self-start">
+                {/* Preview Banner Label */}
+                <div className="bg-stone-900 text-white px-4 py-2 flex items-center justify-between select-none">
+                  <span className="text-[9px] font-black tracking-widest uppercase text-stone-400">Aperçu en direct (Ce que voient vos acheteurs)</span>
+                  <span className="text-[9.5px] bg-[#0B4D26] text-white font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider font-mono">PUBLIC LIVE PREVIEW</span>
+                </div>
+
+                {/* Banner Background */}
+                <div className="h-36 w-full relative">
+                  <img
+                    src={shopBanner}
+                    alt="Bannière de boutique"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/10" />
+                </div>
+
+                {/* Seller Identity Bar */}
+                <div className="bg-white px-6 py-5 border-b border-stone-200 flex flex-col sm:flex-row items-center sm:justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row items-center gap-4 text-center sm:text-left">
+                    {/* Logo Avatar */}
+                    <div className="w-16 h-16 rounded-full bg-stone-900 border-4 border-white -mt-12 shadow-md flex items-center justify-center text-white font-black text-xl uppercase relative z-10">
+                      {shopLogoText}
+                    </div>
+                    
+                    <div>
+                      <div className="flex items-center gap-2 justify-center sm:justify-start">
+                        <h3 className="text-sm font-black text-stone-900">{shopName}</h3>
+                        <span className="bg-[#0B4D26]/10 text-[#0B4D26] text-[8px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
+                          <Sparkles className="w-2.5 h-2.5" />
+                          Créateur Certifié
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-stone-500 italic mt-0.5">{shopSlogan}</p>
+                      <p className="text-[10px] text-stone-400 font-medium mt-1 font-sans">📍 Lomé, Togo • Fait main</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center sm:items-end gap-1.5 text-center sm:text-right shrink-0">
+                    <span className="text-[11px] font-bold text-stone-800">5.0 ★★★★★</span>
+                    <span className="text-[9px] text-stone-500 font-bold font-sans">98 ventes réussies</span>
+                    <button
+                      onClick={() => showToast("Simulation : Ouverture du chat client")}
+                      className="bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 font-extrabold text-[10px] uppercase tracking-wider px-3.5 py-1.5 rounded-lg mt-1 cursor-pointer transition-colors"
+                    >
+                      💬 Contacter l'artisan
+                    </button>
+                  </div>
+                </div>
+
+                {/* Announcement Banner */}
+                <div className="bg-[#FAF8F6] p-4 border-b border-stone-200/60 flex items-start gap-3">
+                  <div className="text-[14px] shrink-0 mt-0.5">📢</div>
+                  <div className="text-left font-sans text-[11px] leading-relaxed text-stone-600">
+                    <strong className="text-stone-800">Annonce de la boutique :</strong> {shopAnnouncement}
+                  </div>
+                </div>
+
+                {/* Live Artisan Biography */}
+                <div className="bg-white p-5 border-b border-stone-200/60 text-left font-sans">
+                  <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-wider mb-2">Notre histoire & notre savoir-faire</h4>
+                  <p className="text-xs text-stone-600 leading-relaxed italic">{shopStory}</p>
+                </div>
+
+                {/* Products Catalog preview */}
+                <div className="p-6">
+                  <h4 className="text-[10px] font-black uppercase text-stone-400 tracking-wider mb-4 text-left">Fiches produits publiées ({sellerProducts.length})</h4>
+                  
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {sellerProducts.map((prod) => (
+                      <div key={prod.id} className="bg-white border border-stone-150 rounded-xl overflow-hidden hover:shadow-md transition-shadow">
+                        <div className="h-28 w-full bg-stone-50 relative">
+                          <img
+                            src={prod.images && prod.images[0] ? prod.images[0] : "/images/placeholder.jpg"}
+                            alt={prod.nom}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="p-3 text-left">
+                          <h5 className="text-[11px] font-extrabold text-stone-900 truncate">{prod.nom}</h5>
+                          <span className="text-[8px] bg-stone-100 text-stone-500 font-black uppercase tracking-wider px-1.5 py-0.5 rounded-sm inline-block mt-1 font-sans">{prod.categorie}</span>
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-stone-100 font-mono text-xs">
+                            <span className="font-black text-stone-800">{formatFCFA(prod.prix)}</span>
+                            <span className="text-[9px] text-stone-400 font-sans">Stock: {prod.stock || 0}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {sellerProducts.length === 0 && (
+                      <div className="col-span-3 text-center py-12 text-stone-400 text-xs font-sans">
+                        Aucun produit publié à afficher dans la boutique publique.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          )}
+
         </div>
       </main>
+
+      {/* Custom product deletion confirmation modal */}
+      {productToDeleteId && (() => {
+        const prod = products.find(p => p.id === productToDeleteId);
+        if (!prod) return null;
+        return (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-xs select-none">
+            <div className="bg-white border border-stone-200 p-6 md:p-8 rounded-none max-w-sm w-full shadow-2xl space-y-5 border-t-4 border-t-red-650">
+              <div className="text-center space-y-2">
+                <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-600">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <p className="font-sans font-extrabold uppercase text-[9px] tracking-widest text-[#d4af37]">Action Irréversible</p>
+                <h4 className="font-display font-black text-lg text-neutral-950 uppercase tracking-tight leading-none text-center">Supprimer ce produit ?</h4>
+              </div>
+
+              <div className="flex items-center gap-3 bg-stone-50 p-2.5 border border-stone-150 rounded-none">
+                <div className="w-10 h-10 rounded-none overflow-hidden bg-stone-100 border border-stone-150 shrink-0">
+                  <img src={prod.images && prod.images[0] ? prod.images[0] : "/images/placeholder.jpg"} alt={prod.nom} className="w-full h-full object-cover" />
+                </div>
+                <div className="text-left">
+                  <h5 className="font-bold text-[11px] text-neutral-900 line-clamp-1">{prod.nom}</h5>
+                  <p className="text-neutral-500 text-[9px] font-mono uppercase tracking-wider">{prod.categorie}</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-neutral-600 text-center leading-relaxed font-sans">
+                Voulez-vous vraiment supprimer définitivement <strong className="text-neutral-900">"{prod.nom}"</strong> de votre catalogue ?
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  onClick={() => setProductToDeleteId(null)}
+                  className="w-full py-2 bg-stone-100 hover:bg-stone-200 text-neutral-800 text-[10px] font-bold uppercase tracking-widest rounded-none transition-all cursor-pointer border border-stone-150 text-center"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    handleDeleteProduct(prod.id);
+                    setProductToDeleteId(null);
+                  }}
+                  className="w-full py-2 bg-red-650 hover:bg-red-700 text-white text-[10px] font-bold uppercase tracking-widest rounded-none transition-all cursor-pointer text-center border border-red-650"
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Custom promo deletion confirmation modal */}
+      {promoToDeleteId && (() => {
+        const promo = promos.find(p => p.id === promoToDeleteId);
+        if (!promo) return null;
+        return (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-xs select-none">
+            <div className="bg-white border border-stone-200 p-6 md:p-8 rounded-none max-w-sm w-full shadow-2xl space-y-5 border-t-4 border-t-red-650">
+              <div className="text-center space-y-2">
+                <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-600">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <p className="font-sans font-extrabold uppercase text-[9px] tracking-widest text-[#d4af37]">Code Promo</p>
+                <h4 className="font-display font-black text-lg text-neutral-950 uppercase tracking-tight leading-none text-center">Supprimer le code ?</h4>
+              </div>
+
+              <div className="bg-amber-50 p-3 border border-amber-200 text-center">
+                <span className="font-mono font-black text-lg text-amber-950 uppercase tracking-wider">{promo.code}</span>
+              </div>
+
+              <p className="text-xs text-neutral-600 text-center leading-relaxed font-sans">
+                Voulez-vous vraiment désactiver et supprimer le code promo <strong className="text-neutral-900">"{promo.code}"</strong> ?
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  onClick={() => setPromoToDeleteId(null)}
+                  className="w-full py-2 bg-stone-100 hover:bg-stone-200 text-neutral-800 text-[10px] font-bold uppercase tracking-widest rounded-none transition-all cursor-pointer border border-stone-150 text-center"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => {
+                    deletePromo(promo.id);
+                    setPromoToDeleteId(null);
+                  }}
+                  className="w-full py-2 bg-red-650 hover:bg-red-700 text-white text-[10px] font-bold uppercase tracking-widest rounded-none transition-all cursor-pointer text-center border border-red-650"
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -40,15 +40,48 @@ import {
   ZoomIn,
   Download,
   Eye,
-  Bell
+  Bell,
+  Store,
+  MessageCircle
 } from "lucide-react";
 import { Product, CartItem, BlogPost } from "./types";
 import MultiRoleDashboards from "./components/MultiRoleDashboards";
+import SimulatedPaymentPortal from "./components/SimulatedPaymentPortal";
+import { useLanguage } from "./lib/i18n";
 
 // @ts-ignore
 import logoOrganic from "./assets/images/logo_asime_organic_1781086774790.png";
 // @ts-ignore
 import logoMonogram from "./assets/images/logo_asime_monogram_1781086746857.png";
+// @ts-ignore
+import logoPrestige from "./assets/images/logo_asime_prestige_1781086799630.png";
+// @ts-ignore
+import logoTradition from "./assets/images/logo_asime_tradition_1781086787788.png";
+// @ts-ignore
+import logoPalmier from "./assets/images/logo_asime_palmier_crest_1781087278648.png";
+// @ts-ignore
+import logoBouclier from "./assets/images/logo_asime_bouclier_sacred_1781087291885.png";
+// @ts-ignore
+import logoCorbeille from "./assets/images/logo_asime_corbeille_or_1781087305413.png";
+// @ts-ignore
+import logoEbene from "./assets/images/logo_asime_ebene_1781087249311.png";
+// @ts-ignore
+import logoMonogramRefined from "./assets/images/logo_asime_monogram_refined_1781087265797.png";
+// @ts-ignore
+import logoModern from "./assets/images/logo_asime_modern_1781086760951.png";
+
+const LOGO_DESIGNS = [
+  { id: "palmier", name: "Palmier National 🌴", src: logoPalmier },
+  { id: "prestige", name: "Édition Prestige 👑", src: logoPrestige },
+  { id: "monogram_refined", name: "Monogramme Raffiné 🌟", src: logoMonogramRefined },
+  { id: "corbeille", name: "Corbeille d'Or 🧺", src: logoCorbeille },
+  { id: "bouclier", name: "Bouclier Sacré 🛡️", src: logoBouclier },
+  { id: "ebene", name: "Ébène Précieux ✨", src: logoEbene },
+  { id: "tradition", name: "Tradition Togolaise 🇹🇬", src: logoTradition },
+  { id: "organic", name: "Asime Organique 🌱", src: logoOrganic },
+  { id: "modern", name: "Asime Moderne ⚡", src: logoModern },
+  { id: "monogram", name: "Monogramme Classique 🏷️", src: logoMonogram }
+];
 
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
@@ -105,6 +138,7 @@ export const ASIME_SETTINGS = {
 };
 
 function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "horizontal" }) {
+  const { language } = useLanguage();
   const [adError, setAdError] = useState(false);
 
   useEffect(() => {
@@ -177,14 +211,22 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
   return (
     <div className={getBannerStyle()}>
       {/* Tiny Ad badge */}
-      <div className="absolute top-1.5 left-2 text-[7px] font-bold text-neutral-400 uppercase tracking-widest pointer-events-none">Annonce Asime Exclusive</div>
+      <div className="absolute top-1.5 left-2 text-[7px] font-bold text-neutral-400 uppercase tracking-widest pointer-events-none">
+        {language === "fr" ? "Annonce Asime Exclusive" : "Asime ƒe Adzɔnudraɖe Tɔxɛ"}
+      </div>
       {format === "leaderboard" && (
         <>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-[#d4af37]/10 border border-[#d4af37]/35 rounded-full flex items-center justify-center font-display font-bold text-[#b8901c] shrink-0">Ads</div>
             <div>
-              <p className="text-xs font-bold text-neutral-900 uppercase tracking-wide">Découvrez le Vestiaire Chic & Haute Technologie</p>
-              <p className="text-[11px] text-neutral-500">Bénéficiez de notre service d'importation express et de remises immédiates allant de -20% à -70%.</p>
+              <p className="text-xs font-bold text-neutral-900 uppercase tracking-wide">
+                {language === "fr" ? "Découvrez le Vestiaire Chic & Haute Technologie" : "Kpɔ Awu Dzɛwo kple Kɔmputazi mɔ̃wo"}
+              </p>
+              <p className="text-[11px] text-neutral-500">
+                {language === "fr" 
+                  ? "Bénéficiez de notre service d'importation express et de remises immédiates allant de -20% à -70%." 
+                  : "Bunu tso míaƒe mɔɖonunyuitɔwo kple asiɖeɖe gãwo si tso -20% yi -70% me."}
+              </p>
             </div>
           </div>
           <a
@@ -193,22 +235,26 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
             rel="noopener noreferrer"
             className="bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 px-4 py-2 rounded-sm text-[10px] font-bold tracking-widest uppercase transition-all whitespace-nowrap"
           >
-            S'équiper à Lomé
+            {language === "fr" ? "S'équiper à Lomé" : "Kpɔ nudradra le Lomé"}
           </a>
         </>
       )}
       {format === "square" && (
         <>
           <div className="w-12 h-12 bg-amber-500/10 border border-amber-500/35 rounded-full flex items-center justify-center font-display font-black text-[#d4af37] mb-2">PROMO</div>
-          <p className="text-xs font-extrabold text-neutral-950 uppercase tracking-wide">Sélection Officielle d'Automne</p>
-          <p className="text-[10px] text-neutral-500">Sélection de vêtements et d'accessoires raffinés de prestige.</p>
+          <p className="text-xs font-extrabold text-neutral-950 uppercase tracking-wide">
+            {language === "fr" ? "Sélection Officielle d'Automne" : "Gboɖome Adzɔnu Tɔxɛwo"}
+          </p>
+          <p className="text-[10px] text-neutral-500">
+            {language === "fr" ? "Sélection de vêtements et d'accessoires raffinés de prestige." : "Awu dzesiwo kple adzɔnu nyui siwo sɔ na wò."}
+          </p>
           <a
             href={ASIME_SETTINGS.DEFAULT_AMAZON_COLLECTION_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 py-2 rounded-sm text-[9px] font-bold tracking-widest uppercase text-center mt-2"
           >
-            Découvrir la Collection
+            {language === "fr" ? "Découvrir la Collection" : "Kpɔ Awu Hame Siawo"}
           </a>
         </>
       )}
@@ -217,9 +263,17 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-amber-500/10 border border-amber-500/35 rounded-sm flex items-center justify-center font-display font-black text-[#d4af37] text-xl shrink-0">ADS</div>
             <div>
-              <span className="text-[9px] text-[#d4af37] font-bold tracking-widest uppercase block">Offre Certifiée Locale</span>
-              <h4 className="font-display font-black text-sm sm:text-base uppercase tracking-wide text-white leading-tight">Les Secrets de la Gastronomie & du Bien-Être Afro</h4>
-              <p className="text-xs text-neutral-400 mt-1 max-w-xl">Téléchargez ce guide de cuisine locale et recevez un pack d'épices bio de Kpalimé gratuit lors de votre commande.</p>
+              <span className="text-[9px] text-[#d4af37] font-bold tracking-widest uppercase block">
+                {language === "fr" ? "Offre Certifiée Locale" : "Anyigbadzinu Kpeɖodzi"}
+              </span>
+              <h4 className="font-display font-black text-sm sm:text-base uppercase tracking-wide text-white leading-tight">
+                {language === "fr" ? "Les Secrets de la Gastronomie & du Bien-Être Afro" : "Nuɖuɖu Kple Lãmesẽ ƒe Nya Ɣaɣlawo"}
+              </h4>
+              <p className="text-xs text-neutral-400 mt-1 max-w-xl">
+                {language === "fr" 
+                  ? "Téléchargez ce guide de cuisine locale et recevez un pack d'épices bio de Kpalimé gratuit lors de votre commande." 
+                  : "Xɔ dɔwɔmɔfiamewo le afii eye nàxɔ Kpalimé ƒe nuku dzo-anuwo femaxee ne èɖo nudɔdɔ."}
+              </p>
             </div>
           </div>
           <a
@@ -228,7 +282,7 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
             rel="noopener noreferrer"
             className="bg-[#d4af37] hover:bg-white text-neutral-950 font-bold px-5 py-3 text-[10px] uppercase tracking-widest transition-all whitespace-nowrap shadow-md text-center shrink-0"
           >
-            Obtenir le Guide
+            {language === "fr" ? "Obtenir le Guide" : "Xɔ Guide La"}
           </a>
         </>
       )}
@@ -237,8 +291,25 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
 }
 
 export default function App() {
+  const { language, setLanguage, t } = useLanguage();
+  const [activeLogoId, setActiveLogoId] = useState(() => {
+    return safeLocalStorage.getItem("asime-active-logo-id") || "palmier";
+  });
+
   // Navigation & Tab State
   const [activeTab, setActiveTab] = useState<"accueil" | "catalogue" | "blog" | "contact">("accueil");
+  
+  // Simulated gateway query params interceptor state
+  const [gatewayParams, setGatewayParams] = useState<{ tx: string; provider: string } | null>(() => {
+    const pathname = window.location.pathname;
+    const params = new URLSearchParams(window.location.search);
+    const tx = params.get("tx") || params.get("transactionId");
+    const provider = params.get("provider") || params.get("providerId");
+    if (pathname.includes("payment-gateway") || pathname.includes("paymentGateway") || (tx && provider)) {
+      return { tx: tx || "", provider: provider || "" };
+    }
+    return null;
+  });
   
   // PWA Install States & Interactive prompt handlers
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -366,6 +437,7 @@ export default function App() {
   // Image Zoom Modal State
   const [zoomedImage, setZoomedImage] = useState<{ url: string; title: string } | null>(null);
 
+
   // App Sharing & Download Modal State
   const [isShareDownloadOpen, setIsShareDownloadOpen] = useState(false);
 
@@ -376,6 +448,61 @@ export default function App() {
   const [alertPhone, setAlertPhone] = useState("");
   const [isAlertSubmitting, setIsAlertSubmitting] = useState(false);
   const [isCartBouncing, setIsCartBouncing] = useState(false);
+
+  // Advanced Filter States
+  const [onlyInStock, setOnlyInStock] = useState<boolean>(false);
+  const [onlyPromo, setOnlyPromo] = useState<boolean>(false);
+  const [selectedPartnerFilter, setSelectedPartnerFilter] = useState<string>("Tous");
+
+  // Dynamic Order Tracking Modal States
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+  const [trackingOrderData, setTrackingOrderData] = useState<any | null>(null);
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState<boolean>(false);
+  const [isTrackingLoading, setIsTrackingLoading] = useState<boolean>(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+
+  // function to fetch dynamic tracking details
+  const fetchTrackingDetails = async (orderId: string) => {
+    setIsTrackingLoading(true);
+    setTrackingError(null);
+    try {
+      const response = await fetch(`/api/orders/track/${orderId}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Commande introuvable.");
+      }
+      const data = await response.json();
+      if (data.success && data.order) {
+        setTrackingOrderData(data.order);
+        setTrackingOrderId(orderId);
+        setIsTrackingModalOpen(true);
+      } else {
+        throw new Error("Impossible de charger les détails de suivi.");
+      }
+    } catch (err: any) {
+      setTrackingError(err.message || "Une erreur de connexion est survenue.");
+      setIsTrackingModalOpen(true);
+    } finally {
+      setIsTrackingLoading(false);
+    }
+  };
+
+  // Order Tracking URL query param parser effect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const trackId = params.get("track") || params.get("suivi");
+    if (trackId) {
+      fetchTrackingDetails(trackId);
+      
+      // discretely clean URL query parameters
+      try {
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      } catch (err) {
+        console.warn("Could not sweep URL query string state", err);
+      }
+    }
+  }, []);
 
   const getProductReviews = (productId: string, productName: string, productCategory: string) => {
     const existing = productReviews[productId];
@@ -509,7 +636,7 @@ export default function App() {
   const [checkoutName, setCheckoutName] = useState("");
   const [checkoutPhone, setCheckoutPhone] = useState("");
   const [checkoutQuartier, setCheckoutQuartier] = useState("");
-  const [checkoutPayment, setCheckoutPayment] = useState("T-Money");
+  const [checkoutPayment, setCheckoutPayment] = useState("EnLigne");
   
   // Payment Gateway states
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -518,6 +645,11 @@ export default function App() {
   const [isPaymentSuccess, setIsPaymentSuccess] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<any>(null);
   const [sellerDashboardActive, setSellerDashboardActive] = useState(false);
+  const [initialDashboardView, setInitialDashboardView] = useState<"vendeur" | "client" | "menu">("menu");
+
+  // Automatic payment simulation states
+  const [autoPaymentStep, setAutoPaymentStep] = useState<number>(0);
+  const [autoPaymentStatusText, setAutoPaymentStatusText] = useState<string>("");
   
   // Affiliate Redirect Overlay States
   const [redirectingProduct, setRedirectingProduct] = useState<Product | null>(null);
@@ -562,6 +694,201 @@ export default function App() {
   }
   const [user, setUser] = useState<CustomerUser | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem("asime-user-token"));
+
+  // --- CUSTOMER-TO-SELLER MESSAGING & SHOP STATES ---
+  const [isSellerShopOpen, setIsSellerShopOpen] = useState(false);
+  const [selectedSellerId, setSelectedSellerId] = useState("");
+  const [selectedSellerName, setSelectedSellerName] = useState("");
+  const [isChatDrawerOpen, setIsChatDrawerOpen] = useState(false);
+  const [chatDrawerThreads, setChatDrawerThreads] = useState<any[]>([]);
+  const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(null);
+  const [chatDrawerMessage, setChatDrawerMessage] = useState("");
+  const [isSendingChat, setIsSendingChat] = useState(false);
+
+  const fetchCustomerThreads = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/messages", {
+        headers: { Authorization: token }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.threads) {
+          setChatDrawerThreads(data.threads);
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching customer threads:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (token) {
+      fetchCustomerThreads();
+      const interval = setInterval(fetchCustomerThreads, 6000);
+      return () => clearInterval(interval);
+    }
+  }, [token]);
+
+  const startConversationWithSeller = async (sellerId: string, sellerName: string, productName: string) => {
+    if (!user) {
+      showToast("🔑 Veuillez vous connecter pour discuter avec l'artisan.");
+      setIsAuthOpen(true);
+      return;
+    }
+    
+    setIsChatDrawerOpen(true);
+    
+    // Check if thread already exists
+    const existing = chatDrawerThreads.find(t => t.sellerId === sellerId);
+    if (existing) {
+      setActiveChatThreadId(existing.id);
+      return;
+    }
+
+    setIsSendingChat(true);
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": token || ""
+        },
+        body: JSON.stringify({
+          sellerId,
+          sellerName,
+          productName,
+          text: `Bonjour, je suis intéressé(e) par votre produit "${productName}". Est-il disponible ?`
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.thread) {
+          setChatDrawerThreads(prev => [data.thread, ...prev]);
+          setActiveChatThreadId(data.thread.id);
+        }
+      }
+    } catch (e) {
+      console.error("Error initiating conversation:", e);
+    } finally {
+      setIsSendingChat(false);
+    }
+  };
+
+  const sendCustomerMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatDrawerMessage.trim() || !activeChatThreadId || !token) return;
+
+    const textToSend = chatDrawerMessage;
+    setChatDrawerMessage("");
+
+    // optimistic update
+    setChatDrawerThreads(prev => prev.map(t => {
+      if (t.id === activeChatThreadId) {
+        return {
+          ...t,
+          lastMessage: textToSend,
+          messages: [...t.messages, { sender: "customer", text: textToSend, date: new Date().toISOString() }]
+        };
+      }
+      return t;
+    }));
+
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": token
+        },
+        body: JSON.stringify({
+          threadId: activeChatThreadId,
+          text: textToSend
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.thread) {
+          setChatDrawerThreads(prev => prev.map(t => t.id === activeChatThreadId ? data.thread : t));
+        }
+      }
+    } catch (e) {
+      console.error("Error sending client message:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (isPaymentModalOpen && paymentSession && !isPaymentSuccess) {
+      setAutoPaymentStep(0);
+      setAutoPaymentStatusText("Initialisation de la connexion sécurisée...");
+      
+      let timer1: NodeJS.Timeout;
+      let timer2: NodeJS.Timeout;
+      let timer3: NodeJS.Timeout;
+      let timer4: NodeJS.Timeout;
+
+      timer1 = setTimeout(() => {
+        setAutoPaymentStep(1);
+        setAutoPaymentStatusText("Connexion sécurisée aux serveurs de l'opérateur mobile...");
+        
+        timer2 = setTimeout(() => {
+          setAutoPaymentStep(2);
+          setAutoPaymentStatusText("En attente de la validation de l'invitation Push USSD sur votre téléphone...");
+          
+          timer3 = setTimeout(() => {
+            setAutoPaymentStep(3);
+            setAutoPaymentStatusText("Saisie du code PIN détectée... Traitement de la transaction...");
+            
+            timer4 = setTimeout(async () => {
+              setAutoPaymentStep(4);
+              setAutoPaymentStatusText("Validation finale du transfert de fonds avec Asime Pay...");
+              
+              setIsPaymentVerifying(true);
+              try {
+                const confirmRes = await fetch("/api/payments/confirm", {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(token ? { "Authorization": token } : {})
+                  },
+                  body: JSON.stringify({
+                    transactionId: paymentSession.transactionId,
+                    providerId: paymentSession.providerId
+                  })
+                });
+
+                const confirmData = await confirmRes.json();
+                if (confirmData.success) {
+                  confetti({
+                    particleCount: 150,
+                    spread: 80,
+                    origin: { y: 0.6 }
+                  });
+                  setIsPaymentSuccess(true);
+                  showToast("✓ Paiement automatique reçu et validé avec succès !");
+                } else {
+                  setIsPaymentSuccess(true);
+                }
+              } catch (err) {
+                console.error("Auto confirmation error:", err);
+                setIsPaymentSuccess(true);
+              } finally {
+                setIsPaymentVerifying(false);
+              }
+            }, 1200);
+          }, 1500);
+        }, 1200);
+      }, 800);
+
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+        clearTimeout(timer3);
+        clearTimeout(timer4);
+      };
+    }
+  }, [isPaymentModalOpen, paymentSession, isPaymentSuccess, token]);
+
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   
@@ -583,7 +910,7 @@ export default function App() {
 
   const renderLogoNode = (sizeClass = "w-9 h-9") => {
     return (
-      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
+      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
         <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
           <defs>
             {/* Ultra-premium Forest Green Satin Gradient for the Letter A */}
@@ -1316,14 +1643,8 @@ export default function App() {
 
     // 2. Map chosen payment method to Provider ID
     let providerId = "";
-    if (checkoutPayment === "T-Money") {
-      providerId = "tmoney";
-    } else if (checkoutPayment === "Flooz") {
-      providerId = "flooz";
-    } else if (checkoutPayment === "CinetPay") {
-      providerId = "cinetpay";
-    } else if (checkoutPayment === "Stripe") {
-      providerId = "stripe";
+    if (checkoutPayment === "EnLigne" || checkoutPayment === "PayDunya") {
+      providerId = "paydunya";
     }
 
     // If Cash on Delivery, bypass online gateway and redirect to WhatsApp immediately
@@ -1338,7 +1659,8 @@ export default function App() {
       message += `👤 *Client :* ${checkoutName.trim()}\n`;
       message += `📞 *Téléphone :* ${checkoutPhone.trim()}\n`;
       message += `📍 *Quartier :* ${checkoutQuartier.trim()}\n`;
-      message += `💳 *Paiement :* Espèces à la livraison (COD)\n\n`;
+      message += `💳 *Paiement :* Espèces à la livraison (COD)\n`;
+      message += `🔗 *Suivi de commande :* ${window.location.origin}/?track=${orderId}\n\n`;
       message += `*🛒 Articles commandés :*\n`;
       
       cart.forEach((item, index) => {
@@ -1422,7 +1744,10 @@ export default function App() {
                           prod.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === "Toutes" || prod.categorie === selectedCategory;
     const matchesPrice = prod.prix <= priceRange;
-    return matchesSearch && matchesCategory && matchesPrice;
+    const matchesStock = !onlyInStock || prod.stock > 0;
+    const matchesPromo = !onlyPromo || (prod.prixBarre && prod.prixBarre > prod.prix);
+    const matchesPartner = selectedPartnerFilter === "Tous" || prod.partenaire === selectedPartnerFilter;
+    return matchesSearch && matchesCategory && matchesPrice && matchesStock && matchesPromo && matchesPartner;
   }).sort((a, b) => {
     if (sortBy === "asc") return a.prix - b.prix;
     if (sortBy === "desc") return b.prix - a.prix;
@@ -1455,22 +1780,40 @@ export default function App() {
 
   const categoriesList = [
     "Toutes",
-    "Vêtements & Mode",
-    "Chaussures Premium",
-    "Montres & Accessoires",
-    "Plats & Gastronomie",
-    "Importations Trends",
-    "Made in Togo Premium",
-    "Paniers Frais & Épicerie",
-    "Print-on-Demand Localisé"
+    "Ustensiles de cuisine",
+    "Meubles & Décoration",
+    "Électronique",
+    "Audio & Radio",
+    "Gadgets électroniques",
+    "Télévision",
+    "Mode & beauté",
+    "Bébé & Enfant",
+    "Sports & Accessoires",
+    "Univers femme",
+    "Univers homme"
   ];
+
+  if (gatewayParams) {
+    return (
+      <SimulatedPaymentPortal
+        tx={gatewayParams.tx}
+        provider={gatewayParams.provider}
+        onClose={() => {
+          setGatewayParams(null);
+          try {
+            window.history.replaceState({}, document.title, "/");
+          } catch (e) {}
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col pb-16 md:pb-0 font-sans bg-[#FAF9F6] text-neutral-900 selection:bg-gold-500 selection:text-white">
       {/* Dynamic Gold Announcement Bar */}
       <div className="bg-neutral-950 text-white py-2 px-4 text-xs tracking-widest text-center uppercase font-semibold border-b border-gold-500/25 flex items-center justify-center gap-1 sm:gap-2">
         <Sparkles className="w-3.5 h-3.5 text-[#d4af37] animate-pulse" />
-        <span>📦 Boutique Officielle du Consommer Togolais 🇹🇬 | Livraison rapide à Lomé et environs.</span>
+        <span>{t("banner_promo")}</span>
         <Sparkles className="w-3.5 h-3.5 text-[#d4af37] animate-pulse" />
       </div>
 
@@ -1488,7 +1831,7 @@ export default function App() {
               <span className="font-sans font-bold tracking-[0.15em] text-xl sm:text-2xl text-[#0F5132] uppercase leading-none">
                 ASIME
               </span>
-              <p className="text-[9px] text-[#D97706] tracking-[0.08em] leading-normal font-semibold uppercase mt-0.5 font-sans">Le local, notre fierté</p>
+              <p className="text-[9px] text-[#D97706] tracking-[0.08em] leading-normal font-semibold uppercase mt-0.5 font-sans">{t("slogan")}</p>
             </div>
           </div>
 
@@ -1498,25 +1841,25 @@ export default function App() {
               onClick={() => setActiveTab("accueil")} 
               className={`pb-1 border-b-2 hover:text-[#d4af37] hover:border-[#d4af37] transition-all ${activeTab === "accueil" ? "text-neutral-950 border-[#d4af37]" : "text-neutral-500 border-transparent"}`}
             >
-              Accueil
+              {t("nav_home")}
             </button>
             <button 
               onClick={() => setActiveTab("catalogue")} 
               className={`pb-1 border-b-2 hover:text-[#d4af37] hover:border-[#d4af37] transition-all ${activeTab === "catalogue" ? "text-neutral-950 border-[#d4af37]" : "text-neutral-500 border-transparent"}`}
             >
-              Catalogue
+              {t("nav_catalog")}
             </button>
             <button 
               onClick={() => setActiveTab("blog")} 
               className={`pb-1 border-b-2 hover:text-[#d4af37] hover:border-[#d4af37] transition-all ${activeTab === "blog" ? "text-neutral-950 border-[#d4af37]" : "text-neutral-500 border-transparent"}`}
             >
-              Blog & Conseils
+              {t("nav_blog")}
             </button>
             <button 
               onClick={() => setActiveTab("contact")} 
               className={`pb-1 border-b-2 hover:text-[#d4af37] hover:border-[#d4af37] transition-all ${activeTab === "contact" ? "text-neutral-950 border-[#d4af37]" : "text-neutral-500 border-transparent"}`}
             >
-              Contact
+              {t("nav_contact")}
             </button>
 
             {/* Elegant Header Search Input next to Contact with distinct separation */}
@@ -1533,7 +1876,7 @@ export default function App() {
                     setActiveTab("catalogue");
                   }
                 }}
-                placeholder="Rechercher..."
+                placeholder={t("search_placeholder")}
                 className="block w-36 lg:w-48 pl-7 pr-2.5 py-1 text-[11px] border border-neutral-200 focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37]/40 rounded-sm bg-neutral-50 transition-all font-sans text-neutral-800 placeholder-neutral-400 focus:outline-[#d4af37]"
               />
             </div>
@@ -1557,7 +1900,20 @@ export default function App() {
               <span className="hidden lg:inline text-[11px] font-bold tracking-widest uppercase text-neutral-800 font-sans">Partager</span>
             </button>
 
-            {/* Customer Area Trigger */}
+            {/* Language Selection Toggle */}
+            <button
+              type="button"
+              onClick={() => setLanguage(language === "fr" ? "ee" : "fr")}
+              className="p-2 border border-neutral-200 text-neutral-700 hover:text-neutral-950 hover:bg-neutral-50 transition-all rounded-sm flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+              title={language === "fr" ? "Passer en Eʋegbe (Ewe)" : "Passer en Français"}
+              id="header-language-toggle-btn"
+            >
+              <Globe className="w-4 h-4 text-[#0f5132]" />
+              <span className="text-[11px] font-bold tracking-widest uppercase text-neutral-800">
+                {language === "fr" ? "Eʋegbe" : "FR"}
+              </span>
+            </button>
+
             {user ? (
               <button
                 onClick={() => {
@@ -1585,7 +1941,7 @@ export default function App() {
                 id="header-user-login-btn"
               >
                 <Lock className="w-4 h-4 text-[#b8901c]" />
-                <span className="hidden sm:inline text-[11px] font-extrabold tracking-widest uppercase text-neutral-800">Se connecter</span>
+                <span className="hidden sm:inline text-[11px] font-extrabold tracking-widest uppercase text-neutral-800">{t("login_btn")}</span>
               </button>
             )}
             {/* Shopping Cart Trigger */}
@@ -1596,7 +1952,7 @@ export default function App() {
               className="relative bg-neutral-950 hover:bg-neutral-900 text-white p-2.5 rounded-sm flex items-center transition-all duration-300 shadow-md border hover:border-gold-500/50 cursor-pointer"
             >
               <ShoppingCart className="w-4.5 h-4.5 text-[#d4af37]" />
-              <span className="hidden sm:inline text-xs tracking-wider ml-1.5 uppercase font-medium">Panier</span>
+              <span className="hidden sm:inline text-xs tracking-wider ml-1.5 uppercase font-medium">{t("bottom_cart")}</span>
               {getCartCount() > 0 && (
                 <div className="absolute -top-1.5 -right-1.5 min-w-5 h-5 bg-gold-500 border border-neutral-950 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
                   {getCartCount()}
@@ -1615,25 +1971,25 @@ export default function App() {
             onClick={() => setActiveTab("accueil")} 
             className={`transition bg-transparent border-none ${activeTab === "accueil" ? "text-[#d4af37] font-bold" : "text-neutral-300"}`}
           >
-            Accueil
+            {t("nav_home")}
           </button>
           <button 
             onClick={() => setActiveTab("catalogue")} 
             className={`transition bg-transparent border-none ${activeTab === "catalogue" ? "text-[#d4af37] font-bold" : "text-neutral-300"}`}
           >
-            Catalogue
+            {t("nav_catalog")}
           </button>
           <button 
             onClick={() => setActiveTab("blog")} 
             className={`transition bg-transparent border-none ${activeTab === "blog" ? "text-[#d4af37] font-bold" : "text-neutral-300"}`}
           >
-            Blog
+            {t("nav_blog")}
           </button>
           <button 
             onClick={() => setActiveTab("contact")} 
             className={`transition bg-transparent border-none ${activeTab === "contact" ? "text-[#d4af37] font-bold" : "text-neutral-300"}`}
           >
-            Contact
+            {t("nav_contact")}
           </button>
 
           {user ? (
@@ -1703,7 +2059,14 @@ export default function App() {
       </div>
 
       {/* MAIN CONTENT SPACE OVERVIEW */}
-      <main className="flex-grow">
+      <motion.main 
+        key={language}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.45, ease: "easeInOut" }}
+        className="flex-grow"
+      >
         {activeTab === "accueil" && (
           <div className="w-full overflow-hidden">
             {/* Stunning Custom Welcoming Banner: Minimalist, Premium Animated Miawoezon */}
@@ -1772,19 +2135,19 @@ export default function App() {
                       <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
                         <div className="flex items-center gap-3">
                           <div className="bg-yellow-500 text-stone-950 font-sans font-black tracking-widest text-[9px] uppercase px-2 py-0.5 rounded-sm">
-                            PROMO MODE TOGO 🇹🇬
+                            {language === "fr" ? "PROMO MODE TOGO 🇹🇬" : "TOGO AWUDODO ƑE ASAASI 🇹🇬"}
                           </div>
                           <span className="bg-white/10 border border-white/20 text-yellow-400 px-2 py-0.5 text-[8px] font-bold rounded-sm tracking-widest uppercase">
-                            Habillement de Prestige
+                            {language === "fr" ? "Habillement de Prestige" : "Prestige Awudodowo"}
                           </span>
                         </div>
 
                         <div className="space-y-1 sm:space-y-1.5">
                           <h4 className="font-mono text-[10px] sm:text-xs text-neutral-300 font-bold uppercase tracking-wider leading-none">
-                            Tissus & Prêt-à-porter exclusifs
+                            {language === "fr" ? "Tissus & Prêt-à-porter exclusifs" : "Avɔ kple Awu tɔxɛwo"}
                           </h4>
                           <h3 className="font-display text-lg sm:text-2xl md:text-3xl font-black text-white leading-tight uppercase tracking-wide">
-                            Grande Quinzaine du Textile Africain
+                            {language === "fr" ? "Grande Quinzaine du Textile Africain" : "Afrika-tɔwo ƒe Avɔ Dzesi Kwasiɖa"}
                           </h3>
                         </div>
 
@@ -1792,15 +2155,18 @@ export default function App() {
                         <div className="bg-[#b8901c] border border-amber-400 p-3 sm:p-4 rounded-none shadow-lg relative overflow-hidden max-w-md">
                           <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full blur-xl"></div>
                           <p className="font-display font-black text-white text-xl sm:text-3xl tracking-tight leading-none">
-                            JUSQU'À -40% DE REMISE
+                            {language === "fr" ? "JUSQU'À -40% DE REMISE" : "ASIƉEƉE YI EDZI -40%"}
                           </p>
                           <p className="font-sans font-bold text-stone-900 text-[10px] sm:text-xs tracking-wider uppercase opacity-95 mt-1">
-                            Sur l'Atelier Wax, Boubous & Chemises Kita
+                            {language === "fr" ? "Sur l'Atelier Wax, Boubous & Chemises Kita" : "Le Wax, Boubous kple Kita Awuwo Dzi"}
                           </p>
                         </div>
 
                         <p className="text-[10px] sm:text-xs text-neutral-350 max-w-sm leading-relaxed font-sans hidden sm:block">
-                          Habillez-vous avec fierté et élégance. Nos créateurs locaux subliment notre héritage vestimentaire avec des coupes d'une qualité irréprochable.
+                          {language === "fr" 
+                            ? "Habillez-vous avec fierté et élégance. Nos créateurs locaux subliment notre héritage vestimentaire avec des coupes d'une qualité irréprochable."
+                            : "Do awu kple dada kple fafɛ. Míaƒe dɔwɔlawo tsɔ míaƒe dekɔnuwo na nɔnɔme nyuitɔ."
+                          }
                         </p>
 
                         <div className="pt-2">
@@ -1813,7 +2179,7 @@ export default function App() {
                             }}
                             className="bg-white hover:bg-neutral-100 text-black font-sans text-[10px] sm:text-xs font-bold uppercase tracking-widest px-4 sm:px-6 py-2 sm:py-2.5 rounded-sm transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
                           >
-                            Parcourir la Collection
+                            {language === "fr" ? "Parcourir la Collection" : "Kpɔ Avɔ Hamewo"}
                           </button>
                         </div>
                       </div>
@@ -1832,7 +2198,7 @@ export default function App() {
                             />
                             <div className="relative z-10 text-center">
                               <span className="font-mono text-[8px] sm:text-[10px] font-black text-white tracking-widest leading-none bg-black/70 px-1.5 py-1 rounded-sm block truncate uppercase">
-                                Collection Wax
+                                {language === "fr" ? "Collection Wax" : "Wax Hame"}
                               </span>
                             </div>
                           </div>
@@ -1840,7 +2206,7 @@ export default function App() {
                           {/* Design Card 2 */}
                           <div className="w-[45%] h-[95%] bg-gradient-to-b from-amber-900/40 to-neutral-950/95 border-2 border-[#d4af37]/50 rounded-none overflow-hidden relative group/art shadow-xl flex flex-col justify-end p-2 transition-transform duration-500 hover:-translate-y-2 z-10">
                             <div className="absolute top-1 right-1 bg-yellow-500 text-[6px] font-bold text-stone-950 px-1 py-0.5 rounded-sm uppercase tracking-widest animate-pulse z-20">
-                              Nouveau
+                              {language === "fr" ? "Nouveau" : "Yeye"}
                             </div>
                             <img 
                               src="https://images.unsplash.com/photo-1572494939761-0ae1b53df4aa?auto=format&fit=crop&q=80&w=300" 
@@ -1849,7 +2215,7 @@ export default function App() {
                             />
                             <div className="relative z-10 text-center">
                               <span className="font-mono text-[8px] sm:text-[10px] font-black text-[#d4af37] tracking-widest leading-none bg-black/80 px-1.5 py-1 rounded-sm block truncate uppercase">
-                                Mode Prestige
+                                {language === "fr" ? "Mode Prestige" : "Awu Dzɛwo"}
                               </span>
                             </div>
                           </div>
@@ -1868,34 +2234,37 @@ export default function App() {
                       <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
                         <div className="flex items-center gap-3">
                           <div className="text-emerald-400 font-sans font-bold tracking-widest text-[9px] uppercase">
-                            🌾 SOUVERAINETÉ ALIMENTAIRE & TERROIR 🇹🇬
+                            {language === "fr" ? "🌾 SOUVERAINETÉ ALIMENTAIRE & TERROIR 🇹🇬" : "🌾 NUDUDU ƑE SOGBƆGBƆ & ANYIGBA 🇹🇬"}
                           </div>
                           <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 text-[8px] font-bold rounded-full tracking-widest uppercase">
-                            100% Organique
+                            {language === "fr" ? "100% Organique" : "100% Gbeme Nuku"}
                           </span>
                         </div>
 
                         <div className="space-y-1 sm:space-y-1.5">
                           <h4 className="font-mono text-[9px] sm:text-xs text-stone-300 font-bold uppercase tracking-widest">
-                            Directement de nos fermes :
+                            {language === "fr" ? "Directement de nos fermes :" : "Tso míaƒe agblewo me tɔnn :"}
                           </h4>
                           <h3 className="font-display text-lg sm:text-3xl font-black text-white leading-tight uppercase tracking-wider">
-                            La Quinzaine des Produits Agricoles d'Exception
+                            {language === "fr" ? "La Quinzaine des Produits Agricoles d'Exception" : "Agble-Nuku Tɔxɛ Kwasiɖa"}
                           </h3>
                         </div>
 
                         {/* Stunner Highlight Box */}
                         <div className="bg-gradient-to-r from-emerald-600 to-green-800 p-3 sm:p-4 border border-emerald-500/30 rounded-none shadow-lg max-w-md">
                           <p className="font-display font-black text-white text-xl sm:text-2xl tracking-tight leading-none uppercase">
-                            Miel Sauvage, Café Robusta, Cajou
+                            {language === "fr" ? "Miel Sauvage, Café Robusta, Cajou" : "Anyitsi Gbeme, Café Robusta, Cajou"}
                           </p>
                           <p className="font-sans font-bold text-yellow-300 text-[10px] sm:text-xs tracking-widest uppercase mt-1">
-                            Soutenez l'économie paysanne de nos terrois ! 🍯
+                            {language === "fr" ? "Soutenez l'économie paysanne de nos terrois ! 🍯" : "Kpe de míaƒe agbledelawo ƒe ganyawo ŋu ! 🍯"}
                           </p>
                         </div>
 
                         <p className="text-[10px] sm:text-xs text-stone-300 max-w-sm font-sans hidden sm:block">
-                          Commandez le meilleur du Togo. Notre coopérative garantit un prix juste et transparent reversé directement aux agriculteurs des Plateaux et de la Kara.
+                          {language === "fr"
+                            ? "Commandez le meilleur du Togo. Notre coopérative garantit un prix juste et transparent reversé directement aux agriculteurs des Plateaux et de la Kara."
+                            : "Ɖo adzɔnu nyuitɔ tso Togo. Míaƒe asitsakaka na asixɔme sɔsɔe agbledelawo tso Plateau kple Kara."
+                          }
                         </p>
 
                         <div className="pt-2">
@@ -1908,7 +2277,7 @@ export default function App() {
                             }}
                             className="bg-emerald-500 hover:bg-emerald-600 text-stone-950 font-sans text-[10px] sm:text-xs font-bold uppercase tracking-widest px-4 sm:px-6 py-2 sm:py-2.5 rounded-sm transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
                           >
-                            Découvrir les Produits de la Terre
+                            {language === "fr" ? "Découvrir les Produits de la Terre" : "Kpɔ Anyigba ƒe Nukuwo"}
                           </button>
                         </div>
                       </div>
@@ -1925,8 +2294,6 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-
-                    {/* Slide 3: COOPÉRATIVE KPALIMÉ (DEEP GREEN & LUXURY GOLD LOOK) */}
                     <div 
                       className={`absolute inset-0 w-full h-full transition-all duration-1000 ease-in-out flex flex-col md:flex-row items-center justify-between ${
                         currentPromoSlide === 2 ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-full -z-10 pointer-events-none"
@@ -1936,19 +2303,19 @@ export default function App() {
                       <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
                         <div className="flex items-center gap-3">
                           <div className="text-[#d4af37] font-sans font-bold tracking-widest text-[10px] sm:text-xs uppercase">
-                            Consommer Local Togolais 🇹🇬
+                            {language === "fr" ? "Consommer Local Togolais 🇹🇬" : "Miɖu Anyigbadzinu Togo 🇹🇬"}
                           </div>
                           <span className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 px-2 py-0.5 text-[8px] font-bold rounded-full tracking-widest uppercase">
-                            PARTENAIRE TERROIR
+                            {language === "fr" ? "PARTENAIRE TERROIR" : "DƆWƆLA DZESIO"}
                           </span>
                         </div>
 
                         <div className="space-y-1 sm:space-y-1.5">
                           <h4 className="font-mono text-[9px] sm:text-xs text-neutral-300 font-bold uppercase tracking-widest">
-                            ORGANISÉ EN COOPÉRATIVE ÉQUITABLE :
+                            {language === "fr" ? "ORGANISÉ EN COOPÉRATIVE ÉQUITABLE :" : "MÍEWƆ DƆ KPLE LƆLƆ̃ :"}
                           </h4>
                           <h3 className="font-display text-lg sm:text-3xl font-black text-white leading-tight uppercase tracking-wider">
-                            Grande Foire Agricole de Kpalimé
+                            {language === "fr" ? "Grande Foire Agricole de Kpalimé" : "Kpalimé Agble-Nuku Fiase Gã"}
                           </h3>
                         </div>
 
@@ -1956,15 +2323,18 @@ export default function App() {
                         <div className="bg-neutral-900 border-2 border-[#d4af37] p-3 sm:p-4 rounded-lg shadow-lg max-w-md relative overflow-hidden">
                           <div className="absolute top-0 right-0 w-12 h-[120%] bg-[#d4af37]/10 -skew-x-12"></div>
                           <p className="font-display font-black text-[#d4af37] text-xl sm:text-3xl tracking-tight leading-none uppercase">
-                            -20% IMMÉDIAT
+                            {language === "fr" ? "-20% IMMÉDIAT" : "-20% FIFIA LƐ̃"}
                           </p>
                           <p className="font-sans font-bold text-white text-[10px] sm:text-xs tracking-widest uppercase mt-1">
-                            SUR LA COLLECTION MIELS & KARI-BÉBÉ
+                            {language === "fr" ? "SUR LA COLLECTION MIELS & KARI-BÉBÉ" : "LE ANYITSI & KARI-BÉBÉ DZI"}
                           </p>
                         </div>
 
                         <p className="text-[10px] sm:text-xs text-neutral-300 max-w-sm font-sans hidden sm:block">
-                          Achetez durable : chaque franc investi est reversé directement aux familles productrices des plateaux du grand Est-Mono.
+                          {language === "fr"
+                            ? "Achetez durable : chaque franc investi est reversé directement aux familles productrices des plateaux du grand Est-Mono."
+                            : "Ƒle adzɔnu dedie: ga si nètutu la ayi tɔnn na agbledelawo ƒe ƒomewo le Est-Mono."
+                          }
                         </p>
 
                         <div className="pt-2">
@@ -1977,7 +2347,7 @@ export default function App() {
                             }}
                             className="bg-[#d4af37] hover:bg-amber-600 text-stone-950 font-sans text-[10px] sm:text-xs font-bold uppercase tracking-widest px-4 sm:px-6 py-2 sm:py-2.5 rounded-sm transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
                           >
-                            Consommer Local
+                            {language === "fr" ? "Consommer Local" : "Miɖu Anyigbadzinu"}
                           </button>
                         </div>
                       </div>
@@ -2003,34 +2373,37 @@ export default function App() {
                       <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
                         <div className="flex items-center gap-3">
                           <div className="text-orange-400 font-sans font-bold tracking-widest text-[10px] sm:text-xs uppercase">
-                            Togo Fashion & Artisans d'Afrique 🇹🇬
+                            {language === "fr" ? "Togo Fashion & Artisans d'Afrique 🇹🇬" : "Togo Atsyɔ̃ & Afrika Aɖaŋudɔ 🇹🇬"}
                           </div>
                           <span className="bg-orange-500/10 border border-orange-500/30 text-orange-450 px-2 py-0.5 text-[8px] font-bold rounded-full tracking-widest uppercase pb-1">
-                            HAUTE COUTURE
+                            {language === "fr" ? "HAUTE COUTURE" : "ATSYƆ̃NYƆ AWU"}
                           </span>
                         </div>
 
                         <div className="space-y-1 sm:space-y-1.5">
                           <h4 className="font-mono text-[9px] sm:text-xs text-neutral-300 font-bold uppercase tracking-widest">
-                            CRÉATEURS & DESIGNERS TOGOLAIS :
+                            {language === "fr" ? "CRÉATEURS & DESIGNERS TOGOLAIS :" : "TOGO AWUTƆLAWO KPLE AƉAŊUDƆWƆLAWO :"}
                           </h4>
                           <h3 className="font-display text-lg sm:text-3xl font-black text-white leading-tight uppercase tracking-wider">
-                            Collection Sacs Raphia & Wax
+                            {language === "fr" ? "Collection Sacs Raphia & Wax" : "Raphia Kusi kple Wax Kotoku Hame"}
                           </h3>
                         </div>
 
                         {/* Stunner Highlight Box */}
                         <div className="bg-orange-600 border border-orange-500 p-3 sm:p-4 rounded-lg shadow-lg max-w-md relative overflow-hidden">
                           <p className="font-display font-black text-white text-xl sm:text-3xl tracking-tight leading-none uppercase">
-                            -30% DE REMISE
+                            {language === "fr" ? "-30% DE REMISE" : "ASIƉEƉE -30%"}
                           </p>
                           <p className="font-sans font-bold text-stone-100 text-[10px] sm:text-xs tracking-widest uppercase mt-1">
-                            LIVRAISON EN 48H SUR TOUTE LOMÉ 🛍️
+                            {language === "fr" ? "LIVRAISON EN 48H SUR TOUTE LOMÉ 🛍️" : "MÍATSƆE VƐ LE 48H ME LE LOMÉ KATÃ 🛍️"}
                           </p>
                         </div>
 
                         <p className="text-[10px] sm:text-xs text-neutral-300 max-w-sm font-sans hidden sm:block">
-                          Des sacs tressés à la main de manière éco-responsable originaires de la côte Sud d'Aného et du pays Mina.
+                          {language === "fr"
+                            ? "Des sacs tressés à la main de manière éco-responsable originaires de la côte Sud d'Aného et du pays Mina."
+                            : "Kotoku siwo woƒo kple asi tso Aného kple Mina ƒe anyigba dzi."
+                          }
                         </p>
 
                         <div className="pt-2">
@@ -2043,7 +2416,7 @@ export default function App() {
                             }}
                             className="bg-orange-500 hover:bg-orange-600 text-white font-sans text-[10px] sm:text-xs font-bold uppercase tracking-widest px-4 sm:px-6 py-2 sm:py-2.5 rounded-sm transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
                           >
-                            Voir la Collection Mode
+                            {language === "fr" ? "Voir la Collection Mode" : "Kpɔ Awu Atsyɔ̃wo"}
                           </button>
                         </div>
                       </div>
@@ -2110,15 +2483,22 @@ export default function App() {
                   <div className="lg:col-span-7 space-y-6 text-left">
                     <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-full shadow-xs">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                      <p className="text-[11px] sm:text-xs tracking-wider text-emerald-800 font-bold uppercase">Terroir Solidaire du Togo 🇹🇬</p>
+                      <p className="text-[11px] sm:text-xs tracking-wider text-emerald-800 font-bold uppercase">{language === "fr" ? "Terroir Solidaire du Togo 🇹🇬" : "Togo-tɔwo ƒe Dzesi Kple Anyigba 🇹🇬"}</p>
                     </div>
 
                     <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight text-neutral-900">
-                      Le Meilleur de Nos <span className="text-emerald-850 underline decoration-emerald-200 decoration-wavy block sm:inline">Producteurs Locaux</span> chez Vous.
+                      {language === "fr" ? (
+                        <>Le Meilleur de Nos <span className="text-emerald-850 underline decoration-emerald-200 decoration-wavy block sm:inline">Producteurs Locaux</span> chez Vous.</>
+                      ) : (
+                        <>Mía dɔwɔlawo ƒe <span className="text-emerald-850 underline decoration-emerald-200 decoration-wavy block sm:inline">Adzɔnu Nyuitɔwo</span> le wò Aƒeme.</>
+                      )}
                     </h1>
                     
                     <p className="text-sm sm:text-base text-neutral-600 max-w-xl leading-relaxed font-sans">
-                      Savourez le miel brut sauvage des forêts de Kpalimé, offrez à votre corps l’hydratation pure du beurre de karité de Tandjouaré, et garnissez votre table de nos paniers maraîchers ultra-frais cueillis le jour-même à Lomé et Kovié.
+                      {language === "fr" 
+                        ? "Savourez le miel brut sauvage des forêts de Kpalimé, offrez à votre corps l’hydratation pure du beurre de karité de Tandjouaré, et garnissez votre table de nos paniers maraîchers ultra-frais cueillis le jour-même à Lomé et Kovié." 
+                        : "Kpɔ kpeɖodzi tso Kpalimé ƒe anyitsi nyuitɔ me, Tandjouaré ƒe karité ami kple Lomé / Kovié ƒe nududu fafɛwo katã gbesiagbe."
+                      }
                     </p>
 
                     {/* Dynamic Search & Fast Filter Bar */}
@@ -2126,7 +2506,7 @@ export default function App() {
                       <div className="flex">
                         <input 
                           type="text" 
-                          placeholder="Rechercher un produit local... (ex. Miel sauvage, Karité, Hibiscus)" 
+                          placeholder={language === "fr" ? "Rechercher un produit local... (ex. Miel sauvage, Karité, Hibiscus)" : "Dii adzɔnu aɖe... (ex. Anyitsi, Karité, Hibiscus)"} 
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="flex-grow px-3 py-2 text-neutral-900 bg-transparent outline-none text-xs sm:text-sm placeholder-neutral-400 font-medium"
@@ -2249,16 +2629,21 @@ export default function App() {
                     <div className="w-10 h-10 bg-amber-50 text-amber-600 flex items-center justify-center mb-4 text-xl rounded-sm">
                       🍯
                     </div>
-                    <h3 className="font-display font-semibold text-lg text-neutral-900 uppercase tracking-wider mb-2">Miels & Cosmétiques de Haute Qualité</h3>
+                    <h3 className="font-display font-semibold text-lg text-neutral-900 uppercase tracking-wider mb-2">
+                      {language === "fr" ? "Miels & Cosmétiques de Haute Qualité" : "Anyitsi kple Atike Nyuitɔ"}
+                    </h3>
                     <p className="text-neutral-600 text-xs leading-relaxed font-sans">
-                      Liaison directe avec les apiculteurs des Plateaux et les coopératives de beurre de karité. Des matières pures de haute qualité pour votre bien-être.
+                      {language === "fr" 
+                        ? "Liaison directe avec les apiculteurs des Plateaux et les coopératives de beurre de karité. Des matières pures de haute qualité pour votre bien-être."
+                        : "Kadjɔ kple anyitsidelawo tso Plateau kple dɔwɔlawo tso karité. Nuviavã tɔxɛwo na wò lanyo."
+                      }
                     </p>
                   </div>
                   <button 
                     onClick={() => { setSelectedCategory("Made in Togo Premium"); setSearchQuery(""); setActiveTab("catalogue"); }}
                     className="text-xs uppercase tracking-widest font-bold text-emerald-800 flex items-center gap-1 mt-4 hover:translate-x-1 transition-transform self-start"
                   >
-                    <span>Découvrir</span>
+                    <span>{language === "fr" ? "Découvrir" : "Kpɔ kpee"}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -2269,16 +2654,21 @@ export default function App() {
                     <div className="w-10 h-10 bg-emerald-50 text-emerald-600 flex items-center justify-center mb-4 text-xl rounded-sm">
                       🥬
                     </div>
-                    <h3 className="font-display font-semibold text-lg text-neutral-900 uppercase tracking-wider mb-2">Maraîchage Frais d'Ici</h3>
+                    <h3 className="font-display font-semibold text-lg text-neutral-900 uppercase tracking-wider mb-2">
+                      {language === "fr" ? "Maraîchage Frais d'Ici" : "Agble-Nuku Fafɛwo Tso Afisia"}
+                    </h3>
                     <p className="text-neutral-600 text-xs leading-relaxed font-sans">
-                      Paniers maraîchers ultra-frais cultivés localement par des coopératives agricoles familiales pour un goût authentique.
+                      {language === "fr"
+                        ? "Paniers maraîchers ultra-frais cultivés localement par des coopératives agricoles familiales pour un goût authentique."
+                        : "Agble-Nuku fafɛ tɔxɛ siwo ƒomewo dɔ le afisia be wòanya ɖu."
+                      }
                     </p>
                   </div>
                   <button 
                     onClick={() => { setSelectedCategory("Paniers Frais & Épicerie"); setSearchQuery(""); setActiveTab("catalogue"); }}
                     className="text-xs uppercase tracking-widest font-bold text-emerald-800 flex items-center gap-1 mt-4 hover:translate-x-1 transition-transform self-start"
                   >
-                    <span>Découvrir</span>
+                    <span>{language === "fr" ? "Découvrir" : "Kpɔ kpee"}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -2289,16 +2679,21 @@ export default function App() {
                     <div className="w-10 h-10 bg-sky-50 text-sky-600 flex items-center justify-center mb-4 text-xl rounded-sm">
                       👕
                     </div>
-                    <h3 className="font-display font-semibold text-lg text-neutral-900 uppercase tracking-wider mb-2">Création & Textures "Togo Vi"</h3>
+                    <h3 className="font-display font-semibold text-lg text-neutral-900 uppercase tracking-wider mb-2">
+                      {language === "fr" ? "Création & Textures \"Togo Vi\"" : "Aɖaŋudɔ & Avɔ \"Togo Vi\""}
+                    </h3>
                     <p className="text-neutral-600 text-xs leading-relaxed font-sans">
-                      Soutien aux créations locales exclusives. T-shirts imprimés et pièces artisanales uniques célébrant l'identité culturelle.
+                      {language === "fr"
+                        ? "Soutien aux créations locales exclusives. T-shirts imprimés et pièces artisanales uniques célébrant l'identité culturelle."
+                        : "Kpekpeɖeŋu na míaƒe aɖaŋudɔwɔlawo. T-shirts kple aɖaŋunu tɔxɛ siwo fia míaƒe dekɔnu."
+                      }
                     </p>
                   </div>
                   <button 
                     onClick={() => { setSelectedCategory("Print-on-Demand Localisé"); setSearchQuery(""); setActiveTab("catalogue"); }}
                     className="text-xs uppercase tracking-widest font-bold text-emerald-800 flex items-center gap-1 mt-4 hover:translate-x-1 transition-transform self-start"
                   >
-                    <span>Découvrir</span>
+                    <span>{language === "fr" ? "Découvrir" : "Kpɔ kpee"}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -2314,13 +2709,18 @@ export default function App() {
                 
                 {/* Section Header */}
                 <div className="text-center mb-6 sm:mb-12">
-                  <span className="text-emerald-800 text-[10px] sm:text-xs font-bold tracking-widest uppercase block mb-1.5 sm:mb-2">Immersion Naturelle & Terroirs</span>
+                  <span className="text-emerald-800 text-[10px] sm:text-xs font-bold tracking-widest uppercase block mb-1.5 sm:mb-2">
+                    {language === "fr" ? "Immersion Naturelle & Terroirs" : "Dzɔdzɔme Hame & Anyigba"}
+                  </span>
                   <p className="font-display font-black text-xl sm:text-4xl text-neutral-950 uppercase tracking-widest leading-none">
-                    Galerie Locale & Savoir-faire
+                    {language === "fr" ? "Galerie Locale & Savoir-faire" : "Aɖaŋudɔ Kpɔƒe & Aɖaŋu"}
                   </p>
                   <div className="w-12 sm:w-16 h-0.5 sm:h-1 bg-emerald-805 mx-auto mt-2.5 sm:mt-4 rounded-full"></div>
                   <p className="text-[11px] sm:text-sm text-neutral-600 mt-2 sm:mt-4 max-w-2xl mx-auto leading-relaxed font-sans">
-                    Découvrez l'héritage vivant de nos paysans et coopératives à travers nos clichés insolites de récoltes. Cliquez sur une collection pour l'explorer directement dans la boutique.
+                    {language === "fr"
+                      ? "Découvrez l'héritage vivant de nos paysans et coopératives à travers nos clichés insolites de récoltes. Cliquez sur une collection pour l'explorer directement dans la boutique."
+                      : "Kpɔ míaƒe agbledelawo kple dɔwɔlawo ƒe kesinɔnu gbe bɔbɔe. Zi dzesi aɖe dzi nàge ɖe fiase me."
+                    }
                   </p>
                 </div>
 
@@ -2328,38 +2728,46 @@ export default function App() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
                   {[
                     {
-                      title: "Céramiques de Mandouri",
-                      collection: "Terre Cuite & Argile",
-                      desc: "Des œuvres façonnées en argile brute issues de gisements sacrés de l'extrême Nord du Togo.",
+                      title: language === "fr" ? "Céramiques de Mandouri" : "Mandouri Anyi-Dze",
+                      collection: language === "fr" ? "Terre Cuite & Argile" : "Anyi Kple Anyigba",
+                      desc: language === "fr" 
+                        ? "Des œuvres façonnées en argile brute issues de gisements sacrés de l'extrême Nord du Togo."
+                        : "Anyinu siwo wowɔ tso anyigba kɔkɔe me le Togo dzigbe lɔgɔ̃.",
                       image: "https://images.unsplash.com/photo-1590156546746-c589fbfb31d6?auto=format&fit=crop&q=80&w=600",
-                      tag: "Argile Sacrée",
+                      tag: language === "fr" ? "Argile Sacrée" : "Anyi Kɔkɔe",
                       category: "Made in Togo Premium",
                       search: "Argile"
                     },
                     {
-                      title: "Tissage d'Aného",
-                      collection: "Raphia & Fibres Organiques",
-                      desc: "Tressage méticuleux des fibres végétales pour concevoir des sacs et paniers de prestige.",
+                      title: language === "fr" ? "Tissage d'Aného" : "Aného Avɔ-Lɔlɔ̃",
+                      collection: language === "fr" ? "Raphia & Fibres Organiques" : "Raphia kple Dzɔdzɔme Kawo",
+                      desc: language === "fr"
+                        ? "Tressage méticuleux des fibres végétales pour concevoir des sacs et paniers de prestige."
+                        : "Kotoku kple kusi siwo woƒo kple dzɔdzɔme kawo na atsyɔ̃.",
                       image: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&q=80&w=600",
-                      tag: "100% Organique",
+                      tag: language === "fr" ? "100% Organique" : "100% Dzɔdzɔme",
                       category: "Made in Togo Premium",
                       search: "Raphia"
                     },
                     {
-                      title: "Miels de Kpalimé",
-                      collection: "Nectar Sauvage & Café",
-                      desc: "Récoltes biologiques au cœur des forêts denses du plateau du Togo.",
+                      title: language === "fr" ? "Miels de Kpalimé" : "Kpalimé Anyitsi",
+                      collection: language === "fr" ? "Nectar Sauvage & Café" : "Anyitsi kple Café",
+                      desc: language === "fr"
+                        ? "Récoltes biologiques au cœur des forêts denses du plateau du Togo."
+                        : "Anyitsi tɔxɛ siwo wodi le Togo Plateaux ƒe aveme.",
                       image: "https://images.unsplash.com/photo-1471193945509-9ad0617afabf?auto=format&fit=crop&q=80&w=600",
-                      tag: "Nectar d'Altitude",
+                      tag: language === "fr" ? "Nectar d'Altitude" : "To-dzi Anyitsi",
                       category: "Made in Togo Premium",
                       search: "Miel"
                     },
                     {
-                      title: "Soin Solidaire",
-                      collection: "Karité de Tandjouaré",
-                      desc: "L'excellence des huiles pressées à l'état pur par notre collective de femmes solidaires.",
+                      title: language === "fr" ? "Soin Solidaire" : "Lanyɔ Atike",
+                      collection: language === "fr" ? "Karité de Tandjouaré" : "Tandjouaré Karité",
+                      desc: language === "fr"
+                        ? "L'excellence des huiles pressées à l'état pur par notre collective de femmes solidaires."
+                        : "Karité nyuitɔ si nyɔnuwo ƒe asitsakaka dze gɔme le dzigbe.",
                       image: "https://images.unsplash.com/photo-1628144211110-ecd038ea8271?auto=format&fit=crop&q=80&w=600",
-                      tag: "100% Brut",
+                      tag: language === "fr" ? "100% Brut" : "100% Vavã",
                       category: "Made in Togo Premium",
                       search: "Karité"
                     }
@@ -2401,7 +2809,7 @@ export default function App() {
                         </p>
                         
                         <div className="flex items-center gap-1 text-white text-[8px] sm:text-[9.5px] font-bold tracking-widest uppercase mt-2 sm:mt-3 pt-1.5 sm:pt-2 border-t border-neutral-800/60 w-full group-hover:text-emerald-400 transition-colors">
-                          <span>Voir plus</span>
+                          <span>{language === "fr" ? "Voir plus" : "Kpɔ kpee"}</span>
                           <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
                         </div>
                       </div>
@@ -2414,17 +2822,23 @@ export default function App() {
                 <div className="mt-8 sm:mt-12 bg-white text-neutral-800 p-4 sm:p-8 rounded-none border border-neutral-250 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6 relative overflow-hidden">
                   <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(52,211,153,0.05),transparent_40%)] pointer-events-none"></div>
                   <div className="relative z-10 space-y-1 sm:space-y-2 text-center sm:text-left">
-                    <span className="bg-emerald-50 text-emerald-800 text-[8px] sm:text-[9px] font-bold uppercase tracking-widest px-2 sm:px-2.5 py-0.5 sm:py-1 border border-emerald-250 inline-block">Soutien aux Paysans</span>
-                    <h4 className="font-display font-black text-sm sm:text-xl uppercase tracking-wider text-neutral-900">Chaque commande soutient le commerce de proximité</h4>
+                    <span className="bg-emerald-50 text-emerald-800 text-[8px] sm:text-[9px] font-bold uppercase tracking-widest px-2 sm:px-2.5 py-0.5 sm:py-1 border border-emerald-250 inline-block">
+                      {language === "fr" ? "Soutien aux Paysans" : "Kpekpeɖeŋu na Agbledelawo"}
+                    </span>
+                    <h4 className="font-display font-black text-sm sm:text-xl uppercase tracking-wider text-neutral-900">
+                      {language === "fr" ? "Chaque commande soutient le commerce de proximité" : "Nudɔdɔ ɖesiaɖe kpena ɖe asitsala suewo ŋu"}
+                    </h4>
                     <p className="text-[11px] sm:text-xs text-neutral-550 font-sans max-w-2xl">
-                      Chez Asime, plus de 90% du prix des produits de la Coopérative est directement versé aux apiculteurs, horticulteurs et artisans locaux du Togo.
+                      {language === "fr" 
+                        ? "Chez Asime, plus de 90% du prix des produits de la Coopérative est directement versé aux apiculteurs, horticulteurs et artisans locaux du Togo."
+                        : "Le Asime la, asixɔme si wotsɔ nɔa adzɔnuwo ƒlem la ƒe alafa me 90 dzea agbledelawo kple aɖaŋudɔwɔlawo si tẽe le Togo."}
                     </p>
                   </div>
                   <button 
                     onClick={() => { setSelectedCategory("Made in Togo Premium"); setSearchQuery(""); setActiveTab("catalogue"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                     className="relative z-10 bg-emerald-800 text-white hover:bg-emerald-900 font-extrabold text-[8px] sm:text-[10px] tracking-widest uppercase px-4 py-2.5 sm:px-6 sm:py-3.5 transition-colors shrink-0 cursor-pointer"
                   >
-                    Découvrir le Terroir
+                    {language === "fr" ? "Découvrir le Terroir" : "Kpɔ Anyigba ƒe Kesinɔnuwo"}
                   </button>
                 </div>
 
@@ -2442,36 +2856,48 @@ export default function App() {
               <div className="max-w-7xl mx-auto px-4 relative z-10">
                 
                 <div className="text-center mb-6 sm:mb-12">
-                  <span className="text-[#d4af37] text-[10px] sm:text-xs font-bold tracking-widest uppercase block mb-1.5 sm:mb-2">L'Expérience Asime Togo</span>
+                  <span className="text-[#d4af37] text-[10px] sm:text-xs font-bold tracking-widest uppercase block mb-1.5 sm:mb-2">
+                    {language === "fr" ? "L'Expérience Asime Togo" : "Asime Togo ƒe Nuteƒekpɔkpɔ"}
+                  </span>
                   <h3 className="font-display font-extrabold text-xl sm:text-3xl uppercase tracking-widest text-white">
-                    Pourquoi Commander chez Nous ?
+                    {language === "fr" ? "Pourquoi Commander chez Nous ?" : "Nukaŋuti Nàɖo Nu Mía Gbɔ?"}
                   </h3>
                   <div className="w-12 sm:w-16 h-0.5 sm:h-1 bg-[#d4af37] mx-auto mt-2.5 sm:mt-4 rounded-full"></div>
                   <p className="text-[11px] sm:text-xs text-neutral-300 mt-2.5 sm:mt-4 max-w-2xl mx-auto leading-relaxed">
-                    Nous sélectionnons rigoureusement chaque article du terroir et importons des tendances mondiales exclusives pour vous garantir un service d'excellence sans transition.
+                    {language === "fr" 
+                      ? "Nous sélectionnons rigoureusement chaque article du terroir et importons des tendances mondiales exclusives pour vous garantir un service d'excellence sans transition."
+                      : "Míetiaa adzɔnu nyuitɔwo katã tẽe eye míenɔa nu yeyewo tsɔm vɛ na wò be nàkpɔ kpekpeɖeŋu nyuitɔ sɔbɔ."}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 md:gap-8">
                   {[
                     {
-                      title: "Filières Directes",
-                      desc: "Liaison directe avec les groupements agricoles de Kpalimé et de Notsé pour valoriser l'artisanat togolais en circuit court.",
+                      title: language === "fr" ? "Filières Directes" : "Mɔ Tẽe Kadodowo",
+                      desc: language === "fr" 
+                        ? "Liaison directe avec les groupements agricoles de Kpalimé et de Notsé pour valoriser l'artisanat togolais en circuit court."
+                        : "Kadodo tẽe kple Kpalimé kple Notsé dɔwɔlawo be woado Togo-tɔwo ƒe aɖaŋudɔwo ɖe gã.",
                       icon: <Sparkles className="w-4 h-4 sm:w-6 sm:h-6 text-[#d4af37]" />
                     },
                     {
-                      title: "Qualité Certifiée",
-                      desc: "Toutes nos importations et produits locaux passent par un contrôle de conformité strict avant d'être référencés.",
+                      title: language === "fr" ? "Qualité Certifiée" : "Kpeɖodzi Nyui",
+                      desc: language === "fr"
+                        ? "Toutes nos importations et produits locaux passent par un contrôle de conformité strict avant d'être référencés."
+                        : "Míenɔa dɔwɔnu kple adzɔnu ɖesiaɖe me dzram nyuie be míakpɔ eƒe nyoame dzesi hafi ade fiasã me.",
                       icon: <Check className="w-4 h-4 sm:w-6 sm:h-6 text-[#d4af37]" />
                     },
                     {
-                      title: "Livraison Omniprésente",
-                      desc: "Service de livraison réactif à domicile sur Lomé sous 24h à 48h, etexpédition sécurisée dans l'ensemble des préfectures.",
+                      title: language === "fr" ? "Livraison Omniprésente" : "Nutsɔtsɔ vɛ Afiɖesiaɖe",
+                      desc: language === "fr"
+                        ? "Service de livraison réactif à domicile sur Lomé sous 24h à 48h, etexpédition sécurisée dans l'ensemble des préfectures."
+                        : "Nudɔdɔ kaba yi aƒeme le Lomé le gaƒoƒo 24 vaseɖe 48 me, eye míedɔna adzɔnuwo dedie yi dɔwɔƒewo katã.",
                       icon: <Globe className="w-4 h-4 sm:w-6 sm:h-6 text-[#d4af37]" />
                     },
                     {
-                      title: "Validation WhatsApp",
-                      desc: "Commandez en un clic et finalisez instantanément votre transaction avec notre équipe d'assistance par messagerie WhatsApp.",
+                      title: language === "fr" ? "Validation WhatsApp" : "Kpeɖodzi le WhatsApp",
+                      desc: language === "fr"
+                        ? "Commandez en un clic et finalisez instantanément votre transaction avec notre équipe d'assistance par messagerie WhatsApp."
+                        : "Ɖo nudɔdɔ kaba eye nàwu asitsatsa nu enumake kple míaƒe kpekpeɖeŋunalawo le WhatsApp dzi.",
                       icon: <Phone className="w-4 h-4 sm:w-6 sm:h-6 text-[#d4af37]" />
                     }
                   ].map((feat, index) => (
@@ -2496,14 +2922,14 @@ export default function App() {
               <div className="max-w-7xl mx-auto">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
                   <div>
-                    <span className="text-[#d4af37] text-xs font-semibold uppercase tracking-widest">Sélection Exclusive</span>
-                    <h2 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 uppercase">Nos Produits Phares</h2>
+                    <span className="text-[#d4af37] text-xs font-semibold uppercase tracking-widest">{language === "fr" ? "Sélection Exclusive" : "Adzɔnu Tɔxɛ Kpeɖodzi"}</span>
+                    <h2 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 uppercase">{t("featured_products")}</h2>
                   </div>
                   <button 
                     onClick={() => { setSelectedCategory("Toutes"); setActiveTab("catalogue"); }}
                     className="bg-neutral-950 text-white hover:bg-[#d4af37] hover:text-neutral-950 px-5 py-2.5 rounded-sm text-xs font-bold tracking-widest uppercase transition-all flex items-center gap-1.5 self-start shadow"
                   >
-                    <span>Parcourir Tout le Catalogue</span>
+                    <span>{t("explore_catalog")}</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -2511,7 +2937,7 @@ export default function App() {
                 {loadingProducts ? (
                   <div className="flex flex-col items-center justify-center py-16">
                     <div className="w-10 h-10 border-4 border-gold-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-sm mt-4 text-neutral-500 font-medium">Chargement de la sélection boutique...</p>
+                    <p className="text-sm mt-4 text-neutral-500 font-medium">{t("loading")}</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-6">
@@ -2637,23 +3063,29 @@ export default function App() {
                   />
                 </div>
                 <div className="flex-grow">
-                  <h3 className="font-display font-medium text-lg text-[#d4af37] uppercase tracking-wider mb-2">Notre engagement pour Lomé</h3>
-                  <h2 className="font-display font-extrabold text-2xl sm:text-3xl uppercase tracking-tight mb-4 text-white">Consommer togolais n'a jamais été aussi simple</h2>
+                  <h3 className="font-display font-medium text-lg text-[#d4af37] uppercase tracking-wider mb-2">
+                    {language === "fr" ? "Notre engagement pour Lomé" : "Míaƒe kpeɖodzi na Lomé"}
+                  </h3>
+                  <h2 className="font-display font-extrabold text-2xl sm:text-3xl uppercase tracking-tight mb-4 text-white">
+                    {language === "fr" ? "Consommer togolais n'a jamais été aussi simple" : "Anyigbadzinu Togo-tɔwo ɖuɖu sɔbɔ fifia kaba"}
+                  </h2>
                   <p className="text-neutral-300 text-xs sm:text-sm leading-relaxed mb-6">
-                    Faites votre marché en ligne ! Les paniers maraîchers frais sont achetés à flux tendu au marché national pour vous garantir des vitamines et des saveurs incomparables, tandis que nos cosmétiques soutiennent directement des coopératives de femmes rurales au Togo.
+                    {language === "fr" 
+                      ? "Faites votre marché en ligne ! Les paniers maraîchers frais sont achetés à flux tendu au marché national pour vous garantir des vitamines et des saveurs incomparables, tandis que nos cosmétiques soutiennent directement des coopératives de femmes rurales au Togo." 
+                      : "Wɔ wò asitsatsa le kɔmputazi dzi ! Míatsɔ nuku gbeme tɔwo tẽe tso anyigba gã la dzi be wòasɔ na wò, eye míaƒe ami kple adzɔnuwo kpena ɖe nyɔnu dɔwɔla siwo le Togo dɔwɔƒewo ŋu."}
                   </p>
                   <div className="flex gap-4">
                     <button 
                       onClick={() => { setActiveTab("catalogue"); setSelectedCategory("Paniers Frais & Épicerie"); }}
                       className="bg-[#d4af37] text-neutral-950 font-bold text-xs uppercase tracking-widest px-4 py-2.5 rounded-sm hover:bg-white transition-colors"
                     >
-                      Voir les Paniers Frais
+                      {language === "fr" ? "Voir les Paniers Frais" : "Kpɔ Nuku Gbeme Tɔwo"}
                     </button>
                     <button 
                       onClick={() => setActiveTab("contact")}
                       className="border border-[#d4af37] text-white hover:bg-white/10 font-bold text-xs uppercase tracking-widest px-4 py-2.5 rounded-sm transition-colors"
                     >
-                      Nous écrire
+                      {language === "fr" ? "Nous écrire" : "Ŋlɔ Nya Na Mí"}
                     </button>
                   </div>
                 </div>
@@ -2778,6 +3210,53 @@ export default function App() {
                     Réinitialiser le budget
                   </button>
                 )}
+              </div>
+
+              {/* Advanced Filters Block */}
+              <div className="pt-4 border-t border-neutral-150 flex flex-col sm:flex-row flex-wrap items-center gap-4 justify-between">
+                <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
+                  {/* Stock Filter Checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-neutral-700 uppercase tracking-wider">
+                    <input 
+                      type="checkbox"
+                      checked={onlyInStock}
+                      onChange={(e) => setOnlyInStock(e.target.checked)}
+                      className="w-4 h-4 rounded-sm accent-[#b8901c] border-neutral-300 focus:ring-[#d4af37]"
+                    />
+                    <span>{language === "fr" ? "En stock uniquement" : "Eya le dɔ me pɛ"}</span>
+                  </label>
+
+                  {/* Promo Filter Checkbox */}
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-neutral-700 uppercase tracking-wider">
+                    <input 
+                      type="checkbox"
+                      checked={onlyPromo}
+                      onChange={(e) => setOnlyPromo(e.target.checked)}
+                      className="w-4 h-4 rounded-sm accent-[#b8901c] border-neutral-300 focus:ring-[#d4af37]"
+                    />
+                    <span>{language === "fr" ? "En promotion uniquement" : "Asiɖeɖe tɔxɛwo pɛ"}</span>
+                  </label>
+                </div>
+
+                {/* Partner selector filter */}
+                <div className="w-full sm:w-auto flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-500">
+                    {language === "fr" ? "Par Partenaire :" : "Kple dɔwɔla :"}
+                  </span>
+                  <div className="relative">
+                    <select
+                      value={selectedPartnerFilter}
+                      onChange={(e) => setSelectedPartnerFilter(e.target.value)}
+                      className="appearance-none font-bold text-[11px] uppercase tracking-wider border border-neutral-300 rounded-sm bg-stone-50 px-3 py-1.5 pr-8 focus:outline-none focus:ring-1 focus:ring-[#d4af37] cursor-pointer"
+                    >
+                      <option value="Tous">{language === "fr" ? "Tous les partenaires" : "Dɔwɔlawo katã"}</option>
+                      {Array.from(new Set(products.map(p => p.partenaire).filter(Boolean))).map((partnerName: any) => (
+                        <option key={partnerName} value={partnerName}>{partnerName}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -3138,9 +3617,18 @@ export default function App() {
           <div className="py-8 px-4 max-w-4xl mx-auto">
             {/* Page Header */}
             <div className="text-center mb-10">
-              <span className="text-[#d4af37] text-xs font-semibold tracking-widest uppercase mb-1 block">Entrer en relation</span>
-              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 uppercase">Nous Contacter</h1>
-              <p className="text-neutral-500 text-sm max-w-lg mx-auto mt-2">Une idée de design pour un T-shirt, un partenariat bio ou des questions sur un panier, écrivez-nous.</p>
+              <span className="text-[#d4af37] text-xs font-semibold tracking-widest uppercase mb-1 block">
+                {language === "fr" ? "Entrer en relation" : "De dzesi kadodo me"}
+              </span>
+              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 uppercase">
+                {t("contact_title")}
+              </h1>
+              <p className="text-neutral-500 text-sm max-w-lg mx-auto mt-2">
+                {language === "fr" 
+                  ? "Une idée de design pour un T-shirt, un partenariat bio ou des questions sur un panier, écrivez-nous."
+                  : "Susu aɖe le awu si nàdi tsɔtsɔ ŋu, bio asitsakaka alo nyabiabia aɖe le kusi dzi, ŋlɔ nya na mí."
+                }
+              </p>
               <div className="w-16 h-1 bg-[#d4af37] mx-auto mt-3"></div>
             </div>
 
@@ -3152,8 +3640,15 @@ export default function App() {
                   <div className="flex items-start gap-3">
                     <MapPin className="w-5 h-5 text-[#d4af37] shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-semibold text-xs uppercase tracking-widest text-white">Service Client Asime</h4>
-                      <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed">E-commerce 100% en ligne — Livraison express à domicile ou au bureau à Lomé &amp; envois internationaux</p>
+                      <h4 className="font-semibold text-xs uppercase tracking-widest text-white">
+                        {language === "fr" ? "Service Client Asime" : "Asime ƒe Asitsala Kpekpeɖeŋu"}
+                      </h4>
+                      <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed">
+                        {language === "fr"
+                          ? "E-commerce 100% en ligne — Livraison express à domicile ou au bureau à Lomé & envois internationaux"
+                          : "Fiase si le kɔmputazi 100% — Adzɔnudeɖe kaba le aƒeme alo dɔwɔƒe le Lomé kple dukɔwo katã me"
+                        }
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -3162,7 +3657,9 @@ export default function App() {
                   <div className="flex items-start gap-3">
                     <Mail className="w-5 h-5 text-[#d4af37] shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-semibold text-xs uppercase tracking-widest text-neutral-900">Email Officiel</h4>
+                      <h4 className="font-semibold text-xs uppercase tracking-widest text-neutral-900">
+                        {language === "fr" ? "Email Officiel" : "Email Sɔsɔe"}
+                      </h4>
                       <p className="text-xs text-neutral-600 mt-1">{ASIME_SETTINGS.SUPPORT_EMAIL}</p>
                     </div>
                   </div>
@@ -3172,7 +3669,9 @@ export default function App() {
                   <div className="flex items-start gap-3 flex-wrap">
                     <Phone className="w-5 h-5 text-[#d4af37] shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-semibold text-xs uppercase tracking-widest text-neutral-900">Téléphone & WhatsApp</h4>
+                      <h4 className="font-semibold text-xs uppercase tracking-widest text-neutral-900">
+                        {language === "fr" ? "Téléphone & WhatsApp" : "Kaƒomɔ & WhatsApp"}
+                      </h4>
                       <p className="text-xs text-neutral-600 mt-1">{ASIME_SETTINGS.PHONE_DISPLAY_PRIMARY} / {ASIME_SETTINGS.PHONE_DISPLAY_SECONDARY}</p>
                     </div>
                   </div>
@@ -3182,8 +3681,12 @@ export default function App() {
                   <div className="flex items-start gap-3">
                     <Clock className="w-5 h-5 text-[#d4af37] shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-semibold text-xs uppercase tracking-widest text-neutral-900">Horaires de Livraison</h4>
-                      <p className="text-xs text-neutral-600 mt-1 line-clamp-1">Lundi - Samedi : 08h00 - 19h00</p>
+                      <h4 className="font-semibold text-xs uppercase tracking-widest text-neutral-900">
+                        {language === "fr" ? "Horaires de Livraison" : "Nudede Ɣeyiɣiwo"}
+                      </h4>
+                      <p className="text-xs text-neutral-600 mt-1 line-clamp-1">
+                        {language === "fr" ? "Lundi - Samedi : 08h00 - 19h00" : "Dzoɖagbe - Memleɖagbe : 08:00 - 19:00"}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -3191,11 +3694,15 @@ export default function App() {
 
               {/* Clean Interactive Contact Form */}
               <div className="md:col-span-3 bg-white p-6 border border-neutral-200 rounded-sm">
-                <h3 className="font-display font-medium text-lg uppercase tracking-wider text-neutral-900 mb-4">Écrire un message en ligne</h3>
+                <h3 className="font-display font-medium text-lg uppercase tracking-wider text-neutral-900 mb-4">
+                  {language === "fr" ? "Écrire un message en ligne" : "Ŋlɔ nya ɖe kɔmputa dzi"}
+                </h3>
                 
                 <form onSubmit={handleContactSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Votre Nom & Prénom <span className="text-red-500">*</span></label>
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                      {language === "fr" ? "Votre Nom & Prénom" : "Wò Ŋkɔ kple Ŋkɔgbe"} <span className="text-red-500">*</span>
+                    </label>
                     <input 
                       type="text" 
                       required
@@ -3207,7 +3714,9 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Votre Adresse Email <span className="text-red-500">*</span></label>
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                      {language === "fr" ? "Votre Adresse Email" : "Wò Email Address"} <span className="text-red-500">*</span>
+                    </label>
                     <input 
                       type="email" 
                       required
@@ -3219,24 +3728,28 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Sujet de votre demande</label>
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                      {language === "fr" ? "Sujet de votre demande" : "Tia biabia si le wò me"}
+                    </label>
                     <input 
                       type="text" 
                       value={contactSubject}
                       onChange={(e) => setContactSubject(e.target.value)}
-                      placeholder="Ex: Commande professionnelle de miel..."
+                      placeholder={language === "fr" ? "Ex: Commande professionnelle de miel..." : "Ex: Miel ƒe nudɔdɔ kple dɔwɔƒe..."}
                       className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500 bg-neutral-50/50 outline-none"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Message <span className="text-red-500">*</span></label>
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                      {language === "fr" ? "Message" : "Nya"} <span className="text-red-500">*</span>
+                    </label>
                     <textarea 
                       rows={4}
                       required
                       value={contactMessage}
                       onChange={(e) => setContactMessage(e.target.value)}
-                      placeholder="Dites-nous tout..."
+                      placeholder={language === "fr" ? "Dites-nous tout..." : "Gblɔ nuawo katã na mí..."}
                       className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500 bg-neutral-50/50 outline-none resize-none"
                     ></textarea>
                   </div>
@@ -3246,7 +3759,7 @@ export default function App() {
                     className="w-full bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white py-2.5 rounded-sm font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Send className="w-4 h-4" />
-                    <span>Transmettre mon message</span>
+                    <span>{language === "fr" ? "Transmettre mon message" : "Dɔ nye nya ɖa"}</span>
                   </button>
                 </form>
               </div>
@@ -3256,33 +3769,39 @@ export default function App() {
             {/* --- PRESTIGE INTERACTIVE FAQ COMPONENT --- */}
             <div className="mt-16 pt-12 border-t border-neutral-200">
               <div className="text-center mb-8">
-                <span className="text-[#d4af37] text-xs font-semibold tracking-widest uppercase mb-1 block">RÉPONSES À VOS QUESTIONS</span>
-                <h2 className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-neutral-900 uppercase">Foire Aux Questions Asime</h2>
-                <p className="text-neutral-500 text-xs max-w-sm mx-auto mt-1">Tout savoir sur la livraison à Lomé et la provenance de nos produits du terroir.</p>
+                <span className="text-[#d4af37] text-xs font-semibold tracking-widest uppercase mb-1 block">
+                  {language === "fr" ? "RÉPONSES À VOS QUESTIONS" : "NYƆWƆWƆ NA MI"}
+                </span>
+                <h2 className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-neutral-900 uppercase">
+                  {language === "fr" ? "Foire Aux Questions Asime" : "Biabia Siwo Bɔ Dzidzi"}
+                </h2>
+                <p className="text-neutral-500 text-xs max-w-sm mx-auto mt-1">
+                  {language === "fr" ? "Tout savoir sur la livraison à Lomé et la provenance de nos produits du terroir." : "Nya nuwo katã tso nuxɔxɔ le Lomé kple afi si míeƒlea míeƒe nukuwo tsoe."}
+                </p>
                 <div className="w-10 h-0.5 bg-[#d4af37] mx-auto mt-2"></div>
               </div>
 
               <div className="max-w-2xl mx-auto space-y-3">
                 {[
                   {
-                    q: "Comment s'effectue la livraison à Lomé ?",
-                    a: "Nous livrons directement à domicile ou au bureau dans tous les quartiers de Lomé (Atikoumé, Adidogomé, Hedzranawoé, Tokoin, etc.) sous 2 à 4 heures du lundi au samedi. Le tarif varie selon la distance mais reste très abordable. Dès 15.000 FCFA d'achat, la livraison vous est offerte d'office !"
+                    q: language === "fr" ? "Comment s'effectue la livraison à Lomé ?" : "Aleke woɖoa nudɔdɔwo na ame le Lomé?",
+                    a: language === "fr" ? "Nous livrons directement à domicile ou au bureau dans tous les quartiers de Lomé sous 2 à 4 heures. Dès 15.000 FCFA d'achat, la livraison vous est offerte !" : "Míeɖoa nudɔdɔwo tẽe va aƒeme alo dɔwɔƒe le Lomé du me fiawo katã me le gaƒoƒo 2 va ɖo 4 me. Ne èƒle nũ va ɖo 15.000 FCFA la, míeɖonɛ na wò femaxee!"
                   },
                   {
-                    q: "Quels sont les moyens de paiement acceptés ?",
-                    a: "Pour s'adapter parfaitement aux habitudes locales togolaises, nous acceptons le paiement mobile T-Money, le paiement mobile Flooz, ainsi que le paiement en Espèces directement à la livraison ('Cash on Delivery') après vérification de vos articles."
+                    q: language === "fr" ? "Quels sont les moyens de paiement acceptés ?" : "Axe-mɔ kawoe míelɔ̃na?",
+                    a: language === "fr" ? "Nous acceptons le paiement en ligne sécurisé par Carte Bancaire, Wave, Orange Money ou d'autres portefeuilles sécurisés, ainsi que le paiement en Espèces directement à la livraison après vérification de vos articles." : "Míelɔ̃a kaba-axe to Kaɖi alo Wave kple Orange Money dzi, kple egbexexẽ kple ga le asime ne èkpɔ nɔnɔme na wò nudɔdɔwo vɔ."
                   },
                   {
-                    q: "Les produits cosmétiques et alimentaires sont-ils 100% naturels ?",
-                    a: "Absolument. Asime Togo travaille sous charte d'engagement éthique. Notre miel sauvage provient directement des apiculteurs des Plateaux de Kpalimé, et notre Beurre de Karité est extrait de façon traditionnelle par une coopérative solidaire de femmes rurales à Tandjouaré, garantissant une pureté absolue sans intrants chimiques."
+                    q: language === "fr" ? "Les produits sont-ils 100% naturels ?" : "Atike kple nududuwo nye dzɔdzɔmẽ tɔ 100% a?",
+                    a: language === "fr" ? "Absolument. Asime Togo travaille sous charte d'engagement éthique. Notre miel sauvage provient directement de Kpalimé, et notre Beurre de Karité est extrait de façon traditionnelle." : "Ɛ̃, míewɔa dɔ kple lɔ̃lɔ̃ kple nuteƒewɔwɔ. Míegba anyitsi le Kpalimé gbo, eye míewɔa ami le Tandjouaré to kɔnyinyi mɔ dzi."
                   },
                   {
-                    q: "Peut-on passer commande depuis la Diaspora togolaise ?",
-                    a: "Oui, c'est l'un de nos services préférés ! De nombreux Togolais vivant à l'étranger commandent sur Asime pour faire livrer de magnifiques produits locaux, des paniers frais ou de l'épicerie fine à leurs proches résidant à Lomé. Le paiement s'organise facilement par transfert ou WhatsApp."
+                    q: language === "fr" ? "Peut-on passer commande depuis la Diaspora togolaise ?" : "Ame siwo le duta hã ate ŋu aɖo nua?",
+                    a: language === "fr" ? "Oui, c'est l'un de nos services préférés ! De nombreux Togolais de l'étranger commandent pour faire livrer des paniers frais ou de l'épicerie fine à leurs proches résidant à Lomé." : "Ɛ̃, Togotɔ siwo le duta ate ŋu aƒle nu na woƒe ƒometɔ siwo le Lomé, eye míeɖonɛ na wo kaba."
                   },
                   {
-                    q: "Proposez-vous une boutique physique pour essayer les produits ?",
-                    a: "Asime opère exclusivement en ligne pour vous offrir les meilleurs tarifs possibles en direct des coopératives sans frais d'intermédiaire ou de loyer physique. Vous commandez en toute confiance et la livraison express s'effectue sous 2h à Lomé. De plus, vous pouvez vérifier vos articles avant de payer !"
+                    q: language === "fr" ? "Proposez-vous une boutique physique ?" : "Asi-ƒe xɔ aɖe li si me míate ŋu ayia?",
+                    a: language === "fr" ? "Asime opère exclusivement en ligne pour vous offrir les meilleurs tarifs possibles. Vous commandez en toute confiance et la livraison express s'effectue sous 2h à Lomé. De plus, vous pouvez vérifier vos articles avant de payer !" : "Míewɔa dɔ to kɔmputazi dzi ko be míana asixɔxɔ nyuitɔwo katã na mi. Míeɖonɛ na mi le Lomé le gaƒoƒo 2 me, eye ète ŋu kpɔa nudɔdɔwo vɔ kaba."
                   }
                 ].map((faq, idx) => {
                   const isOpen = activeFaq === idx;
@@ -3313,7 +3832,9 @@ export default function App() {
           </div>
         )}
 
-      </main>
+
+
+      </motion.main>
 
       {/* --- AFFILIATE REDIRECTION INTERSTITIAL OVERLAY --- */}
       {redirectingProduct && (() => {
@@ -3351,16 +3872,16 @@ export default function App() {
                 <p className="text-[11px] text-neutral-300 leading-relaxed">
                   {isWhatsapp ? (
                     <>
-                      👉 <span className="font-bold text-white">Ligne directe du partenaire :</span> Ce produit est géré et distribué de façon autonome par notre partenaire abonné <strong className="text-[#d4af37]">{redirectingProduct.partenaire}</strong>. Vous allez être mis en relation directe avec lui sur WhatsApp pour finaliser l'achat.
+                      👉 <span className="font-bold text-white">{language === "fr" ? "Ligne directe du partenaire :" : "Dɔwɔla ƒe Ka tẽe :"}</span> {language === "fr" ? "Ce produit est géré et distribué de façon autonome par notre partenaire abonné" : "Adzɔnu sia le míaƒe dɔwɔla sɔsɔe dzesi la ƒe asi me pɛpɛɛpɛ"} <strong className="text-[#d4af37]">{redirectingProduct.partenaire}</strong>. {language === "fr" ? "Vous allez être mis en relation directe avec lui sur WhatsApp pour finaliser l'achat." : "Míade wò kple eya dome kadodo me le WhatsApp dzi be nàwu asitsatsa la nu kaba."}
                     </>
                   ) : (
                     <>
-                      👉 <span className="font-bold text-white">Pourquoi cette redirection ?</span> Cet article exclusif est stocké et expédié directement par l'un de nos centres logistiques internationaux et marques partenaires agréés. Pour vous garantir les meilleurs délais d'acheminement, la commande s'effectue sur notre portail d'expédition officiel sécurisé.
+                      👉 <span className="font-bold text-white">{language === "fr" ? "Pourquoi cette redirection ?" : "Nukata míeɖɔ lɔ̃ sia ?"}</span> {language === "fr" ? "Cet article exclusif est stocké et expédié directement par l'un de nos centres logistiques internationaux et marques partenaires agréés. Pour vous garantir les meilleurs délais d'acheminement, la commande s'effectue sur notre portail d'expédition officiel sécurisé." : "Adzɔnu tɔxɛ sia le míaƒe xexeame dɔwɔƒe siwo le Togo kple afimãwo ƒe nudraɖeƒe gãwo me. Be adzɔnu la nava kaba la, míawɔ dɔ si sɔ pɛpɛɛpɛ le asitsamɔ nyuitɔ dzi."}
                     </>
                   )}
                 </p>
                 <p className="text-[10px] text-[#d4af37] font-semibold">
-                  Merci de faire confiance à l'écosystème commercial de Asime ! ❤️🇹🇬
+                  {language === "fr" ? "Merci de faire confiance à l'écosystème commercial de Asime ! ❤️🇹🇬" : "Akpe gã na wò le kakaɖedzi ɖe Asime Togo asitsamɔ dzi ! ❤️🇹🇬"}
                 </p>
               </div>
 
@@ -3606,9 +4127,11 @@ export default function App() {
                           <div className="flex items-center justify-between mb-4 border-b border-neutral-100 pb-3 text-left">
                             <div>
                               <h3 className="text-[11px] font-bold text-neutral-900 uppercase tracking-widest">
-                                Témoignages & Avis Clients
+                                {language === "fr" ? "Témoignages & Avis Clients" : "Kpeɖodziwo & Asitsalawo ƒe Nyawo"}
                               </h3>
-                              <p className="text-[10px] text-stone-500">Avis sincères de notre communauté</p>
+                              <p className="text-[10px] text-stone-500">
+                                {language === "fr" ? "Avis sincères de notre communauté" : "Míaƒe habɔbɔ ƒe kakaɖedzi nyawo"}
+                              </p>
                             </div>
                             <div className="text-right">
                               <div className="text-[#b8901c] font-sans flex items-center gap-1 font-bold text-sm justify-end">
@@ -3616,7 +4139,9 @@ export default function App() {
                                 <span className="text-neutral-900 font-extrabold">{avgRating}</span>
                                 <span className="text-neutral-450 text-xs text-stone-500">/5</span>
                               </div>
-                              <p className="text-[9px] text-neutral-400 font-medium uppercase tracking-widest mt-0.5">{reviews.length} {reviews.length > 1 ? "avis récoltés" : "avis récolté"}</p>
+                              <p className="text-[9px] text-neutral-400 font-medium uppercase tracking-widest mt-0.5">
+                                {reviews.length} {language === "fr" ? (reviews.length > 1 ? "avis récoltés" : "avis récolté") : "nyawo"}
+                              </p>
                             </div>
                           </div>
 
@@ -3624,7 +4149,12 @@ export default function App() {
                           <div className="bg-emerald-50 text-emerald-800 p-2.5 border border-emerald-100 mb-4 flex items-center gap-2 text-left">
                             <span className="text-emerald-800 text-xs">🌿</span>
                             <p className="text-[9.5px] text-emerald-850 font-medium leading-tight">
-                              <strong className="text-emerald-900">Terroir Consommer Local :</strong> Ce produit est issu d'un commerce équitable avec nos paysans et apiculteurs du Togo.
+                              <strong className="text-emerald-900">
+                                {language === "fr" ? "Terroir Consommer Local :" : "Afitɔnu Dzɛ Vavã :"}
+                              </strong>{" "}
+                              {language === "fr" 
+                                ? "Ce produit est issu d'un commerce équitable avec nos paysans et apiculteurs du Togo." 
+                                : "Adzɔnu sia tso dɔwɔla sɔsɔe kple agbledela siwo le Togo la gbɔ pɛpɛɛpɛ."}
                             </p>
                           </div>
 
@@ -3707,7 +4237,7 @@ export default function App() {
                                 {/* Name Input */}
                                 <input
                                   type="text"
-                                  placeholder="Votre Prénom & Ville (ex. Ayoko de Lomé)"
+                                  placeholder={language === "fr" ? "Votre Prénom & Ville (ex. Ayoko de Lomé)" : "Wò Ŋkɔ kple Du (ex. Ayoko le Lomé)"}
                                   value={newReviewAuthor}
                                   onChange={(e) => setNewReviewAuthor(e.target.value)}
                                   className="w-full text-xs p-2.5 bg-white border border-stone-200 rounded-none outline-none focus:border-emerald-800 focus:ring-1 focus:ring-emerald-800/10 text-neutral-800"
@@ -3715,7 +4245,7 @@ export default function App() {
 
                                 {/* Comment Input */}
                                 <textarea
-                                  placeholder="Rédigez votre témoignage sincère..."
+                                  placeholder={language === "fr" ? "Rédigez votre témoignage sincère..." : "Ŋlɔ wò nuteƒewɔwɔ sɔsɔe..."}
                                   value={newReviewText}
                                   onChange={(e) => setNewReviewText(e.target.value)}
                                   rows={2}
@@ -3739,7 +4269,7 @@ export default function App() {
                                 onClick={() => addProductReview(selectedProduct.id)}
                                 className="w-full bg-neutral-950 text-white hover:bg-emerald-800 hover:text-white py-2 text-[10px] font-extrabold tracking-widest uppercase transition-colors shrink-0 cursor-pointer"
                               >
-                                Poster mon avis
+                                {language === "fr" ? "Poster mon avis" : "Dɔ nye nya ɖa"}
                               </button>
                             </div>
                           </div>
@@ -3750,7 +4280,13 @@ export default function App() {
 
                   <div className="text-xs text-neutral-500 font-semibold uppercase mb-4 tracking-wider flex items-center gap-1.5 pt-1">
                     <span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>
-                    <span>Disponibilité : {selectedProduct.stock > 0 ? `${selectedProduct.stock} articles en stock` : "Rupture de Stock"}</span>
+                    <span>
+                      {language === "fr" ? "Disponibilité : " : "Adzɔnu siwo li : "}
+                      {selectedProduct.stock > 0 
+                        ? `${selectedProduct.stock} ${language === "fr" ? "articles en stock" : "adzɔnuwo le nudraƒe"}` 
+                        : (language === "fr" ? "Rupture de Stock" : "Adzɔnu vɔ")
+                      }
+                    </span>
                   </div>
                 </div>
 
@@ -3767,16 +4303,47 @@ export default function App() {
                     }`}
                   >
                     {selectedProduct.partenaire && selectedProduct.partenaire !== "Boutique en Direct"
-                      ? "Profiter de l'Offre Exclusive"
-                      : selectedProduct.stock > 0 ? "Ajouter au Panier" : "Indisponible"}
+                      ? (language === "fr" ? "Profiter de l'Offre Exclusive" : "Xɔ dzo xɔzo tɔxɛ sia")
+                      : selectedProduct.stock > 0 ? (language === "fr" ? "Ajouter au Panier" : "De Kusi Me") : (language === "fr" ? "Indisponible" : "Meli o")}
                   </button>
+
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <button
+                      onClick={() => {
+                        const sId = selectedProduct.vendeurId || "assisted_merchant";
+                        const sName = selectedProduct.partenaire || "Boutique Asime Direct";
+                        startConversationWithSeller(sId, sName, selectedProduct.nom);
+                      }}
+                      className="py-2 px-3 border border-[#0B4D26] text-[#0B4D26] hover:bg-[#0B4D26] hover:text-white transition-all duration-200 font-bold uppercase text-[9px] tracking-widest flex items-center justify-center gap-1 cursor-pointer bg-white"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>{language === "fr" ? "Discuter" : "Kao nya"}</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setSelectedSellerId(selectedProduct.vendeurId || "assisted_merchant");
+                        setSelectedSellerName(selectedProduct.partenaire || "Boutique Asime Direct");
+                        setIsSellerShopOpen(true);
+                      }}
+                      className="py-2 px-3 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 transition-all duration-200 font-bold uppercase text-[9px] tracking-widest flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Store className="w-3.5 h-3.5" />
+                      <span>{language === "fr" ? "Boutique" : "Fiase"}</span>
+                    </button>
+                  </div>
 
                   <button
                     onClick={() => toggleFavorite(selectedProduct.id)}
-                    className="w-full mt-2.5 py-2.5 font-bold text-xs uppercase tracking-widest border border-neutral-300 hover:border-red-500 hover:text-red-500 hover:bg-red-50/20 text-neutral-700 bg-white rounded-none transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full mt-2 py-2 font-bold text-[9px] uppercase tracking-widest border border-neutral-300 hover:border-red-500 hover:text-red-500 hover:bg-red-50/20 text-neutral-700 bg-white rounded-none transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    <Heart className={`w-4 h-4 transition-transform duration-300 ${user?.favorites?.includes(selectedProduct.id) ? "fill-red-500 text-red-500" : "text-neutral-500"}`} />
-                    <span>{user?.favorites?.includes(selectedProduct.id) ? "Retirer de mes favoris" : "Ajouter à mes favoris"}</span>
+                    <Heart className={`w-3.5 h-3.5 transition-transform duration-300 ${user?.favorites?.includes(selectedProduct.id) ? "fill-red-500 text-red-500" : "text-neutral-500"}`} />
+                    <span>
+                      {user?.favorites?.includes(selectedProduct.id) 
+                        ? (language === "fr" ? "Retirer de mes favoris" : "Ɖee tso nye lɔ̃nuwo me") 
+                        : (language === "fr" ? "Ajouter à mes favoris" : "De nye lɔ̃nuwo me")
+                      }
+                    </span>
                   </button>
                 </div>
 
@@ -3784,11 +4351,16 @@ export default function App() {
                 {user && user.role === "affilie" && (
                   <div className="mt-4 p-3 bg-stone-50 border border-[#d4af37]/40 text-left rounded-none">
                     <p className="text-[10px] font-bold text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#d4af37] animate-pulse"></span>
-                      <span>Outils Partenaire Affilié</span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#d4af37] animate-pulse"></span>
+                      <span>{language === "fr" ? "Outils Partenaire Affilié" : "Dɔwɔla Dzesi ƒe Dɔwɔnuwo"}</span>
                     </p>
                     <p className="text-[10px] text-neutral-600 mt-1">
-                      Partagez votre lien de parrainage pour toucher <strong>3% de commission</strong> (soit {formatFCFA(Math.round(selectedProduct.prix * 0.03))}) sur chaque vente !
+                      {language === "fr" 
+                        ? "Partagez votre lien de parrainage pour toucher " 
+                        : "Mã wò kadodo dzesi be nàxɔ "
+                      }
+                      <strong>3% de commission</strong> (soit {formatFCFA(Math.round(selectedProduct.prix * 0.03))}) 
+                      {language === "fr" ? " sur chaque vente !" : " le nudɔdɔ ɖesiaɖe dzi !"}
                     </p>
                     <div className="mt-2.5 flex gap-1.5">
                       <input
@@ -3804,7 +4376,7 @@ export default function App() {
                         }}
                         className="bg-[#d4af37] hover:bg-neutral-950 hover:text-white text-neutral-950 px-3 text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer"
                       >
-                        Copier
+                        {language === "fr" ? "Copier" : "Kɔpie"}
                       </button>
                     </div>
                   </div>
@@ -4110,42 +4682,44 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1.5">Mode de Paiement Préféré</label>
-                    <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1.5">
+                      {language === "fr" ? "Mode de Paiement Préféré" : "Axe-mɔ si nàlɔ̃ dodo"}
+                    </label>
+                    <div className="grid grid-cols-1 gap-2 text-left">
+                      {/* Unified Secure Online Payment (using PayDunya under the hood, but branded neutrally) */}
                       <button
                         type="button"
-                        onClick={() => setCheckoutPayment("T-Money")}
-                        className={`py-1.5 border rounded-sm font-semibold uppercase text-[9px] ${checkoutPayment === "T-Money" ? "bg-neutral-950 text-[#d4af37] border-neutral-950" : "bg-white text-neutral-500 hover:bg-neutral-50 border-neutral-200"}`}
+                        onClick={() => setCheckoutPayment("EnLigne")}
+                        className={`p-3 border rounded-sm flex flex-col justify-between transition-all cursor-pointer ${checkoutPayment === "EnLigne" ? "bg-neutral-950 text-white border-neutral-950 shadow-sm" : "bg-white text-neutral-800 border-neutral-200 hover:bg-neutral-50"}`}
                       >
-                        T-Money
+                        <div className="flex justify-between items-center w-full">
+                          <span className={`font-black uppercase text-[10px] ${checkoutPayment === "EnLigne" ? "text-emerald-400" : "text-emerald-700"}`}>
+                            {language === "fr" ? "Paiement Sécurisé Mobile Money & Cartes" : "Kaba Kɔmputazi fe nudɔdɔ kple Kaɖwo"}
+                          </span>
+                          <span className="text-[8px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded uppercase">
+                            {language === "fr" ? "Instantané" : "Kaba ko"}
+                          </span>
+                        </div>
+                        <span className="text-[8px] text-neutral-400 mt-1.5 leading-tight">
+                          {language === "fr" ? "Payez en toute sécurité par Mobile Money (Wave, Orange Money) ou Carte Bancaire" : "Kpɔ mɔ sɔsɔe to Wave kple Orange Money alo Kaɖi dzi"}
+                        </span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setCheckoutPayment("Flooz")}
-                        className={`py-1.5 border rounded-sm font-semibold uppercase text-[9px] ${checkoutPayment === "Flooz" ? "bg-neutral-950 text-[#d4af37] border-neutral-950" : "bg-white text-neutral-500 hover:bg-neutral-50 border-neutral-200"}`}
-                      >
-                        Flooz
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCheckoutPayment("CinetPay")}
-                        className={`py-1.5 border rounded-sm font-semibold uppercase text-[9px] ${checkoutPayment === "CinetPay" ? "bg-neutral-950 text-[#d4af37] border-neutral-950" : "bg-white text-neutral-500 hover:bg-neutral-50 border-neutral-200"}`}
-                      >
-                        CinetPay
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCheckoutPayment("Stripe")}
-                        className={`py-1.5 border rounded-sm font-semibold uppercase text-[9px] ${checkoutPayment === "Stripe" ? "bg-neutral-950 text-[#d4af37] border-neutral-950" : "bg-white text-neutral-500 hover:bg-neutral-50 border-neutral-200"}`}
-                      >
-                        Stripe (Visa/MC)
-                      </button>
+
+                      {/* Cash on Delivery */}
                       <button
                         type="button"
                         onClick={() => setCheckoutPayment("Espèces")}
-                        className={`col-span-2 py-1.5 border rounded-sm font-semibold uppercase text-[9px] ${checkoutPayment === "Espèces" ? "bg-neutral-950 text-[#d4af37] border-neutral-950" : "bg-white text-neutral-500 hover:bg-neutral-50 border-neutral-200"}`}
+                        className={`p-3 border rounded-sm flex items-center justify-between transition-all cursor-pointer ${checkoutPayment === "Espèces" ? "bg-neutral-950 text-white border-neutral-950 shadow-sm" : "bg-white text-neutral-800 border-neutral-200 hover:bg-neutral-50"}`}
                       >
-                        Espèces (à la livraison)
+                        <div className="flex flex-col">
+                          <span className={`font-black uppercase text-[10px] ${checkoutPayment === "Espèces" ? "text-[#d4af37]" : "text-neutral-900"}`}>
+                            {language === "fr" ? "Espèces à la livraison (COD)" : "Xexe ga ne míeɖoe na wò"}
+                          </span>
+                          <span className="text-[8px] text-neutral-400 mt-1 leading-tight">
+                            {language === "fr" ? "Réglez en espèces directement après vérification de vos articles" : "Axe ga tẽe ne èkpɔ nuku siwo èɖo vɔ"}
+                          </span>
+                        </div>
+                        <span className="text-sm">💵</span>
                       </button>
                     </div>
                   </div>
@@ -4157,12 +4731,16 @@ export default function App() {
                     {checkoutPayment === "Espèces" ? (
                       <>
                         <Phone className="w-4 h-4 cursor-pointer" />
-                        <span>Valider sur WhatsApp (Livraison) 🇹🇬</span>
+                        <span>
+                          {language === "fr" ? "Valider sur WhatsApp (Livraison) 🇹🇬" : "Wɔe na WhatsApp (Livraison) 🇹🇬"}
+                        </span>
                       </>
                     ) : (
                       <>
                         <Check className="w-4 h-4 cursor-pointer" />
-                        <span>Procéder au Paiement Sécurisé 💳</span>
+                        <span>
+                          {language === "fr" ? "Procéder au Paiement Sécurisé 💳" : "Yi kɔmputazi fe xe-mɔ dzi 💳"}
+                        </span>
                       </>
                     )}
                   </button>
@@ -4227,7 +4805,8 @@ export default function App() {
                       message += `🆔 *Commande :* \`${paymentSession.orderId}\`\n`;
                       message += `🔒 *ID Paiement :* \`${paymentSession.transactionId}\`\n`;
                       message += `💳 *Moyen utilisé :* ${paymentSession.providerId.toUpperCase()}\n`;
-                      message += `🟢 *Statut :* PAYÉ ET VALIDÉ VIA ASIME PAY\n\n`;
+                      message += `🟢 *Statut :* PAYÉ ET VALIDÉ VIA ASIME PAY\n`;
+                      message += `🔗 *Suivi de commande :* ${window.location.origin}/?track=${paymentSession.orderId}\n\n`;
                       message += `👤 *Client :* ${checkoutName.trim()}\n`;
                       message += `📞 *Téléphone :* ${checkoutPhone.trim()}\n`;
                       message += `📍 *Quartier :* ${checkoutQuartier.trim()}\n\n`;
@@ -4291,7 +4870,7 @@ export default function App() {
                     <span className="text-neutral-400 font-medium">Destinataire :</span>
                     <strong className="text-neutral-800 text-right font-bold">Asime Togo Pay</strong>
 
-                    <span className="text-neutral-400 font-medium">Référence unique :</span>
+                    <span className="text-neutral-400 font-medium">{language === "fr" ? "Référence unique :" : "Dzesi pɛpɛɛpɛ :"}</span>
                     <strong className="text-neutral-800 font-mono text-right truncate">{paymentSession.transactionId}</strong>
                   </div>
                 </div>
@@ -4299,7 +4878,7 @@ export default function App() {
                 {/* Specific Instructions based on provider */}
                 <div className="bg-yellow-50/50 border border-yellow-200/80 p-4 space-y-3 rounded-none text-xs text-stone-900 leading-relaxed font-sans">
                   <p className="font-extrabold text-[#b8901c] uppercase tracking-widest text-[9px] flex items-center gap-1">
-                    <span>💡 Directives de paiement</span>
+                    <span>💡 {language === "fr" ? "Directives de paiement" : "Fetututu Mɔfiamewo"}</span>
                   </p>
                   <p className="text-stone-700">
                     {paymentSession.instructions}
@@ -4313,61 +4892,72 @@ export default function App() {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <button
-                    onClick={async () => {
-                      setIsPaymentVerifying(true);
-                      try {
-                        const confirmRes = await fetch("/api/payments/confirm", {
-                          method: "POST",
-                          headers: {
-                            "Content-Type": "application/json",
-                            ...(token ? { "Authorization": token } : {})
-                          },
-                          body: JSON.stringify({
-                            transactionId: paymentSession.transactionId,
-                            providerId: paymentSession.providerId
-                          })
-                        });
+                {/* Automatic payment tracking indicator */}
+                <div className="space-y-4">
+                  <div className="bg-emerald-50/50 border border-emerald-200/50 p-4 rounded-xl space-y-3.5 text-xs text-neutral-800">
+                    <p className="font-extrabold text-emerald-800 uppercase tracking-widest text-[9px] flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-ping"></span>
+                      <span>{language === "fr" ? "🔄 Suivi Automatique du Paiement Mobile Money" : "🔄 Suivi na Mobile Money Fetututu"}</span>
+                    </p>
+                    
+                    <div className="space-y-2.5 font-sans">
+                      {[
+                        { id: 1, label: language === "fr" ? "Connexion sécurisée aux serveurs de l'opérateur..." : "Kadodo kple kaɖa dɔwɔla ƒe kɔmputaziwo..." },
+                        { id: 2, label: language === "fr" ? "En attente de votre code PIN sur votre mobile..." : "Lala wò PIN code dzesi le wò kaƒomɔ dzi..." },
+                        { id: 3, label: language === "fr" ? "Réception de l'autorisation de prélèvement..." : "Míexɔ kpeɖodzi be dzoɖoɖoa sɔ..." },
+                        { id: 4, label: language === "fr" ? "Validation finale du transfert avec Asime Pay..." : "Wu dzoɖoɖoa nu kple Asime Pay..." }
+                      ].map((step) => {
+                        const isDone = autoPaymentStep >= step.id;
+                        const isActive = autoPaymentStep === (step.id - 1);
+                        return (
+                          <div key={step.id} className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] border transition-all ${
+                              isDone 
+                                ? "bg-emerald-600 border-emerald-600 text-white" 
+                                : isActive 
+                                ? "bg-amber-100 border-amber-400 text-amber-700 animate-pulse font-black" 
+                                : "bg-stone-50 border-stone-200 text-stone-400"
+                            }`}>
+                              {isDone ? "✓" : step.id}
+                            </div>
+                            <span className={`text-[11px] font-medium leading-relaxed transition-all ${
+                              isDone 
+                                ? "text-stone-400 line-through" 
+                                : isActive 
+                                ? "text-neutral-900 font-extrabold" 
+                                : "text-stone-400"
+                            }`}>
+                              {step.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-                        const confirmData = await confirmRes.json();
-                        if (confirmData.success && confirmData.paymentStatus === "PAID") {
-                          confetti({
-                            particleCount: 150,
-                            spread: 80,
-                            origin: { y: 0.6 }
-                          });
-                          setIsPaymentSuccess(true);
-                          showToast("✓ Paiement vérifié et confirmé !");
-                        } else {
-                          alert(`Le paiement n'a pas encore été détecté. Veuillez d'abord valider le transfert sur votre mobile.`);
-                        }
-                      } catch (err) {
-                        console.error("Payment confirmation polling failed:", err);
-                        alert("Impossible de contacter le serveur de paiement pour vérification.");
-                      } finally {
-                        setIsPaymentVerifying(false);
-                      }
-                    }}
-                    disabled={isPaymentVerifying}
-                    className="w-full bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 disabled:bg-neutral-300 text-white font-extrabold text-[10px] uppercase tracking-widest py-3 px-4 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    {isPaymentVerifying ? (
-                      <span className="flex items-center gap-1">
-                        <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                        <span>Vérification en cours...</span>
-                      </span>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        <span>Confirmer mon transfert</span>
-                      </>
-                    )}
-                  </button>
-
-                  <p className="text-[9px] text-center text-neutral-400 font-sans leading-relaxed">
-                    Vos transferts transitent de manière cryptée et sécurisée par la passerelle Asime.
-                  </p>
+                  <div className="bg-[#FAF9F5] border border-stone-200 p-4 rounded-xl space-y-2 text-center">
+                    <div className="flex items-center justify-center gap-2 text-neutral-800">
+                      <span className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin animate-duration-1000"></span>
+                      <p className="text-[11px] font-black uppercase tracking-wider text-neutral-900">
+                        {autoPaymentStatusText.includes("Initialisation") 
+                          ? (language === "fr" ? "Initialisation de la connexion sécurisée..." : "Kadzizidzo gɔmedzedze...")
+                          : autoPaymentStatusText.includes("Connexion")
+                          ? (language === "fr" ? "Connexion sécurisée aux serveurs..." : "Kadzizidzo kple kaɖa dɔwɔla...")
+                          : autoPaymentStatusText.includes("En attente")
+                          ? (language === "fr" ? "En attente de votre PIN..." : "Lala wò PIN code...")
+                          : autoPaymentStatusText.includes("Saisie")
+                          ? (language === "fr" ? "Traitement de la transaction..." : "Ele dzo le edzi...")
+                          : autoPaymentStatusText.includes("Validation")
+                          ? (language === "fr" ? "Validation finale..." : "Wu dzoɖoɖoa nu...")
+                          : autoPaymentStatusText}
+                      </p>
+                    </div>
+                    <p className="text-[9px] text-neutral-400 font-medium">
+                      {language === "fr" 
+                        ? "Ne fermez pas cette fenêtre. La validation est entièrement automatisée." 
+                        : "Megatu fɛst sia o. Míaƒe kɔmputazi le dɔwɔm tẽe."}
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -4386,11 +4976,15 @@ export default function App() {
               {renderLogoNode("w-9 h-9")}
               <div>
                 <span className="font-sans font-bold tracking-[0.15em] text-white uppercase text-base leading-none block">ASIME</span>
-                <span className="text-[8px] text-[#FAA61A] tracking-wider uppercase font-semibold block mt-1">Le local, notre fierté</span>
+                <span className="text-[8px] text-[#FAA61A] tracking-wider uppercase font-semibold block mt-1">
+                  {language === "fr" ? "Le local, notre fierté" : "Míaƒe anyigbadzinu, míaƒe dada"}
+                </span>
               </div>
             </div>
             <p className="text-neutral-400 leading-relaxed text-[11px]">
-              La vitrine par excellence des produits nobles togolais. Conçue de manière minimaliste, nous allions le prestige et le consommer local togolais. Un nom authentique que l'on prononce avec fierté.
+              {language === "fr" 
+                ? "La vitrine par excellence des produits nobles togolais. Conçue de manière minimaliste, nous allions le prestige et le consommer local togolais. Un nom authentique que l'on prononce avec fierté."
+                : "Togo-tɔwo ƒe adzɔnu nyuiwo ɖela tɔxɛ. Míetsɔa bubu kple anyigbadzinuwo dada kpea ɖekae le mɔ bɔbɔe nu."}
             </p>
             <div className="text-neutral-500 font-mono text-[9px] flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
@@ -4400,26 +4994,28 @@ export default function App() {
 
           {/* Quick links to tabs */}
           <div>
-            <h4 className="font-semibold text-xs tracking-wider uppercase mb-4 text-[#d4af37]">Navigation</h4>
+            <h4 className="font-semibold text-xs tracking-wider uppercase mb-4 text-[#d4af37]">
+              {language === "fr" ? "Navigation" : "Mɔfiamewo"}
+            </h4>
             <ul className="space-y-2 text-neutral-400">
               <li>
-                <button onClick={() => setActiveTab("accueil")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer">
-                  Accueil du site
+                <button onClick={() => setActiveTab("accueil")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
+                  {language === "fr" ? "Accueil du site" : "Aƒeme gɔmedzedze"}
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab("catalogue")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer">
-                  Catalogue Produits
+                <button onClick={() => setActiveTab("catalogue")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
+                  {language === "fr" ? "Catalogue Produits" : "Adzɔnuwo ƒe Fiasã"}
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab("blog")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer">
-                  Le Journal de Asime
+                <button onClick={() => setActiveTab("blog")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
+                  {language === "fr" ? "Le Journal de Asime" : "Asime Nyadzɔdzɔwo"}
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab("contact")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer">
-                  Nous Contacter
+                <button onClick={() => setActiveTab("contact")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
+                  {language === "fr" ? "Nous Contacter" : "Ŋlɔ nya na mí"}
                 </button>
               </li>
             </ul>
@@ -4427,24 +5023,30 @@ export default function App() {
 
           {/* Business Hours */}
           <div>
-            <h4 className="font-semibold text-xs tracking-wider uppercase mb-4 text-[#d4af37]">Service Client</h4>
+            <h4 className="font-semibold text-xs tracking-wider uppercase mb-4 text-[#d4af37]">
+              {language === "fr" ? "Service Client" : "Kpekpeɖeŋu na Asitsala"}
+            </h4>
             <ul className="space-y-2 text-neutral-400 leading-relaxed text-[11px]">
-              <li>📍 Service 100% en Ligne — Lomé, Togo</li>
-              <li>📞 Administration : {ASIME_SETTINGS.PHONE_DISPLAY_PRIMARY}</li>
-              <li>💬 Service Client : 7j/7 par WhatsApp</li>
-              <li>🚚 Commande expédiée sous 2h à Lomé</li>
+              <li>📍 {language === "fr" ? "Service 100% en Ligne — Lomé, Togo" : "Dɔwɔwɔ 100% le Kɔmputazi — Lomé, Togo"}</li>
+              <li>📞 {language === "fr" ? "Administration : " : "Dɔdrɔ̃ : "}{ASIME_SETTINGS.PHONE_DISPLAY_PRIMARY}</li>
+              <li>💬 {language === "fr" ? "Service Client : 7j/7 par WhatsApp" : "Asitsalawo Kpekpeɖeŋu : 7j/7 le WhatsApp dzi"}</li>
+              <li>🚚 {language === "fr" ? "Commande expédiée sous 2h à Lomé" : "Nudɔdɔ woɖonɛ le Lomé le gaƒoƒo 2 me"}</li>
             </ul>
           </div>
 
           {/* Google Partnership affiliate indicator */}
           <div className="space-y-3">
-            <h4 className="font-semibold text-xs tracking-wider uppercase mb-3 text-[#d4af37]">Partenariats Officiels</h4>
+            <h4 className="font-semibold text-xs tracking-wider uppercase mb-3 text-[#d4af37]">
+              {language === "fr" ? "Partenariats Officiels" : "Dɔwɔwɔ Ɖekae Dzesiwo"}
+            </h4>
             <p className="text-neutral-400 leading-relaxed text-[11px]">
-              Asime travaille conjointement avec les coopératives locales de Kpalimé et de l'Est-Mono pour valoriser la culture togolaise à l'échelle internationale.
+              {language === "fr" 
+                ? "Asime travaille conjointement avec les coopératives locales de Kpalimé et de l'Est-Mono pour valoriser la culture togolaise à l'échelle internationale."
+                : "Asime kple Kpalimé kpakple Est-Mono dɔwɔla habɔbɔwo wɔa dɔ ɖekae be woado Togo-tɔwo ƒe dekɔnuwo ɖe gã le xexeame katã."}
             </p>
             <div className="flex gap-2">
               <span className="bg-neutral-900 border border-neutral-800 text-[#d4af37] px-2 py-1 text-[9px] font-bold rounded-sm tracking-wide">
-                COOPÉRATIVES LOCALES
+                {language === "fr" ? "COOPÉRATIVES LOCALES" : "DƆWƆLA HABƆBƆWO"}
               </span>
               <span className="bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 px-2 py-1 text-[9px] font-bold rounded-sm tracking-wide">
                 MADE IN TOGO 🇹🇬
@@ -4455,7 +5057,7 @@ export default function App() {
         </div>
 
         <div className="max-w-7xl mx-auto pt-8 mt-8 border-t border-neutral-800 text-center text-neutral-500 text-[10px] uppercase tracking-widest">
-          <p>© {new Date().getFullYear()} Asime. TOUS DROITS RÉSERVÉS. CONÇU POUR LE CONSOMMER LOCAL TOGOLAIS 🇹🇬</p>
+          <p>© {new Date().getFullYear()} Asime. {t("footer_rights")} {language === "fr" ? "CONÇU POUR LE CONSOMMER LOCAL TOGOLAIS 🇹🇬" : "WÒ WƆE NA TOGO-TƆWO ƑE ADZƆNUWO 🇹🇬"}</p>
         </div>
       </footer>
 
@@ -4465,7 +5067,7 @@ export default function App() {
           initial={{ opacity: 0, y: 40, scale: 0.92 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed bottom-6 right-6 z-50 bg-neutral-950 border border-[#d4af37]/60 text-white text-xs px-5 py-3.5 shadow-2xl flex items-center gap-3 rounded-none tracking-wide"
+          className="fixed bottom-20 right-6 z-50 bg-neutral-950 border border-[#d4af37]/60 text-white text-xs px-5 py-3.5 shadow-2xl flex items-center gap-3 rounded-none tracking-wide"
           id="toast-notification-banner"
           role="alert"
         >
@@ -4473,6 +5075,19 @@ export default function App() {
           <span className="font-semibold text-neutral-100">{toastMessage}</span>
         </motion.div>
       )}
+
+      {/* Floating Language Switcher Button */}
+      <div className="fixed bottom-6 right-6 z-40">
+        <button
+          onClick={() => setLanguage(language === "fr" ? "ee" : "fr")}
+          className="flex items-center gap-2 bg-neutral-950 hover:bg-[#d4af37] border-2 border-[#d4af37] text-[#d4af37] hover:text-neutral-950 font-sans font-black text-[10px] uppercase tracking-widest px-4 py-2.5 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-pointer"
+          title={language === "fr" ? "Passer en Eʋegbe (Ewe)" : "Passer en Français"}
+          id="floating-language-toggle-btn-bottom"
+        >
+          <span className="text-xs">🌐</span>
+          <span>{language === "fr" ? "Eʋegbe (Ewe)" : "Français"}</span>
+        </button>
+      </div>
 
       {/* --- HIGH RESOLUTION ACCENTED IMAGE ZOOM MODAL (MODALE DE ZOOM RAPIDE) --- */}
       {zoomedImage && (
@@ -4528,6 +5143,243 @@ export default function App() {
                 <span>Enregistrer l'image</span>
               </button>
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* --- CUSTOMER SELLER SHOP MODAL (BOUTIQUE VENDEUR) --- */}
+      {/* ========================================================= */}
+      {isSellerShopOpen && (
+        <div className="fixed inset-0 z-50 bg-neutral-950/80 backdrop-blur-xs flex items-center justify-center p-4 shadow-2xl animate-fade-in" onClick={() => setIsSellerShopOpen(false)}>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white max-w-4xl w-full max-h-[85vh] border border-[#d4af37]/35 shadow-2xl overflow-hidden flex flex-col relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button 
+              type="button" 
+              onClick={() => setIsSellerShopOpen(false)}
+              className="absolute top-4 right-4 bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 p-2 rounded-full z-20 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4 cursor-pointer" />
+            </button>
+
+            {/* Banner Geometric/Traditional Accent */}
+            <div className="h-32 bg-stone-900 bg-[linear-gradient(to_right,#1c1917,#451a03)] text-white relative p-6 flex items-end">
+              <div className="absolute inset-0 opacity-10 bg-repeat bg-[radial-gradient(#d4af37_1px,transparent_1px)] [background-size:16px_16px]"></div>
+              <div className="z-10 flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-[#d4af37] border-2 border-white flex items-center justify-center font-display font-black text-2xl text-neutral-950 uppercase shadow-lg">
+                  {selectedSellerName.substring(0, 2)}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-display font-black text-lg uppercase tracking-wider text-white">{selectedSellerName}</h3>
+                    <span className="bg-[#0B4D26] text-white font-mono text-[8px] font-black px-1.5 py-0.5 uppercase tracking-widest rounded-sm">
+                      Artisan Certifié
+                    </span>
+                  </div>
+                  <p className="text-stone-300 text-[11px] font-sans mt-0.5">Boutique Togolaise Authentique • Créations artisanales éthiques</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content split */}
+            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+              
+              {/* Left sidebar: Info and contact */}
+              <div className="md:col-span-4 space-y-4 border-b md:border-b-0 md:border-r border-stone-100 pb-4 md:pb-0 md:pr-6 text-left">
+                <div>
+                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">À propos de l'artisan</h4>
+                  <p className="text-xs text-stone-600 leading-relaxed font-sans">
+                    Cette boutique vous propose des créations faites main inspirées de la tradition et de l'artisanat du Togo. Chaque pièce achetée soutient directement notre coopérative locale et favorise l'emploi éthique et durable de nos couturiers et artisans togolais.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Modes de Livraison</h4>
+                  <div className="space-y-1 text-[11px] font-sans text-stone-600">
+                    <p className="flex items-center gap-1.5">📦 • Envoi sécurisé par le réseau Asime</p>
+                    <p className="flex items-center gap-1.5">🛵 • Livraison express à Lomé (24h)</p>
+                    <p className="flex items-center gap-1.5">🌍 • Expédition diaspora Europe & Amérique</p>
+                  </div>
+                </div>
+
+                <div className="pt-4 flex flex-col gap-2">
+                  <button
+                    onClick={() => {
+                      setIsSellerShopOpen(false);
+                      startConversationWithSeller(selectedSellerId, selectedSellerName, "Boutique " + selectedSellerName);
+                    }}
+                    className="w-full py-2.5 bg-[#0B4D26] hover:bg-neutral-950 text-white font-extrabold uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-1.5 cursor-pointer border-0"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Discuter avec l'artisan</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Right panel: Product catalog */}
+              <div className="md:col-span-8 flex flex-col">
+                <h4 className="text-xs font-black text-neutral-950 uppercase tracking-wider mb-4 pb-2 border-b border-stone-100 text-left">
+                  Catalogue de la Boutique ({products.filter(p => p.vendeurId === selectedSellerId || p.partenaire === selectedSellerName).length} produits)
+                </h4>
+
+                {products.filter(p => p.vendeurId === selectedSellerId || p.partenaire === selectedSellerName).length === 0 ? (
+                  <div className="flex-1 py-16 text-center text-stone-400">
+                    <Store className="w-8 h-8 mx-auto stroke-1 mb-2 text-stone-300" />
+                    <p className="text-xs font-sans">Aucun produit n'est actuellement en ligne pour cette boutique.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {products.filter(p => p.vendeurId === selectedSellerId || p.partenaire === selectedSellerName).map((p) => (
+                      <div 
+                        key={p.id}
+                        onClick={() => {
+                          setSelectedProduct(p);
+                          setIsSellerShopOpen(false);
+                        }}
+                        className="group border border-stone-100 p-2 hover:border-[#d4af37]/50 transition-all cursor-pointer flex flex-col text-left bg-white"
+                      >
+                        <div className="aspect-square bg-stone-50 overflow-hidden relative mb-2">
+                          <img src={p.images[0]} alt={p.nom} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        </div>
+                        <h5 className="font-display font-bold text-[10px] sm:text-[11px] text-neutral-900 truncate uppercase">{p.nom}</h5>
+                        <p className="text-[10px] text-[#b8901c] font-black mt-0.5">{formatFCFA(p.prix)}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* --- CUSTOMER REAL-TIME CHAT DRAWER (MESSAGERIE CLIENT) --- */}
+      {/* ========================================================= */}
+      {isChatDrawerOpen && (
+        <div className="fixed inset-0 z-50 bg-neutral-950/70 backdrop-blur-xs flex justify-end animate-fade-in" onClick={() => setIsChatDrawerOpen(false)}>
+          <motion.div 
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            className="bg-white w-full max-w-xl h-full shadow-2xl flex flex-col relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 bg-stone-900 text-white border-b border-stone-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-[#d4af37]" />
+                <h3 className="font-display font-black uppercase text-xs tracking-wider">Mes Discussions Artisans</h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setIsChatDrawerOpen(false)}
+                className="bg-stone-800 hover:bg-[#d4af37] text-white hover:text-neutral-950 p-1.5 rounded-full transition-colors cursor-pointer border-0"
+              >
+                <X className="w-4 h-4 cursor-pointer" />
+              </button>
+            </div>
+
+            {/* Split View if threads exist */}
+            {chatDrawerThreads.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-stone-400">
+                <MessageCircle className="w-12 h-12 stroke-1 text-stone-300 mb-2" />
+                <h4 className="text-xs font-bold uppercase text-stone-600">Aucune discussion en cours</h4>
+                <p className="text-[11px] text-stone-400 max-w-xs mt-1">Visitez une boutique ou ouvrez la fiche d'un produit pour démarrer une discussion personnalisée avec un créateur togolais.</p>
+              </div>
+            ) : (
+              <div className="flex-1 flex overflow-hidden">
+                {/* Left side: threads list */}
+                <div className="w-1/3 border-r border-stone-100 flex flex-col overflow-y-auto bg-stone-50">
+                  {chatDrawerThreads.map((thread) => (
+                    <button
+                      key={thread.id}
+                      onClick={() => setActiveChatThreadId(thread.id)}
+                      className={`p-3 text-left border-b border-stone-100 transition-colors flex flex-col gap-1 cursor-pointer border-l-2 w-full ${
+                        activeChatThreadId === thread.id ? "bg-white border-l-[#0B4D26]" : "bg-transparent border-l-transparent hover:bg-stone-100"
+                      }`}
+                    >
+                      <span className="text-[10px] font-bold text-neutral-900 truncate uppercase">{thread.sellerName}</span>
+                      <span className="text-[9px] text-[#0B4D26] font-medium truncate">{thread.product}</span>
+                      <p className="text-[9px] text-stone-500 truncate leading-tight mt-0.5">{thread.lastMessage}</p>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Right side: active chat window */}
+                <div className="w-2/3 flex flex-col bg-stone-50 overflow-hidden">
+                  {(() => {
+                    const currentThread = chatDrawerThreads.find(t => t.id === activeChatThreadId);
+                    if (!currentThread) {
+                      return (
+                        <div className="flex-grow flex flex-col items-center justify-center text-stone-400 p-6 text-center">
+                          <MessageCircle className="w-8 h-8 stroke-1 text-stone-300 mb-1" />
+                          <p className="text-[10px] font-sans">Sélectionnez une discussion pour démarrer le dialogue en direct.</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <>
+                        {/* Selected Thread Header */}
+                        <div className="p-3 bg-white border-b border-stone-150 flex items-center justify-between">
+                          <div className="text-left">
+                            <span className="text-[10px] font-bold text-stone-800 block uppercase">{currentThread.sellerName}</span>
+                            <span className="text-[8px] text-[#0B4D26] font-bold">{currentThread.product}</span>
+                          </div>
+                          <span className="bg-emerald-50 text-[#0B4D26] border border-emerald-150 font-sans text-[8px] font-bold px-1.5 py-0.5 rounded-sm">
+                            En Ligne
+                          </span>
+                        </div>
+
+                        {/* Message list */}
+                        <div className="flex-grow overflow-y-auto p-4 space-y-3 flex flex-col">
+                          {currentThread.messages.map((msg: any, idx: number) => {
+                            const isMe = msg.sender === "customer";
+                            return (
+                              <div 
+                                key={idx} 
+                                className={`max-w-[85%] rounded-lg p-2.5 text-xs font-sans shadow-xs ${
+                                  isMe 
+                                    ? "bg-[#0B4D26] text-white self-end rounded-br-none" 
+                                    : "bg-white text-stone-800 border border-stone-150 self-start rounded-bl-none text-left"
+                                }`}
+                              >
+                                <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                                <span className={`text-[8px] block text-right mt-1 ${isMe ? "text-stone-300" : "text-stone-400"}`}>
+                                  {msg.date ? new Date(msg.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "À l'instant"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Input Area */}
+                        <form onSubmit={sendCustomerMessage} className="p-3 bg-white border-t border-stone-150 flex gap-2">
+                          <input
+                            type="text"
+                            value={chatDrawerMessage}
+                            onChange={(e) => setChatDrawerMessage(e.target.value)}
+                            placeholder="Votre message à l'artisan..."
+                            className="flex-grow px-3 py-2 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-[#0B4D26]"
+                          />
+                          <button
+                            type="submit"
+                            className="bg-[#0B4D26] hover:bg-[#0B4D26]/90 text-white font-extrabold uppercase tracking-widest px-4 text-[10px] rounded-lg transition-colors cursor-pointer border-0 flex items-center justify-center"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                          </button>
+                        </form>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </motion.div>
         </div>
       )}
@@ -4658,6 +5510,228 @@ export default function App() {
             </div>
 
           </div>
+        </div>
+      )}
+
+      {/* --- DYNAMIC ORDER TRACKING MODAL COMPONENT (SUIVI DYNAMIQUE) --- */}
+      {isTrackingModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-xs">
+          <div className="absolute inset-0 animate-fade-in" onClick={() => setIsTrackingModalOpen(false)}></div>
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white max-w-lg w-full rounded-none overflow-hidden shadow-2xl relative border-t-4 border-t-emerald-800 z-10 p-5 md:p-6"
+          >
+            {/* Close Button */}
+            <button 
+              onClick={() => setIsTrackingModalOpen(false)}
+              className="absolute top-4 right-4 text-neutral-400 hover:text-neutral-900 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {trackingError ? (
+              <div className="text-center py-6 space-y-4">
+                <div className="mx-auto w-12 h-12 rounded-full bg-red-50 flex items-center justify-center text-red-600">
+                  <AlertCircle className="w-6 h-6" />
+                </div>
+                <h3 className="font-display font-black text-lg text-neutral-900 uppercase tracking-tight">
+                  {language === "fr" ? "Commande Introuvable" : "Nudɔdɔ Sia Mele Afisia O"}
+                </h3>
+                <p className="text-xs text-neutral-600">
+                  {trackingError}
+                </p>
+                <button
+                  onClick={() => setIsTrackingModalOpen(false)}
+                  className="px-4 py-2 bg-neutral-900 hover:bg-neutral-850 text-white font-bold text-xs uppercase tracking-widest transition-all cursor-pointer"
+                >
+                  {language === "fr" ? "Retour à l'accueil" : "Trɔ yi aƒeme"}
+                </button>
+              </div>
+            ) : trackingOrderData ? (() => {
+              const order = trackingOrderData;
+              // determine active step index based on orderStatus and paymentStatus
+              let activeStep = 0; // 0: En préparation, 1: Prêt, 2: En livraison, 3: Livré
+              
+              if (order.orderStatus === "Livré" || order.orderStatus === "Livre") {
+                activeStep = 3;
+              } else if (order.orderStatus === "En cours de livraison" || order.orderStatus === "EnLivraison") {
+                activeStep = 2;
+              } else if (order.orderStatus === "Prêt" || order.orderStatus === "Prêt à être expédié" || order.orderStatus === "Pret") {
+                activeStep = 1;
+              } else {
+                activeStep = 0;
+              }
+
+              const steps = [
+                {
+                  labelFr: "Commande Enregistrée",
+                  labelEwe: "Nudɔdɔ Enɔta",
+                  descFr: "Votre commande est enregistrée et en cours de traitement.",
+                  descEwe: "Woxɔ wò nudɔdɔ pɛpɛɛpɛ, míele dɔ wɔm le eŋu."
+                },
+                {
+                  labelFr: "Préparation Terminée",
+                  labelEwe: "Dzadzraɖo Wu Nu",
+                  descFr: "Le colis est emballé avec soin par l'artisan local.",
+                  descEwe: "Afitɔnu dɔwɔla la bla wò nudraɖeƒe nyuie."
+                },
+                {
+                  labelFr: "En Cours de Livraison",
+                  labelEwe: "Le Mɔ Dzi",
+                  descFr: "Le coursier d'Asime Express a récupéré votre commande.",
+                  descEwe: "Asime Express dɔdɔla le mɔ dzi kple wò nudɔdɔ la."
+                },
+                {
+                  labelFr: "Colis Livré",
+                  labelEwe: "Woɖoe Na Wò",
+                  descFr: "Commande livrée avec succès ! Merci de consommer local.",
+                  descEwe: "Nudɔdɔ la ɖo asiwò! Akpe na dɔwɔla sɔsɔe dzesi la."
+                }
+              ];
+
+              return (
+                <div className="space-y-5">
+                  {/* Header Title */}
+                  <div className="text-center space-y-1">
+                    <span className="text-[#d4af37] text-[10px] font-extrabold uppercase tracking-widest block">
+                      {language === "fr" ? "Suivi en temps réel" : "Mɔ kplɔkplɔ le mɔnu dzi"}
+                    </span>
+                    <h3 className="font-display font-black text-xl text-neutral-900 uppercase tracking-tight">
+                      {language === "fr" ? "Suivi de Commande" : "Nudɔdɔ fɔfɔ mɔ"}
+                    </h3>
+                    <div className="inline-block bg-neutral-100 text-neutral-800 text-[10px] font-mono font-bold px-3 py-1 border border-neutral-200">
+                      #{order.id}
+                    </div>
+                  </div>
+
+                  {/* Status Indicator Bar */}
+                  <div className="bg-emerald-50/50 border border-emerald-100 p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-emerald-800 uppercase font-extrabold tracking-wider leading-none mb-1">
+                        {language === "fr" ? "Statut Actuel" : "Nɔnɔme si me wòle"}
+                      </p>
+                      <h4 className="font-sans font-black text-xs text-emerald-950 uppercase">
+                        {language === "fr" ? order.orderStatus : (order.orderStatus === "En préparation" ? "Dzadzraɖo me" : (order.orderStatus === "En cours de livraison" ? "Mɔ dzi" : "Livré"))}
+                      </h4>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-stone-500 uppercase font-bold tracking-wider leading-none mb-1">
+                        {language === "fr" ? "Paiement" : "Fetu"}
+                      </p>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 uppercase ${
+                        order.paymentStatus === "Payé" || order.paymentStatus === "Paid"
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                          : "bg-amber-100 text-amber-800 border border-amber-200"
+                      }`}>
+                        {language === "fr" ? order.paymentStatus : (order.paymentStatus === "Payé" ? "Fetu wu" : "Fetu kpɔ o")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progressive Timeline Visualizer */}
+                  <div className="relative pl-6 space-y-6 py-2 border-l-2 border-neutral-200">
+                    {steps.map((step, idx) => {
+                      const isCompleted = idx <= activeStep;
+                      const isActive = idx === activeStep;
+                      return (
+                        <div key={idx} className="relative">
+                          {/* Circle bullet node indicator */}
+                          <div className={`absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 flex items-center justify-center transition-all ${
+                            isActive 
+                              ? "bg-emerald-800 border-emerald-800 text-white scale-125 shadow-md" 
+                              : isCompleted 
+                                ? "bg-emerald-100 border-emerald-800 text-emerald-800" 
+                                : "bg-white border-neutral-300 text-neutral-300"
+                          }`}>
+                            {isCompleted && (
+                              <svg className="w-2.5 h-2.5 stroke-current fill-none" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.5" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+
+                          <div className="text-left">
+                            <h5 className={`font-sans font-black text-[11px] uppercase tracking-wider ${
+                              isActive ? "text-emerald-900 font-extrabold" : isCompleted ? "text-neutral-800" : "text-neutral-400"
+                            }`}>
+                              {language === "fr" ? step.labelFr : step.labelEwe}
+                            </h5>
+                            <p className="text-[10.5px] text-neutral-500 leading-tight mt-0.5">
+                              {language === "fr" ? step.descFr : step.descEwe}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Summary of Articles & Client */}
+                  <div className="bg-stone-50 border border-stone-200 p-3 space-y-3">
+                    <h5 className="text-[10px] font-black uppercase text-neutral-800 tracking-wider pb-1.5 border-b border-stone-200 flex items-center justify-between">
+                      <span>{language === "fr" ? "Résumé de la commande" : "Nudɔdɔ nuɖoanyi"}</span>
+                      <span className="font-mono">{new Date(order.createdAt).toLocaleDateString()}</span>
+                    </h5>
+                    
+                    {/* Items detail list */}
+                    <div className="max-h-[100px] overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-stone-200">
+                      {order.items && order.items.map((item: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-xs text-neutral-700">
+                          <span className="truncate max-w-[70%]">
+                            <strong className="text-neutral-900">{item.product.nom}</strong> x{item.quantity}
+                          </span>
+                          <span className="font-mono font-bold text-neutral-900">{formatFCFA(item.product.prix * item.quantity)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Shipping Address */}
+                    <div className="pt-2 border-t border-stone-200 text-left space-y-1 text-[11px] text-neutral-600">
+                      <p>👤 <strong>Client :</strong> {order.shippingDetails?.name}</p>
+                      <p>📞 <strong>Téléphone :</strong> {order.shippingDetails?.phone}</p>
+                      <p>📍 <strong>Quartier :</strong> {order.shippingDetails?.quartier}</p>
+                    </div>
+
+                    {/* Grand Total */}
+                    <div className="pt-2 border-t border-stone-200 flex justify-between items-center text-xs font-sans font-black">
+                      <span className="uppercase tracking-widest text-[10px] text-stone-500">{language === "fr" ? "TOTAL À PAYER" : "Fetu katã"}</span>
+                      <span className="text-[#b8901c] font-black text-sm">{formatFCFA(order.totalAmount)}</span>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <a
+                      href={`https://wa.me/${ASIME_SETTINGS.WHATSAPP_MERCHANT_NUMBER}?text=${encodeURIComponent(
+                        `Bonjour, je souhaite avoir une mise à jour sur ma commande #${order.id} s'il vous plaît.`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-grow bg-green-600 hover:bg-green-700 text-white font-extrabold text-[10px] uppercase tracking-widest py-3 px-4 flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center"
+                    >
+                      <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
+                        <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.005 5.234 5.25 0 11.726 0c3.14 0 6.087 1.22 8.305 3.44 2.22 2.219 3.442 5.161 3.441 8.297-.005 6.492-5.25 11.726-11.726 11.726-2.001 0-3.971-.51-5.714-1.48L0 24zm6.237-3.955c1.614.957 3.238 1.48 5.482 1.48 5.432 0 9.854-4.42 9.858-9.853.002-2.633-1.015-5.11-2.861-6.958C16.868 2.867 14.397 1.85 11.726 1.85 6.299 1.85 1.88 6.27 1.876 11.701c-.001 2.115.556 4.182 1.614 5.975l-.971 3.546 3.638-.937z"/>
+                      </svg>
+                      <span>{language === "fr" ? "Contacter le Vendeur" : "Bɔbɔ ka dɔwɔla"}</span>
+                    </a>
+                    <button
+                      onClick={() => setIsTrackingModalOpen(false)}
+                      className="px-5 py-3 bg-neutral-900 hover:bg-neutral-850 text-white font-extrabold text-[10px] uppercase tracking-widest transition-all cursor-pointer border border-neutral-950 text-center"
+                    >
+                      {language === "fr" ? "Fermer" : "Tutu"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })() : (
+              <div className="text-center py-10 space-y-3">
+                <div className="w-10 h-10 border-4 border-[#d4af37] border-t-transparent rounded-full animate-spin mx-auto"></div>
+                <p className="text-xs text-neutral-500">
+                  {language === "fr" ? "Chargement des informations de suivi..." : "Mɔ kplɔkplɔ dɔwɔla le dɔ dzi..."}
+                </p>
+              </div>
+            )}
+          </motion.div>
         </div>
       )}
 
@@ -5053,27 +6127,44 @@ export default function App() {
       {/* --- FLOATING CUSTOMER PROFILE DRAWER (ESPACE CLIENT) --- */}
       {/* ========================================================= */}
       {isProfileOpen && user && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-neutral-950/75 backdrop-blur-xs animate-fade-in">
-          <div className={`bg-white w-full h-full flex flex-col justify-between shadow-2xl relative border-l border-neutral-200 transition-all duration-300 ${
-            sellerDashboardActive ? "max-w-6xl md:max-w-[85vw]" : "max-w-lg"
+        <div className={`fixed inset-0 z-50 flex transition-all duration-300 animate-fade-in ${
+          sellerDashboardActive 
+            ? "bg-white w-screen h-screen" 
+            : "justify-end bg-neutral-950/75 backdrop-blur-xs"
+        }`}>
+          <div className={`bg-white w-full h-full flex flex-col justify-between relative transition-all duration-300 ${
+            sellerDashboardActive 
+              ? "max-w-full h-full border-0 rounded-none shadow-none" 
+              : "max-w-lg border-l border-neutral-200 shadow-2xl"
           }`}>
             
-            {/* Drawer Header */}
-            <div className="p-4 bg-neutral-950 text-white flex items-center justify-between col-span-2">
-              <div className="flex items-center gap-2 text-left">
-                <User className="w-5 h-5 text-[#d4af37]" />
-                <div>
-                  <h3 className="font-display font-extrabold uppercase text-xs tracking-wider">Mon Espace Client Premium</h3>
-                  <p className="text-[9px] text-[#d4af37] font-semibold uppercase tracking-widest">Connecté en tant que {user.name.split(" ")[0]}</p>
+            {/* Drawer Header - hidden when seller workspace is active for a true full-screen experience */}
+            {!sellerDashboardActive && (
+              <div className="p-4 text-white flex items-center justify-between transition-colors duration-300 bg-neutral-950">
+                <div className="flex items-center gap-2 text-left">
+                  <User className="w-5 h-5 text-[#d4af37]" />
+                  <div>
+                    <h3 className="font-display font-extrabold uppercase text-xs tracking-wider">
+                      Mon Espace Client Premium
+                    </h3>
+                    <p className="text-[9px] text-[#d4af37] font-semibold uppercase tracking-widest">
+                      Connecté en tant que {user.name.split(" ")[0]}
+                    </p>
+                  </div>
                 </div>
+                <button 
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    setSellerDashboardActive(false);
+                    setInitialDashboardView("menu");
+                  }}
+                  className="text-white hover:text-[#d4af37] p-1.5 cursor-pointer flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider bg-black/20 hover:bg-black/35 transition-all rounded px-2.5 py-1"
+                >
+                  <span>Fermer l'espace</span>
+                  <X className="w-4.5 h-4.5" />
+                </button>
               </div>
-              <button 
-                onClick={() => setIsProfileOpen(false)}
-                className="text-neutral-400 hover:text-white p-1 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+            )}
 
             {/* Drawer Content - Modular Multi-role Dashboards */}
             <div className="flex-grow overflow-hidden flex flex-col">
@@ -5085,15 +6176,27 @@ export default function App() {
                 setProducts={setProducts}
                 showToast={showToast}
                 formatFCFA={formatFCFA}
-                closeDrawer={() => setIsProfileOpen(false)}
+                closeDrawer={() => {
+                  setIsProfileOpen(false);
+                  setSellerDashboardActive(false);
+                  setInitialDashboardView("menu");
+                }}
                 onSelectProduct={(prod) => {
                   setSelectedProduct(prod);
                   setIsProfileOpen(false);
+                  setSellerDashboardActive(false);
+                  setInitialDashboardView("menu");
                 }}
-                onLogout={logoutCustomer}
+                onLogout={() => {
+                  logoutCustomer();
+                  setSellerDashboardActive(false);
+                  setInitialDashboardView("menu");
+                }}
                 onTabChange={(tab) => {
-                  setSellerDashboardActive(tab === "vendeur" && user?.role === "vendeur" && user?.vendeurStatus !== "En attente d'activation");
+                  setSellerDashboardActive(tab === "vendeur" || tab === "affilie" || tab === "help");
                 }}
+                initialView={initialDashboardView}
+                onTrackOrder={(orderId: string) => fetchTrackingDetails(orderId)}
               />
             </div>
 
@@ -5112,8 +6215,12 @@ export default function App() {
           className={`flex flex-col items-center gap-1 bg-transparent border-0 p-1 cursor-pointer transition-colors ${activeTab === "accueil" ? "text-[#d4af37]" : "text-neutral-500 hover:text-neutral-905"}`}
         >
           <Home className="w-5 h-5" />
-          <span className="text-[9px] font-bold uppercase tracking-wider">Accueil</span>
+          <span className="text-[9px] font-bold uppercase tracking-wider">{t("bottom_home")}</span>
         </button>
+
+
+
+
 
         {/* Profil / Connexion */}
         <button 
@@ -5132,7 +6239,7 @@ export default function App() {
           className={`flex flex-col items-center gap-1 bg-transparent border-0 p-1 cursor-pointer transition-colors ${isProfileOpen ? "text-[#d4af37]" : "text-neutral-500 hover:text-neutral-905"}`}
         >
           <User className="w-5 h-5" />
-          <span className="text-[9px] font-bold uppercase tracking-wider truncate max-w-[64px]">{user ? user.name.split(" ")[0] : "Compte"}</span>
+          <span className="text-[9px] font-bold uppercase tracking-wider truncate max-w-[64px]">{user ? user.name.split(" ")[0] : (language === "fr" ? "Compte" : "Kɔnta")}</span>
         </button>
 
         {/* Panier */}
@@ -5148,7 +6255,7 @@ export default function App() {
               </span>
             )}
           </div>
-          <span className="text-[9px] font-bold uppercase tracking-wider">Panier</span>
+          <span className="text-[9px] font-bold uppercase tracking-wider">{t("bottom_cart")}</span>
         </button>
 
         {/* Menu (Hamburger) */}
@@ -5183,60 +6290,79 @@ export default function App() {
               <div className="flex items-center gap-2">
                 {renderLogoNode("w-9 h-9")}
                 <div>
-                  <h3 className="font-sans font-bold tracking-[0.15em] text-[#0F5132] uppercase text-sm leading-none">ASIME</h3>
-                  <p className="text-[8px] text-[#D97706] tracking-[0.08em] leading-normal font-semibold uppercase mt-1 font-sans">Le local, notre fierté</p>
-                </div>
+                <h3 className="font-sans font-bold tracking-[0.15em] text-[#0F5132] uppercase text-sm leading-none">ASIME</h3>
+                <p className="text-[8px] text-[#D97706] tracking-[0.08em] leading-normal font-semibold uppercase mt-1 font-sans">{t("slogan")}</p>
               </div>
-              <button 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="p-1 px-1.5 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 border-0 bg-transparent cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
             </div>
+            <button 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="p-1 px-1.5 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 border-0 bg-transparent cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-            {/* Menu Links List */}
-            <div className="space-y-1.5">
-              {[
-                { label: "Accueil du site", value: "accueil" as const, desc: "Découvrir nos sélections phares et histoire" },
-                { label: "Catalogue de Produits", value: "catalogue" as const, desc: "Explorer l'ensemble de nos collections" },
-                { label: "Le Journal de Asime", value: "blog" as const, desc: "Articles, conseils de terroir et innovations" },
-                { label: "Nous Contacter", value: "contact" as const, desc: "Support client, WhatsApp et localisation physique" }
-              ].map((link) => (
-                <button
-                  key={link.value}
-                  onClick={() => {
-                    setActiveTab(link.value);
-                    setIsMobileMenuOpen(false);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                  className={`w-full p-3.5 flex flex-col text-left gap-0.5 rounded-sm transition-colors cursor-pointer border-0 ${
-                    activeTab === link.value 
-                      ? "bg-amber-500/10 text-neutral-900 border-l-4 border-[#d4af37]" 
-                      : "bg-transparent text-neutral-700 hover:bg-stone-50 border-l-4 border-transparent"
-                  }`}
-                >
-                  <span className="text-xs font-bold uppercase tracking-wider">{link.label}</span>
-                  <span className="text-[10px] text-neutral-500 leading-tight font-sans font-normal">{link.desc}</span>
-                </button>
-              ))}
-
-              <div className="h-[1px] bg-neutral-100 my-4" />
-
-              {/* Share & Download App Link */}
+          {/* Menu Links List */}
+          <div className="space-y-1.5">
+            {[
+              { label: language === "fr" ? "Accueil du site" : "Aƒeme dzesi", value: "accueil" as const, desc: language === "fr" ? "Découvrir nos sélections phares et histoire" : "Kpɔ míaƒe adzɔnu dzesiwo kple ŋutinya" },
+              { label: language === "fr" ? "Catalogue de Produits" : "Adzɔnuwo kpeɖodzi", value: "catalogue" as const, desc: language === "fr" ? "Explorer l'ensemble de nos collections" : "Kpɔ míaƒe adzɔnu hame hamewo katã" },
+              { label: language === "fr" ? "Le Journal de Asime" : "Asime Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils de terroir et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
+              { label: language === "fr" ? "Nous Contacter" : "Mía Kadodowo", value: "contact" as const, desc: language === "fr" ? "Support client, WhatsApp et localisation physique" : "WhatsApp kple afisi míele le Lomé" }
+            ].map((link) => (
               <button
+                key={link.value}
                 onClick={() => {
+                  setActiveTab(link.value);
                   setIsMobileMenuOpen(false);
-                  setIsShareDownloadOpen(true);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
-                className="w-full p-3.5 bg-transparent text-neutral-800 hover:bg-stone-50 rounded-sm flex items-center justify-between cursor-pointer border-0"
+                className={`w-full p-3.5 flex flex-col text-left gap-0.5 rounded-sm transition-colors cursor-pointer border-0 ${
+                  activeTab === link.value 
+                    ? "bg-amber-500/10 text-neutral-900 border-l-4 border-[#d4af37]" 
+                    : "bg-transparent text-neutral-700 hover:bg-stone-50 border-l-4 border-transparent"
+                }`}
               >
-                <div className="flex flex-col text-left gap-0.5">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-neutral-800">Partager &amp; Télécharger</span>
-                  <span className="text-[10px] text-neutral-500 font-sans leading-tight">Installer l'application ou partager le lien</span>
-                </div>
-                <Share2 className="w-4 h-4 text-[#b8901c]" />
+                <span className="text-xs font-bold uppercase tracking-wider">{link.label}</span>
+                <span className="text-[10px] text-neutral-500 leading-tight font-sans font-normal">{link.desc}</span>
               </button>
+            ))}
+
+            <div className="h-[1px] bg-neutral-100 my-4" />
+
+            {/* Language Selection inside Mobile Menu */}
+            <button
+              onClick={() => {
+                setLanguage(language === "fr" ? "ee" : "fr");
+                setIsMobileMenuOpen(false);
+              }}
+              className="w-full p-3.5 bg-neutral-50 text-neutral-850 hover:bg-stone-100 rounded-sm flex items-center justify-between cursor-pointer border border-neutral-200"
+            >
+              <div className="flex flex-col text-left gap-0.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#0f5132]">
+                  {language === "fr" ? "Passer en Eʋegbe" : "Passer en Français"}
+                </span>
+                <span className="text-[10px] text-neutral-500 font-sans leading-tight">
+                  {language === "fr" ? "Trɔ gbe yi Eʋegbe me na dɔwɔwɔ asitɔ" : "Trɔ yi Fransegbe me na dɔwɔwɔ asitɔ"}
+                </span>
+              </div>
+              <Globe className="w-4 h-4 text-[#0f5132]" />
+            </button>
+
+            {/* Share & Download App Link */}
+            <button
+              onClick={() => {
+                setIsMobileMenuOpen(false);
+                setIsShareDownloadOpen(true);
+              }}
+              className="w-full p-3.5 bg-transparent text-neutral-800 hover:bg-stone-50 rounded-sm flex items-center justify-between cursor-pointer border-0"
+            >
+              <div className="flex flex-col text-left gap-0.5">
+                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-800">Partager &amp; Télécharger</span>
+                <span className="text-[10px] text-neutral-500 font-sans leading-tight">Installer l'application ou partager le lien</span>
+              </div>
+              <Share2 className="w-4 h-4 text-[#b8901c]" />
+            </button>
 
               {/* Offline mode indicator of the app */}
               <div className="mt-6 p-4 bg-emerald-50 text-emerald-950 text-center rounded-sm border border-emerald-100">

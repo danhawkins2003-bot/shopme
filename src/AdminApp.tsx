@@ -54,13 +54,17 @@ import {
   Users,
   Package,
   AlertTriangle,
-  FileText
+  FileText,
+  Bell,
+  ShoppingBag,
+  CreditCard,
+  CheckCircle2
 } from "lucide-react";
 import { Product } from "./types";
 import AdminStats from "./components/AdminStats";
 
 export default function AdminApp() {
-  const [activeTab, setActiveTab] = useState<"catalog" | "stats" | "settings" | "partners">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "stats" | "settings" | "requests">("catalog");
   const [products, setProducts] = useState<Product[]>([]);
   const [populating, setPopulating] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -71,6 +75,12 @@ export default function AdminApp() {
 
   const [whatsappDisplaySetting, setWhatsappDisplaySetting] = useState("22890000000");
   const [saveConfigSuccess, setSaveConfigSuccess] = useState(false);
+
+  // Real-time admin operational states
+  const [orders, setOrders] = useState<any[]>([]);
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Partners Management State
   const [partnersList, setPartnersList] = useState<{ 
@@ -308,6 +318,165 @@ export default function AdminApp() {
       };
     });
   }, [products, partnersList]);
+
+  const fetchAdminData = async () => {
+    setIsRefreshing(true);
+    try {
+      const token = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const resOrders = await fetch("/api/admin/orders", {
+        headers: { "Authorization": token }
+      });
+      if (resOrders.ok) {
+        const data = await resOrders.json();
+        setOrders(data);
+      }
+
+      const resWithdrawals = await fetch("/api/admin/withdrawals", {
+        headers: { "Authorization": token }
+      });
+      if (resWithdrawals.ok) {
+        const data = await resWithdrawals.json();
+        setWithdrawals(data);
+      }
+
+      const resUsers = await fetch("/api/admin/users", {
+        headers: { "Authorization": token }
+      });
+      if (resUsers.ok) {
+        const data = await resUsers.json();
+        setUsersList(data);
+      }
+    } catch (err) {
+      console.error("Error loading admin data:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleApproveWithdrawal = async (id: string) => {
+    if (!confirm("Voulez-vous vraiment approuver et marquer ce retrait comme payé ?")) return;
+    try {
+      const token = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const res = await fetch(`/api/admin/withdrawals/${id}/approve`, {
+        method: "POST",
+        headers: { "Authorization": token }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        fetchAdminData();
+      } else {
+        alert(data.error || "Une erreur est survenue.");
+      }
+    } catch (err) {
+      alert("Erreur réseau.");
+    }
+  };
+
+  const handleRejectWithdrawal = async (id: string) => {
+    if (!confirm("Voulez-vous vraiment rejeter cette demande de retrait ? Le montant sera recrédité sur le portefeuille du vendeur.")) return;
+    try {
+      const token = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const res = await fetch(`/api/admin/withdrawals/${id}/reject`, {
+        method: "POST",
+        headers: { "Authorization": token }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        fetchAdminData();
+      } else {
+        alert(data.error || "Une erreur est survenue.");
+      }
+    } catch (err) {
+      alert("Erreur réseau.");
+    }
+  };
+
+  const handleApproveSeller = async (userId: string) => {
+    if (!confirm("Voulez-vous vraiment approuver et activer l'espace de ce vendeur ?")) return;
+    try {
+      const token = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const res = await fetch(`/api/admin/users/${userId}/approve-seller`, {
+        method: "POST",
+        headers: { "Authorization": token }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        fetchAdminData();
+      } else {
+        alert(data.error || "Une erreur est survenue.");
+      }
+    } catch (err) {
+      alert("Erreur réseau.");
+    }
+  };
+
+  const handleRejectSeller = async (userId: string) => {
+    if (!confirm("Voulez-vous rejeter l'inscription de ce vendeur ? Son statut passera à Rejeté et il sera notifié.")) return;
+    try {
+      const token = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const res = await fetch(`/api/admin/users/${userId}/reject-seller`, {
+        method: "POST",
+        headers: { "Authorization": token }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        fetchAdminData();
+      } else {
+        alert(data.error || "Une erreur est survenue.");
+      }
+    } catch (err) {
+      alert("Erreur réseau.");
+    }
+  };
+
+  const handleValidatePayment = async (orderId: string) => {
+    if (!confirm(`Voulez-vous valider manuellement le paiement de la commande #${orderId} ?`)) return;
+    try {
+      const token = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const res = await fetch(`/api/admin/orders/${orderId}/validate-payment`, {
+        method: "POST",
+        headers: { "Authorization": token }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        fetchAdminData();
+      } else {
+        alert(data.error || "Une erreur est survenue.");
+      }
+    } catch (err) {
+      alert("Erreur réseau.");
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, status: string) => {
+    try {
+      const token = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const res = await fetch(`/api/admin/orders/${orderId}/update-status`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": token 
+        },
+        body: JSON.stringify({ orderStatus: status })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        fetchAdminData();
+      } else {
+        alert(data.error || "Une erreur est survenue.");
+      }
+    } catch (err) {
+      alert("Erreur réseau.");
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminAuthenticated) {
+      fetchAdminData();
+      const interval = setInterval(fetchAdminData, 6000);
+      return () => clearInterval(interval);
+    }
+  }, [isAdminAuthenticated]);
 
   useEffect(() => {
     fetchProducts();
@@ -628,15 +797,24 @@ export default function AdminApp() {
                 <span>Gestion Catalogue</span>
               </button>
               <button
-                onClick={() => setActiveTab("partners")}
+                onClick={() => setActiveTab("requests")}
                 className={`py-3 px-6 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "partners"
+                  activeTab === "requests"
                     ? "border-[#d4af37] text-neutral-955"
                     : "border-transparent text-neutral-400 hover:text-neutral-900"
                 }`}
               >
-                <Users className="w-4 h-4" />
-                <span>Profils Partenaires/Contrats</span>
+                <Bell className="w-4 h-4 text-amber-500" />
+                <span>Alertes & Demandes</span>
+                {(orders.filter(o => o.paymentStatus !== "Payé" && o.paymentMethod !== "Espèces").length + 
+                  withdrawals.filter(w => w.status === "En attente").length + 
+                  usersList.filter(u => u.vendeurStatus === "En attente d'activation").length) > 0 && (
+                  <span className="bg-red-500 text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                    {orders.filter(o => o.paymentStatus !== "Payé" && o.paymentMethod !== "Espèces").length + 
+                     withdrawals.filter(w => w.status === "En attente").length + 
+                     usersList.filter(u => u.vendeurStatus === "En attente d'activation").length}
+                  </span>
+                )}
               </button>
               <button
                 id="tab-btn-stats"
@@ -768,24 +946,28 @@ export default function AdminApp() {
 
                   <div>
                     <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
-                      Partenaire ou Client Contractuel <span className="text-red-500">*</span>
+                      Boutique / Vendeur Propriétaire <span className="text-red-500">*</span>
                     </label>
                     <select 
                       value={formPartenaire}
                       onChange={(e) => setFormPartenaire(e.target.value)}
                       className="w-full border border-neutral-300 rounded-sm px-2 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-white font-medium"
                     >
-                      {["Boutique en Direct", ...Array.from(new Set(partnersList.map(p => p.name)))].map(opt => (
-                        <option key={opt} value={opt}>
-                          {opt === "Boutique en Direct" ? "Boutique en Direct (Stock Interne)" : opt}
-                        </option>
-                      ))}
-                      {formPartenaire && formPartenaire !== "Boutique en Direct" && !partnersList.some(p => p.name === formPartenaire) && (
-                        <option value={formPartenaire}>{formPartenaire} (Non enregistré)</option>
+                      <option value="Boutique en Direct">Boutique en Direct (Administration)</option>
+                      {usersList.filter(u => u.role === "vendeur").map(u => {
+                        const name = u.businessName || u.name || u.email;
+                        return (
+                          <option key={u.id} value={name}>
+                            {name} (Vendeur Inscrit)
+                          </option>
+                        );
+                      })}
+                      {formPartenaire && formPartenaire !== "Boutique en Direct" && !usersList.some(u => (u.businessName || u.name || u.email) === formPartenaire) && (
+                        <option value={formPartenaire}>{formPartenaire}</option>
                       )}
                     </select>
                     <p className="text-[9px] text-neutral-400 mt-1 uppercase">
-                      Sélectionnez "Boutique en Direct" pour vos stocks, ou un partenaire client configuré. Vous pouvez créer un partenaire sous l'onglet "Profils Partenaires" ci-dessus.
+                      Associez ce produit à la Boutique Directe d'administration ou à l'un des vendeurs inscrits sur votre plateforme.
                     </p>
                   </div>
 
@@ -873,7 +1055,7 @@ export default function AdminApp() {
                     <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-neutral-950">
                       Base de Données ({products.length} produits)
                     </h3>
-                    <p className="text-[9.5px] text-neutral-400 uppercase tracking-wider font-semibold">Filtrer par contrat / partenaire client</p>
+                    <p className="text-[9.5px] text-neutral-400 uppercase tracking-wider font-semibold">Filtrer par Boutique / Vendeur</p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                     {/* Partner Selector Filter */}
@@ -882,7 +1064,7 @@ export default function AdminApp() {
                       onChange={(e) => setAdminPartnerFilter(e.target.value)}
                       className="border border-neutral-300 rounded-sm px-2.5 py-1.5 text-xs outline-none bg-white font-sans text-neutral-800 font-semibold tracking-wide uppercase cursor-pointer"
                     >
-                      <option value="Tous">Tous les contrats/clients</option>
+                      <option value="Tous">Tous les vendeurs</option>
                       {Array.from(new Set(products.map(p => p.partenaire || "Boutique en Direct"))).filter(Boolean).map(partName => (
                         <option key={partName} value={partName}>{partName}</option>
                       ))}
@@ -980,534 +1162,347 @@ export default function AdminApp() {
               </div>
             </div>
           </>
-        ) : activeTab === "partners" ? (
+                ) : activeTab === "requests" ? (
           <div className="space-y-6 animate-fade-in text-xs">
-            {/* Partner Dashboard stats overview row */}
+            {/* Quick stats panel */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Contrats Actifs</p>
+              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-blue-500">
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Commandes Totales</p>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-display font-black text-2xl text-neutral-955">{partnersData.length}</span>
-                  <span className="text-[10px] text-emerald-600 font-semibold uppercase">En cours</span>
-                </div>
-              </div>
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Produits Associés</p>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-display font-black text-2xl text-neutral-955">
-                    {partnersData.reduce((acc, p) => acc + p.totalProducts, 0)}
-                  </span>
-                  <span className="text-[10px] text-neutral-400 uppercase">Au total</span>
-                </div>
-              </div>
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Volume de Stock</p>
-                <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-display font-black text-2xl text-neutral-955">
-                    {partnersData.reduce((acc, p) => acc + p.totalStock, 0)}
-                  </span>
-                  <span className="text-[10px] text-neutral-400 uppercase">Unités</span>
+                  <span className="font-display font-black text-2xl text-neutral-955">{orders.length}</span>
+                  <span className="text-[10px] text-neutral-500 uppercase font-sans">enregistrées</span>
                 </div>
               </div>
               <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-amber-500">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Alertes Ruptures / Stocks Bas</p>
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Paiements en Attente</p>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className="font-display font-black text-2xl text-amber-700">
-                    {partnersData.reduce((acc, p) => acc + p.outOfStockCount, 0)}
+                    {orders.filter(o => o.paymentStatus !== "Payé" && o.paymentMethod !== "Espèces").length}
                   </span>
-                  <span className="text-[10px] text-amber-600 font-medium uppercase font-sans">À réapprovisionner</span>
+                  <span className="text-[10px] text-amber-600 font-semibold uppercase font-sans">À valider</span>
+                </div>
+              </div>
+              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-red-500">
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest font-sans">Retraits en Attente</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="font-display font-black text-2xl text-red-700">
+                    {withdrawals.filter(w => w.status === "En attente").length}
+                  </span>
+                  <span className="text-[10px] text-red-500 font-semibold uppercase font-sans">demandes</span>
+                </div>
+              </div>
+              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-emerald-500">
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest font-sans font-sans">Membres Actifs</p>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className="font-display font-black text-2xl text-neutral-955">{usersList.length}</span>
+                  <span className="text-[10px] text-emerald-600 font-semibold uppercase font-sans font-sans">Utilisateurs</span>
                 </div>
               </div>
             </div>
 
-            {/* Form to Add Partner */}
-            <div className="bg-white border border-neutral-200 rounded-sm p-5 shadow-xs space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-neutral-100">
-                <Plus className="w-4 h-4 text-[#b8901c]" />
-                <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 font-sans">Enregistrer un Nouveau Partenaire Contractuel</h3>
-              </div>
+            {/* Notifications and withdrawals block */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Left Column: Withdrawals & Users */}
+              <div className="lg:col-span-5 space-y-6">
+                
+                {/* Withdrawal requests card */}
+                <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs">
+                  <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                    <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-red-500" />
+                      <span>Demandes de Retraits Portefeuille</span>
+                    </h3>
+                    <span className="bg-red-100 text-red-700 font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase">
+                      {withdrawals.filter(w => w.status === "En attente").length} en attente
+                    </span>
+                  </div>
 
-              <form onSubmit={handleCreatePartner} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
-                      Nom du Partenaire / Client <span className="text-red-500">*</span>
-                    </label>
-                    <input 
-                      type="text"
-                      required
-                      value={partnerFormName}
-                      onChange={(e) => setPartnerFormName(e.target.value)}
-                      placeholder="Ex: Coopérative Atakpamé, Entreprise Kpessi..."
-                      className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs outline-none bg-neutral-50/50 focus:ring-1 focus:ring-amber-500 font-sans"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
-                      Description ou Notes (Facultatif)
-                    </label>
-                    <input 
-                      type="text"
-                      value={partnerFormDescription}
-                      onChange={(e) => setPartnerFormDescription(e.target.value)}
-                      placeholder="Ex: Contrat de revente locale d'artisanat"
-                      className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs outline-none bg-neutral-50/50 focus:ring-1 focus:ring-amber-500 font-sans"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
-                      Type de Contrat de Collaboration <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={partnerFormContractType}
-                      onChange={(e) => {
-                        const val = e.target.value as "subscription" | "commission";
-                        setPartnerFormContractType(val);
-                        if (val === "subscription") {
-                          setPartnerFormAutoPublish(true);
-                        } else {
-                          setPartnerFormAutoPublish(false);
-                        }
-                      }}
-                      className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs outline-none bg-neutral-50/50 focus:ring-1 focus:ring-amber-500 font-sans"
-                    >
-                      <option value="subscription">Abonnement Mensuel (Le partenaire gère sa redirection/diffusion)</option>
-                      <option value="commission">Commission sur Ventes (L'admin publie & gagne un %)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1 bg-stone-50/50 p-3 rounded-sm border border-stone-200">
-                  {partnerFormContractType === "subscription" ? (
-                    <>
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
-                          Frais Mensuels d'Abonnement (FCFA / mois)
-                        </label>
-                        <input 
-                          type="number"
-                          min="0"
-                          value={partnerFormMonthlyFee}
-                          onChange={(e) => setPartnerFormMonthlyFee(Number(e.target.value))}
-                          placeholder="Ex: 5000"
-                          className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500 font-sans font-mono"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
-                          Téléphone Whatsapp Direct du Partenaire
-                        </label>
-                        <span className="text-[9px] text-neutral-400 block mb-1 uppercase">Redirection automatique des acheteurs</span>
-                        <input 
-                          type="text"
-                          value={partnerFormContactPhone}
-                          onChange={(e) => setPartnerFormContactPhone(e.target.value)}
-                          placeholder="Ex: 22890123456"
-                          className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500 font-sans font-mono"
-                        />
-                      </div>
-                      <div className="flex flex-col justify-end pb-1.5 col-span-1">
-                        <label className="flex items-center gap-2 cursor-pointer py-1">
-                          <input 
-                            type="checkbox"
-                            checked={partnerFormAutoPublish}
-                            onChange={(e) => setPartnerFormAutoPublish(e.target.checked)}
-                            className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4"
-                          />
-                          <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-wider select-none">
-                            Autonomie : Gère ses publications seul
-                          </span>
-                        </label>
-                      </div>
-                    </>
+                  {withdrawals.filter(w => w.status === "En attente").length === 0 ? (
+                    <div className="py-8 text-center text-neutral-400">
+                      <p>Aucune demande de retrait en attente actuellement.</p>
+                    </div>
                   ) : (
-                    <>
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
-                          Taux de Commission Souhaité (%)
-                        </label>
-                        <input 
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={partnerFormCommissionRate}
-                          onChange={(e) => setPartnerFormCommissionRate(Number(e.target.value))}
-                          placeholder="Ex: 10"
-                          className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500 font-sans font-mono"
-                        />
+                    <div className="space-y-3.5">
+                      {withdrawals.filter(w => w.status === "En attente").map((w) => {
+                        const userObj = usersList.find(u => u.id === w.userId);
+                        const displayName = userObj?.businessName || userObj?.name || w.userId;
+                        return (
+                          <div key={w.id} className="p-3 border border-neutral-200 rounded-sm bg-neutral-50 flex flex-col justify-between gap-3">
+                            <div>
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="font-bold text-neutral-900 uppercase text-[10.5px] tracking-wide">{displayName}</span>
+                                <strong className="text-red-700 font-mono text-xs">{formatFCFA(w.amount)}</strong>
+                              </div>
+                              <p className="text-[10px] text-neutral-500 uppercase tracking-wide">
+                                ID Retrait: <code className="bg-white px-1 border border-neutral-200 font-mono text-[9px]">{w.id}</code>
+                              </p>
+                              <div className="mt-2 text-[10px] text-neutral-700 space-y-0.5">
+                                <p><strong>Mode :</strong> Mobile Money ({w.method})</p>
+                                <p><strong>Téléphone :</strong> <span className="font-mono font-bold text-neutral-900">+{w.phone}</span></p>
+                                <p><strong>Date :</strong> {new Date(w.createdAt).toLocaleString("fr-FR")}</p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-200/60">
+                              <button
+                                onClick={() => handleApproveWithdrawal(w.id)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                              >
+                                Approuver & Payer
+                              </button>
+                              <button
+                                onClick={() => handleRejectWithdrawal(w.id)}
+                                className="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                              >
+                                Rejeter
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Historic withdrawals sub-list */}
+                  {withdrawals.filter(w => w.status !== "En attente").length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-neutral-100">
+                      <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Historique récent des retraits</p>
+                      <div className="max-h-36 overflow-y-auto space-y-1.5 font-mono text-[9px]">
+                        {withdrawals.filter(w => w.status !== "En attente").slice(0, 5).map(w => {
+                          const userObj = usersList.find(u => u.id === w.userId);
+                          const name = userObj?.businessName || userObj?.name || w.userId;
+                          return (
+                            <div key={w.id} className="flex justify-between items-center bg-white p-1.5 border border-neutral-150 rounded-xs">
+                              <span className="truncate max-w-[120px] font-bold text-neutral-700 uppercase">{name}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-neutral-900">{formatFCFA(w.amount)}</span>
+                                <span className={`px-1 rounded-sm text-[8px] font-black uppercase tracking-wider ${
+                                  w.status === "Payé" ? "bg-emerald-100 text-emerald-800" : "bg-neutral-200 text-neutral-600"
+                                }`}>
+                                  {w.status}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-600 uppercase tracking-widest mb-1.5">
-                          Whatsapp redirection du Partenaire (Optionnel)
-                        </label>
-                        <span className="text-[9px] text-neutral-400 block mb-1 uppercase">Laisse vide pour utiliser votre numéro</span>
-                        <input 
-                          type="text"
-                          value={partnerFormContactPhone}
-                          onChange={(e) => setPartnerFormContactPhone(e.target.value)}
-                          placeholder="Ex: 22890000000"
-                          className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs outline-none bg-white focus:ring-1 focus:ring-amber-500 font-sans font-mono"
-                        />
-                      </div>
-                      <div className="flex flex-col justify-end pb-1.5 col-span-1">
-                        <label className="flex items-center gap-2 cursor-pointer py-1">
-                          <input 
-                            type="checkbox"
-                            checked={partnerFormAutoPublish}
-                            onChange={(e) => setPartnerFormAutoPublish(e.target.checked)}
-                            className="rounded text-amber-600 focus:ring-amber-500 h-4 w-4"
-                          />
-                          <span className="text-[10px] font-bold text-neutral-700 uppercase tracking-wider select-none">
-                            Publication assistée par l'admin
-                          </span>
-                        </label>
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
 
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="submit"
-                    className="bg-neutral-950 text-white font-black text-[10px] uppercase tracking-wider px-6 py-2.5 hover:bg-[#d4af37] hover:text-black transition-colors rounded-sm cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Créer le Partenaire</span>
-                  </button>
-                </div>
-              </form>
+                {/* Pending Sellers Activation Requests Card */}
+                {usersList.filter(u => u.vendeurStatus === "En attente d'activation").length > 0 && (
+                  <div className="bg-white p-5 border-2 border-amber-400 rounded-sm shadow-xs mb-6">
+                    <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                      <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                        <span>Demandes d'activation de Boutique</span>
+                      </h3>
+                      <span className="bg-amber-100 text-amber-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase">
+                        {usersList.filter(u => u.vendeurStatus === "En attente d'activation").length} En attente
+                      </span>
+                    </div>
 
-              {partnerFormError && (
-                <p className="text-[10px] text-red-650 uppercase font-bold">{partnerFormError}</p>
-              )}
-              {partnerFormSuccess && (
-                <p className="text-[10px] text-emerald-600 uppercase font-bold">{partnerFormSuccess}</p>
-              )}
-            </div>
-
-            {/* Partner profiles detailed list */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center bg-stone-100 p-4 border border-stone-250 rounded-sm">
-                <div>
-                  <h3 className="font-display font-extrabold text-xs uppercase tracking-wider text-neutral-955">Fiches de suivi des contrats clients</h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-medium">Consultez les conditions d'abonnements ou commissions, redirection whatsapp, et niveau de stocks</p>
-                </div>
-              </div>
-
-              {partnersData.length === 0 ? (
-                <div className="bg-white border border-neutral-200 p-12 text-center rounded-sm">
-                  <Users className="w-8 h-8 text-neutral-300 mx-auto mb-3" />
-                  <p className="text-xs text-neutral-500 font-medium font-sans">Aucun partenaire n'a été configuré sur vos produits actuellement.</p>
-                  <button
-                    onClick={() => setActiveTab("catalog")}
-                    className="mt-3 bg-neutral-955 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 hover:bg-[#d4af37] hover:text-black rounded-sm transition-colors cursor-pointer"
-                  >
-                    Ajouter un premier produit avec partenaire
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {partnersData.map(partner => {
-                    const hasAlert = partner.outOfStockCount > 0;
-                    
-                    return (
-                      <div 
-                        key={partner.name}
-                        className={`bg-white border border-neutral-205 p-5 rounded-sm shadow-xs hover:shadow-sm hover:border-[#d4af37]/60 transition-all flex flex-col justify-between space-y-4 relative ${
-                          partner.name === "Boutique en Direct" ? "bg-stone-50/40" : ""
-                        }`}
-                      >
-                        <div>
-                          {/* Header & Initials Badge */}
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-neutral-955 text-[#d4af37] font-display font-black text-xs uppercase flex items-center justify-center tracking-widest rounded-sm shrink-0 border border-[#d4af37]/20 font-sans">
-                                {partner.name.substring(0, 2).toUpperCase()}
-                              </div>
-                              <div>
-                                <h4 className="font-display font-black text-neutral-900 uppercase tracking-wider text-xs pr-6">
-                                  {partner.name}
-                                </h4>
-                                <p className="text-[10px] text-neutral-400 mt-0.5 tracking-wide uppercase font-semibold font-sans">
-                                  {partner.name === "Boutique en Direct" ? "Gestion de Stock Interne" : "Contrat / Vente Partenaire"}
-                                </p>
-                              </div>
+                    <div className="space-y-3">
+                      {usersList.filter(u => u.vendeurStatus === "En attente d'activation").map((u) => (
+                        <div key={u.id} className="p-3 border border-amber-200 bg-amber-50/20 rounded-sm space-y-2">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-bold text-neutral-900 text-[11px] uppercase">{u.businessName || u.name}</p>
+                              <p className="text-[10px] text-neutral-500 font-mono">{u.email}</p>
+                              {u.phone && <p className="text-[10px] text-neutral-700 font-bold">📞 +{u.phone}</p>}
                             </div>
-                            <span className="text-[9px] bg-neutral-100 text-neutral-850 font-semibold px-2 py-0.5 rounded-sm uppercase tracking-wider select-none font-mono">
-                              {partner.name === "Boutique en Direct" ? "Direct" : "Contrat Actif"}
+                            <span className="bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded-xs text-[8px] font-black uppercase tracking-widest">
+                              {u.vendeurSubscription || "Offre 1"}
                             </span>
                           </div>
 
-                          {/* Delete & Edit partner buttons (exclude Boutique en Direct) */}
-                          {partner.name !== "Boutique en Direct" && (
-                            <div className="absolute top-4 right-4 flex items-center gap-1.5">
-                              <button
-                                onClick={() => startEditingPartner(partner)}
-                                className="text-neutral-400 hover:text-amber-600 p-1 rounded-sm transition-colors cursor-pointer"
-                                title="Modifier les conditions du contrat"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeletePartner(partner.name)}
-                                className="text-neutral-400 hover:text-red-650 p-1 rounded-sm transition-colors cursor-pointer"
-                                title="Supprimer ce partenaire"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-
-                          {partner.description && (
-                            <p className="text-[10.5px] text-neutral-500 italic mt-3 bg-neutral-50/50 p-2 rounded-sm border border-neutral-100 leading-normal font-sans">
-                              💡 {partner.description}
-                            </p>
-                          )}
-
-                          {/* Contract parameters */}
-                          {partner.name !== "Boutique en Direct" && (
-                            <div className="mt-3.5 bg-amber-50/40 border border-[#d4af37]/20 p-3 rounded-xs space-y-1.5 font-sans">
-                              <div className="flex items-center justify-between pb-1 border-b border-[#d4af37]/10">
-                                <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">Plan d'Affiliation</span>
-                                {partner.contractType === "subscription" ? (
-                                  <span className="bg-emerald-500/10 text-emerald-700 px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-widest border border-emerald-500/20 font-mono">
-                                    Abonnement Mensuel
-                                  </span>
-                                ) : (
-                                  <span className="bg-indigo-500/10 text-indigo-700 px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-widest border border-indigo-500/20 font-mono font-sans">
-                                    Commission sur vente
-                                  </span>
-                                )}
-                              </div>
-                              <div className="space-y-1.5 text-neutral-700 text-[11px] font-sans">
-                                {partner.contractType === "subscription" ? (
-                                  <div className="flex justify-between">
-                                    <span className="text-neutral-500">Tarif abonnement :</span>
-                                    <span className="font-extrabold text-neutral-900 font-mono">{(partner.monthlyFee ?? 5000).toLocaleString("fr-FR")} F CFA / mois</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex justify-between">
-                                    <span className="text-neutral-500">Taux prélevé :</span>
-                                    <span className="font-extrabold text-[#b8901c] font-mono">{partner.commissionRate ?? 10} % commission</span>
-                                  </div>
-                                )}
-                                <div className="flex justify-between">
-                                  <span className="text-neutral-500">Mode de redirection :</span>
-                                  <span className="font-extrabold text-neutral-900 font-mono">
-                                    {partner.contactPhone ? `+${partner.contactPhone}` : "Défaut (Admin Whatsapp)"}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-neutral-500">Gestion diffusion :</span>
-                                  <span className="font-semibold text-neutral-800">
-                                    {partner.autoPublish ? "Autonome (Le partenaire gère)" : "Assisté (Publié par l'admin)"}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Inline Contract Editor form */}
-                          {editingPartnerId === partner.id && (
-                            <div className="mt-4 bg-stone-100 border border-stone-300 p-3.5 rounded-sm space-y-3 animate-fade-in text-[11px] text-neutral-800 relative z-20 font-sans">
-                              <div className="flex justify-between items-center pb-1.5 border-b border-stone-250">
-                                <span className="font-bold text-neutral-900 uppercase text-[9.5px] tracking-wider">Ajuster le Contrat : {partner.name}</span>
-                                <button className="text-neutral-400 hover:text-neutral-600 font-bold" onClick={() => setEditingPartnerId(null)}>
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-
-                              <div className="space-y-2.5 font-sans">
-                                <div>
-                                  <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Notes / Description de l'accord</label>
-                                  <input 
-                                    type="text"
-                                    value={editDesc}
-                                    onChange={(e) => setEditDesc(e.target.value)}
-                                    className="w-full bg-white border border-neutral-300 p-1.5 rounded-sm text-xs outline-none focus:border-amber-500"
-                                    placeholder="Ex: Collaboration ou abonnement"
-                                  />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div>
-                                    <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Modèle</label>
-                                    <select
-                                      value={editContractType}
-                                      onChange={(e) => {
-                                        const val = e.target.value as "subscription" | "commission";
-                                        setEditContractType(val);
-                                        if (val === "subscription") setEditAutoPublish(true);
-                                        else setEditAutoPublish(false);
-                                      }}
-                                      className="w-full bg-white border border-neutral-300 p-1.5 rounded-sm text-xs outline-none font-sans"
-                                    >
-                                      <option value="subscription">Abonnement</option>
-                                      <option value="commission">Commission</option>
-                                    </select>
-                                  </div>
-
-                                  <div>
-                                    {editContractType === "subscription" ? (
-                                      <div>
-                                        <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Frais / mois (FCFA)</label>
-                                        <input 
-                                          type="number"
-                                          value={editMonthlyFee}
-                                          onChange={(e) => setEditMonthlyFee(Number(e.target.value))}
-                                          className="w-full bg-white border border-neutral-300 p-1.5 rounded-sm text-xs outline-none font-mono"
-                                        />
-                                      </div>
-                                    ) : (
-                                      <div>
-                                        <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Commission (%)</label>
-                                        <input 
-                                          type="number"
-                                          value={editCommissionRate}
-                                          onChange={(e) => setEditCommissionRate(Number(e.target.value))}
-                                          className="w-full bg-white border border-neutral-300 p-1.5 rounded-sm text-xs outline-none font-mono"
-                                        />
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2 items-center">
-                                  <div>
-                                    <label className="block text-[9px] font-bold text-neutral-500 uppercase tracking-wider mb-1">Tel Whatsapp direct</label>
-                                    <input 
-                                      type="text"
-                                      value={editContactPhone}
-                                      onChange={(e) => setEditContactPhone(e.target.value)}
-                                      className="w-full bg-white border border-neutral-300 p-1.5 rounded-sm text-xs outline-none font-mono"
-                                      placeholder="Ex: 22890123456"
-                                    />
-                                  </div>
-
-                                  <div className="flex items-center gap-1.5 pt-3">
-                                    <input 
-                                      type="checkbox"
-                                      id={`edit_auth_${partner.id}`}
-                                      checked={editAutoPublish}
-                                      onChange={(e) => setEditAutoPublish(e.target.checked)}
-                                      className="h-3.5 w-3.5 rounded text-amber-600 focus:ring-amber-500"
-                                    />
-                                    <label htmlFor={`edit_auth_${partner.id}`} className="text-[9px] text-neutral-650 font-bold uppercase tracking-wide cursor-pointer select-none">
-                                      {editContractType === "subscription" ? "Autonomie complète" : "Diffusion Assistée"}
-                                    </label>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex justify-end gap-2 pt-2 border-t border-stone-200">
-                                <button
-                                  type="button"
-                                  onClick={() => setEditingPartnerId(null)}
-                                  className="px-3 py-1.5 bg-neutral-200 text-neutral-600 text-[10px] font-bold uppercase hover:bg-neutral-250 rounded-sm"
-                                >
-                                  Annuler
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdatePartner(partner.id)}
-                                  className="px-3 py-1.5 bg-neutral-950 text-white text-[10px] font-black uppercase hover:bg-amber-500 hover:text-black rounded-sm"
-                                >
-                                  Enregistrer
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Stats breakdown */}
-                          <div className="grid grid-cols-3 gap-2 mt-5 bg-neutral-50 border border-neutral-150 p-2.5 rounded-sm">
-                            <div className="text-center border-r border-neutral-200">
-                              <p className="text-[8.5px] font-bold text-neutral-400 uppercase tracking-widest">Produits</p>
-                              <p className="font-display font-black text-sm text-neutral-900 mt-0.5">{partner.totalProducts}</p>
-                            </div>
-                            <div className="text-center border-r border-neutral-200">
-                              <p className="text-[8.5px] font-bold text-neutral-400 uppercase tracking-widest">En Stock</p>
-                              <p className={`font-display font-black text-sm mt-0.5 ${partner.totalStock === 0 ? "text-red-600 font-bold" : "text-neutral-950"}`}>
-                                {partner.totalStock}
-                              </p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-[8.5px] font-bold text-neutral-400 uppercase tracking-widest">Gamme Prix</p>
-                              <p className="font-display font-black text-[10px] text-[#b8901c] mt-1 font-mono tracking-tighter truncate">
-                                {partner.minPrice === partner.maxPrice 
-                                  ? `${partner.minPrice} F`
-                                  : `${partner.minPrice}-${partner.maxPrice} F`
-                                }
-                              </p>
-                            </div>
+                          <div className="bg-white border border-neutral-150 p-2 rounded-xs font-mono text-[10px] text-neutral-700 space-y-0.5">
+                            <p><strong>Mode :</strong> {u.vendeurMode === "autonome" ? "Autonome (Boutique gérée en propre)" : "Assisté (Produits publiés via administrateurs)"}</p>
+                            <p><strong>Paiement :</strong> {u.vendeurPaymentMethod} ({u.vendeurPaymentMethod === "TMoney" ? "T-Money" : u.vendeurPaymentMethod === "Flooz" ? "Flooz" : "Autre"})</p>
+                            <p><strong>ID Transaction :</strong> <code className="bg-amber-50 px-1 border border-amber-100 font-bold text-amber-800">{u.vendeurPaymentTxId || "Non fourni"}</code></p>
                           </div>
 
-                          {/* Categories & Stock Status */}
-                          <div className="mt-4 space-y-2.5">
-                            <div>
-                              <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider block mb-1">Catégories d'activités</span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {partner.categories.map(cat => (
-                                  <span key={cat} className="text-[9px] bg-[#d4af37]/10 text-amber-800 border border-[#d4af37]/20 px-2 py-0.5 rounded-[1px] select-none font-medium capitalize">
-                                    {cat}
-                                  </span>
-                                ))}
-                                {partner.categories.length === 0 && (
-                                  <span className="text-[9px] text-neutral-400 italic font-mono">Aucune catégorie</span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Stock Health Bar */}
-                            <div>
-                              <div className="flex justify-between items-center text-[9px] font-bold text-neutral-400 uppercase tracking-wider mb-1">
-                                <span>État général des stocks</span>
-                                <span className="text-neutral-600 font-mono">
-                                  {partner.outOfStockCount === 0 ? "100% OK" : `${Math.round(((partner.totalProducts - partner.outOfStockCount) / Math.max(1, partner.totalProducts)) * 100)}% en stock`}
-                                </span>
-                              </div>
-                              <div className="w-full h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-                                <div 
-                                  className={`h-full rounded-full transition-all duration-500 ${
-                                    hasAlert ? "bg-amber-500" : "bg-emerald-500"
-                                  }`}
-                                  style={{ width: `${Math.max(10, Math.min(100, ((partner.totalProducts - partner.outOfStockCount) / Math.max(1, partner.totalProducts)) * 100))}%` }}
-                                ></div>
-                              </div>
-                            </div>
-
-                            {hasAlert && (
-                              <div className="bg-amber-50 text-amber-850 border border-amber-200 p-2.5 rounded-sm flex items-start gap-2 text-[10px] leading-relaxed">
-                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                                <div>
-                                  <strong>Alerte Réapprovisionnement :</strong> {partner.outOfStockCount} produit(s) en rupture sur ce contrat. Prévoyez un stock pour cet affilié.
-                                </div>
-                              </div>
-                            )}
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <button
+                              onClick={() => handleApproveSeller(u.id)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                            >
+                              Activer la boutique
+                            </button>
+                            <button
+                              onClick={() => handleRejectSeller(u.id)}
+                              className="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                            >
+                              Rejeter
+                            </button>
                           </div>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                        {/* Direct Link to Edit Inventory */}
-                        <div className="pt-3 border-t border-neutral-100">
-                          <button
-                            onClick={() => {
-                              setAdminPartnerFilter(partner.name);
-                              setActiveTab("catalog");
-                              window.scrollTo({ top: 350, behavior: "smooth" });
-                            }}
-                            className="w-full bg-neutral-950 text-white hover:bg-[#d4af37] hover:text-black py-2 rounded-sm text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                          >
-                            <span>Gérer l'inventaire ({partner.totalProducts})</span>
-                            <ExternalLink className="w-3.5 h-3.5 text-neutral-305 pointer-events-none" />
-                          </button>
+                {/* Users Directory Card */}
+                <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs">
+                  <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                    <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-[#d4af37]" />
+                      <span>Répertoire des Utilisateurs Actifs</span>
+                    </h3>
+                    <span className="bg-neutral-100 text-neutral-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm">
+                      {usersList.length} membres
+                    </span>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto space-y-2.5">
+                    {usersList.map((u) => (
+                      <div key={u.id} className="p-2.5 border border-neutral-200 rounded-sm hover:border-neutral-300 bg-neutral-50/50 flex justify-between items-center">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-neutral-900 text-[11px] uppercase">{u.businessName || u.name || "Inconnu"}</span>
+                            <span className={`px-1.5 py-0.5 rounded-xs text-[7.5px] font-black uppercase tracking-widest ${
+                              u.role === "vendeur" 
+                                ? "bg-amber-100 text-amber-800 border border-amber-200" 
+                                : u.role === "affilie" 
+                                ? "bg-blue-100 text-blue-800 border border-blue-200" 
+                                : "bg-neutral-200 text-neutral-700"
+                            }`}>
+                              {u.role}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-neutral-500 font-mono mt-0.5">{u.email || "Pas d'email"}</p>
+                          {u.phone && <p className="text-[10px] text-neutral-600 font-bold mt-0.5">📞 +{u.phone}</p>}
                         </div>
+                        {u.role === "vendeur" && u.vendeurStats && (
+                          <div className="text-right font-mono text-[9px]">
+                            <p className="text-neutral-400 uppercase">Revenus</p>
+                            <p className="font-extrabold text-amber-700">{formatFCFA(u.vendeurStats.revenusGeneres || 0)}</p>
+                          </div>
+                        )}
+                        {u.role === "affilie" && u.affiliateStats && (
+                          <div className="text-right font-mono text-[9px]">
+                            <p className="text-neutral-400 uppercase font-sans">Comms</p>
+                            <p className="font-extrabold text-blue-700">{formatFCFA(u.affiliateStats.commissionDisponible || 0)}</p>
+                          </div>
+                        )}
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              )}
+
+              </div>
+
+              {/* Right Column: Interactive Orders Management */}
+              <div className="lg:col-span-7 bg-white p-5 border border-neutral-200 rounded-sm shadow-xs space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-2">
+                  <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                    <span>Suivi et Traitement des Commandes Clients</span>
+                  </h3>
+                  {isRefreshing && (
+                    <span className="text-[9px] text-neutral-400 animate-pulse uppercase tracking-widest font-bold">Mise à jour...</span>
+                  )}
+                </div>
+
+                {orders.length === 0 ? (
+                  <div className="py-12 text-center text-neutral-400">
+                    <p>Aucune commande enregistrée sur la plateforme actuellement.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {orders.map((o) => {
+                      const isUnpaid = o.paymentStatus !== "Payé" && o.paymentMethod !== "Espèces";
+                      
+                      return (
+                        <div 
+                          key={o.id} 
+                          className={`p-4 border border-neutral-200 rounded-sm hover:border-neutral-300 transition-all ${
+                            isUnpaid ? "bg-amber-50/20 border-l-4 border-l-amber-500" : "bg-neutral-50/40"
+                          }`}
+                        >
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2.5 border-b border-neutral-150 mb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-black text-xs text-neutral-955">📦 #{o.id}</span>
+                                <span className="text-neutral-400 text-[10px]">{new Date(o.createdAt).toLocaleString("fr-FR")}</span>
+                              </div>
+                              <p className="text-[10px] text-neutral-600 font-bold mt-1">
+                                Client : {o.shippingDetails?.name || "Client Anonyme"} - 📞 {o.shippingDetails?.phone || "N/A"}
+                              </p>
+                              <p className="text-[10px] text-neutral-500 italic">
+                                Quartier : {o.shippingDetails?.quartier || "Lomé"}
+                              </p>
+                            </div>
+                            <div className="text-left sm:text-right">
+                              <span className="font-display font-black text-neutral-955 text-xs block">{formatFCFA(o.totalAmount)}</span>
+                              <span className="text-[9px] bg-neutral-200 text-neutral-850 px-1.5 py-0.5 rounded-sm uppercase tracking-wide font-semibold block mt-1 w-max sm:ml-auto">
+                                {o.paymentMethod || "Mobile Money"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Order items sublist */}
+                          <div className="text-[10px] text-neutral-700 bg-white p-2 border border-neutral-200 mb-3 space-y-1">
+                            <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest pb-1 border-b border-neutral-100">Détails articles :</p>
+                            {o.items && Array.isArray(o.items) && o.items.map((item: any, i: number) => (
+                              <div key={i} className="flex justify-between items-center text-[10.5px]">
+                                <span>• <strong>{item.product?.nom}</strong> (x{item.quantity})</span>
+                                <span className="font-mono text-neutral-500">{formatFCFA(item.product?.prix * item.quantity)}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Validation actions and select status */}
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {/* Payment badge status */}
+                              <span className={`px-2 py-0.5 rounded-sm font-bold text-[9px] uppercase tracking-wider border ${
+                                o.paymentStatus === "Payé" 
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
+                                  : "bg-amber-50 text-amber-800 border-amber-200"
+                              }`}>
+                                Paiement : {o.paymentStatus || "En attente"}
+                              </span>
+
+                              {/* Manual validate payment button */}
+                              {isUnpaid && (
+                                <button
+                                  onClick={() => handleValidatePayment(o.id)}
+                                  className="bg-amber-500 hover:bg-amber-600 text-neutral-955 font-black text-[9px] uppercase tracking-wider py-1 px-2.5 rounded-xs transition-colors cursor-pointer flex items-center gap-1"
+                                >
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  <span>Valider Paiement</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Delivery Status editor dropdown */}
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-neutral-500 uppercase font-semibold">Livraison :</span>
+                              <select
+                                value={o.orderStatus || "En préparation"}
+                                onChange={(e) => handleUpdateOrderStatus(o.id, e.target.value)}
+                                className="border border-neutral-300 rounded-xs px-2 py-1 text-xs outline-none bg-white font-semibold font-sans text-neutral-800 cursor-pointer"
+                              >
+                                <option value="En préparation">En préparation</option>
+                                <option value="En cours de livraison">En cours de livraison</option>
+                                <option value="Livré">Livré</option>
+                                <option value="Annulé">Annulé</option>
+                              </select>
+                            </div>
+                          </div>
+
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
-        ) : activeTab === "stats" ? (
+) : activeTab === "stats" ? (
           <AdminStats />
             ) : (
               <div className="bg-white border border-neutral-200 p-8 rounded-sm shadow-sm max-w-xl mx-auto animate-fade-in">
