@@ -71,7 +71,7 @@ import logoMonogramRefined from "./assets/images/logo_asime_monogram_refined_178
 import logoModern from "./assets/images/logo_asime_modern_1781086760951.png";
 
 const LOGO_DESIGNS = [
-  { id: "monogramme_plume", name: "Lettre A & Plume d'Or 🪶", src: "" },
+  { id: "monogramme_plume", name: "Lettre A & Plume d'Or 🪶", src: "/icon.svg" },
   { id: "palmier", name: "Palmier National 🌴", src: logoPalmier },
   { id: "prestige", name: "Édition Prestige 👑", src: logoPrestige },
   { id: "monogram_refined", name: "Monogramme Raffiné 🌟", src: logoMonogramRefined },
@@ -911,7 +911,7 @@ export default function App() {
 
   const renderLogoNode = (sizeClass = "w-9 h-9") => {
     const selectedLogo = LOGO_DESIGNS.find(l => l.id === activeLogoId);
-    if (selectedLogo && selectedLogo.src) {
+    if (selectedLogo) {
       return (
         <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
           <img 
@@ -923,76 +923,7 @@ export default function App() {
         </div>
       );
     }
-
-    return (
-      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
-        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-          <defs>
-            {/* Ultra-premium Forest Green Satin Gradient for the Letter A */}
-            <linearGradient id="asime-green-grad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#0B4D26" />
-              <stop offset="40%" stopColor="#0D5E2F" />
-              <stop offset="100%" stopColor="#031F0E" />
-            </linearGradient>
-
-            {/* Bright Yellow-Gold Gradient for the upper leaf half */}
-            <linearGradient id="asime-gold-top" x1="0" y1="1" x2="1" y2="0">
-              <stop offset="0%" stopColor="#FAA61A" />
-              <stop offset="100%" stopColor="#FDBA74" />
-            </linearGradient>
-
-            {/* Rich Amber-Orange Gradient for the lower leaf half */}
-            <linearGradient id="asime-gold-bottom" x1="0" y1="1" x2="1" y2="0">
-              <stop offset="0%" stopColor="#D97706" />
-              <stop offset="100%" stopColor="#FAB319" />
-            </linearGradient>
-
-            {/* Drop shadow for high-fidelity 3D depth of leaf group */}
-            <filter id="asime-leaf-shadow" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0.5" dy="1.5" stdDeviation="1" floodColor="#000000" floodOpacity="0.22" />
-            </filter>
-          </defs>
-
-          {/* Main "A" legs in premium forest green */}
-          <path 
-            d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" 
-            fill="url(#asime-green-grad)" 
-          />
-
-          {/* Leaf group with drop shadow filter */}
-          <g filter="url(#asime-leaf-shadow)">
-            {/* White outline backing patch to isolate/mask the leaf from the green legs */}
-            <path 
-              d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z"
-              fill="white"
-              stroke="white"
-              strokeWidth="4"
-              strokeLinejoin="round"
-            />
-
-            {/* Bottom half of the leaf - Rich Orange-Amber gradient */}
-            <path 
-              d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" 
-              fill="url(#asime-gold-bottom)" 
-            />
-
-            {/* Top half of the leaf - Bright Yellow-Gold gradient */}
-            <path 
-              d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" 
-              fill="url(#asime-gold-top)" 
-            />
-
-            {/* Delicate central leaf vein line */}
-            <path 
-              d="M 27,73 C 41,63 59,51 77,46" 
-              stroke="white" 
-              strokeWidth="0.85" 
-              strokeLinecap="round" 
-            />
-          </g>
-        </svg>
-      </div>
-    );
+    return null;
   };
 
   // Sync / Prefill checkout details when user changes
