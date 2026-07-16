@@ -71,6 +71,7 @@ import logoMonogramRefined from "./assets/images/logo_asime_monogram_refined_178
 import logoModern from "./assets/images/logo_asime_modern_1781086760951.png";
 
 const LOGO_DESIGNS = [
+  { id: "monogramme_plume", name: "Lettre A & Plume d'Or 🪶", src: "" },
   { id: "palmier", name: "Palmier National 🌴", src: logoPalmier },
   { id: "prestige", name: "Édition Prestige 👑", src: logoPrestige },
   { id: "monogram_refined", name: "Monogramme Raffiné 🌟", src: logoMonogramRefined },
@@ -293,7 +294,7 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
 export default function App() {
   const { language, setLanguage, t } = useLanguage();
   const [activeLogoId, setActiveLogoId] = useState(() => {
-    return safeLocalStorage.getItem("asime-active-logo-id") || "prestige";
+    return safeLocalStorage.getItem("asime-active-logo-id") || "monogramme_plume";
   });
 
   // Navigation & Tab State
@@ -910,7 +911,7 @@ export default function App() {
 
   const renderLogoNode = (sizeClass = "w-9 h-9") => {
     const selectedLogo = LOGO_DESIGNS.find(l => l.id === activeLogoId);
-    if (selectedLogo) {
+    if (selectedLogo && selectedLogo.src) {
       return (
         <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
           <img 
@@ -1404,7 +1405,7 @@ export default function App() {
 
   const fetchReviews = async () => {
     try {
-      const res = await fetch("/api/reviews");
+      const res = await fetch("/api/reviews?t=" + Date.now());
       if (res.ok) {
         const data = await res.json();
         setProductReviews(data);
@@ -1421,40 +1422,14 @@ export default function App() {
       const localWhatsapp = safeLocalStorage.getItem("asime_whatsapp_merchant_number");
       
       // Load server settings first
-      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "prestige" };
+      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "monogram" };
       try {
-        const settingsRes = await fetch("/api/settings");
+        const settingsRes = await fetch("/api/settings?t=" + Date.now());
         if (settingsRes.ok) {
           serverSettings = await settingsRes.json();
         }
       } catch (err) {
         console.error("Failed to fetch server settings:", err);
-      }
-      
-      // If we have local settings that differ from default, and differ from server settings, let's push them to the server
-      const hasLocalCustomLogo = localLogoId && localLogoId !== "prestige";
-      const hasLocalCustomWhatsapp = localWhatsapp && localWhatsapp !== "22890000000";
-      
-      if ((hasLocalCustomLogo && localLogoId !== serverSettings.activeLogoId) || 
-          (hasLocalCustomWhatsapp && localWhatsapp !== serverSettings.whatsappMerchantNumber)) {
-        try {
-          const syncSettingsRes = await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              auth: "asime2026",
-              whatsappMerchantNumber: localWhatsapp || serverSettings.whatsappMerchantNumber,
-              activeLogoId: localLogoId || serverSettings.activeLogoId
-            })
-          });
-          if (syncSettingsRes.ok) {
-            const result = await syncSettingsRes.json();
-            serverSettings = result.settings;
-            console.log("Successfully synchronized local settings to server:", serverSettings);
-          }
-        } catch (err) {
-          console.error("Failed to sync settings to server:", err);
-        }
       }
       
       // Update our local state and configuration with the server settings
@@ -1468,37 +1443,10 @@ export default function App() {
         safeLocalStorage.setItem("asime_whatsapp_merchant_number", serverSettings.whatsappMerchantNumber);
       }
       
-      // 2. Sync Products Catalog
-      const emulatedProductsStr = safeLocalStorage.getItem("asime_emulated_products");
-      if (emulatedProductsStr) {
-        try {
-          const localProducts = JSON.parse(emulatedProductsStr);
-          // If the user customized products (e.g., they deleted default ones and left exactly 3, or modified them)
-          if (Array.isArray(localProducts) && localProducts.length > 0 && localProducts.length < 100) {
-            console.log("Found customized local emulated products catalog. Syncing to backend server...", localProducts.length);
-            const syncProductsRes = await fetch("/api/admin/sync-products", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                auth: "asime2026",
-                products: localProducts
-              })
-            });
-            if (syncProductsRes.ok) {
-              console.log("Successfully synchronized local products catalog to server!");
-              // Clear emulated products since they are now stored safely on the server!
-              safeLocalStorage.removeItem("asime_emulated_products");
-              safeLocalStorage.removeItem("asime_emulated_partners");
-              safeLocalStorage.removeItem("asime_emulated_blogs");
-            }
-          } else {
-            // Just clear it if it's default/empty/huge
-            safeLocalStorage.removeItem("asime_emulated_products");
-          }
-        } catch (e) {
-          console.error("Error parsing local products for sync:", e);
-        }
-      }
+      // Clear any stale local emulated databases so that the browser is forced to download the fresh official database from the server
+      safeLocalStorage.removeItem("asime_emulated_products");
+      safeLocalStorage.removeItem("asime_emulated_partners");
+      safeLocalStorage.removeItem("asime_emulated_blogs");
     } catch (e) {
       console.error("Error in syncLocalDataWithServer:", e);
     }
@@ -1570,7 +1518,7 @@ export default function App() {
   const fetchProducts = async () => {
     setLoadingProducts(true);
     try {
-      const res = await fetch("/api/products");
+      const res = await fetch("/api/products?t=" + Date.now());
       if (res.ok) {
         const data = await res.json();
         setProducts(data);
@@ -1584,7 +1532,7 @@ export default function App() {
 
   const fetchPartners = async () => {
     try {
-      const res = await fetch("/api/partners");
+      const res = await fetch("/api/partners?t=" + Date.now());
       if (res.ok) {
         const data = await res.json();
         setPartners(data);
@@ -1597,7 +1545,7 @@ export default function App() {
   const fetchBlogs = async () => {
     setLoadingBlogs(true);
     try {
-      const res = await fetch("/api/blogs");
+      const res = await fetch("/api/blogs?t=" + Date.now());
       if (res.ok) {
         const data = await res.json();
         setBlogs(data);

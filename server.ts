@@ -13,6 +13,14 @@ const PORT = 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+// Prevent aggressive caching of API endpoints (especially on mobile/Android browsers)
+app.use("/api", (req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
+
 const PRODUCTS_FILE = path.join(process.cwd(), "produits.json");
 const BLOGS_FILE = path.join(process.cwd(), "blogs.json");
 const USERS_FILE = path.join(process.cwd(), "users.json");
@@ -470,7 +478,7 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
       fs.writeFileSync(filePath, content, "utf-8");
     }
     const parsed = JSON.parse(content);
-    if (filePath === PRODUCTS_FILE && (!Array.isArray(parsed) || parsed.length < 100)) {
+    if (filePath === PRODUCTS_FILE && !Array.isArray(parsed)) {
       const initialProducts = generateCatalogData();
       fs.writeFileSync(filePath, JSON.stringify(initialProducts, null, 2), "utf-8");
       return initialProducts as unknown as T;
@@ -2289,7 +2297,7 @@ app.post("/api/messages/:threadId/read", (req, res) => {
 app.get("/api/settings", (req, res) => {
   const defaultSettings = {
     whatsappMerchantNumber: "22890000000",
-    activeLogoId: "prestige"
+    activeLogoId: "monogramme_plume"
   };
   const settings = readJSONFile(SETTINGS_FILE, defaultSettings);
   res.json(settings);
@@ -2304,13 +2312,13 @@ app.post("/api/settings", (req, res) => {
 
   const defaultSettings = {
     whatsappMerchantNumber: "22890000000",
-    activeLogoId: "prestige"
+    activeLogoId: "monogramme_plume"
   };
   const currentSettings = readJSONFile(SETTINGS_FILE, defaultSettings);
 
   const newSettings = {
     whatsappMerchantNumber: whatsappMerchantNumber || currentSettings.whatsappMerchantNumber || "22890000000",
-    activeLogoId: activeLogoId || currentSettings.activeLogoId || "prestige"
+    activeLogoId: activeLogoId || currentSettings.activeLogoId || "monogramme_plume"
   };
 
   const success = writeJSONFile(SETTINGS_FILE, newSettings);
