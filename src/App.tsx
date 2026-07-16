@@ -914,12 +914,42 @@ export default function App() {
     if (selectedLogo) {
       return (
         <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
-          <img 
-            src={selectedLogo.src} 
-            alt={selectedLogo.name} 
-            className="w-full h-full object-contain rounded-md" 
-            referrerPolicy="no-referrer" 
-          />
+          {selectedLogo.id === "monogramme_plume" ? (
+            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+              <defs>
+                <linearGradient id="asime-green-grad-app" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#0B4D26" />
+                  <stop offset="40%" stopColor="#0D5E2F" />
+                  <stop offset="100%" stopColor="#031F0E" />
+                </linearGradient>
+                <linearGradient id="asime-gold-top-app" x1="0" y1="1" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#FAA61A" />
+                  <stop offset="100%" stopColor="#FDBA74" />
+                </linearGradient>
+                <linearGradient id="asime-gold-bottom-app" x1="0" y1="1" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#D97706" />
+                  <stop offset="100%" stopColor="#FAB319" />
+                </linearGradient>
+                <filter id="asime-leaf-shadow-app" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0.5" dy="1.5" stdDeviation="1" floodColor="#000000" floodOpacity="0.22" />
+                </filter>
+              </defs>
+              <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="url(#asime-green-grad-app)" />
+              <g filter="url(#asime-leaf-shadow-app)">
+                <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
+                <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="url(#asime-gold-bottom-app)" />
+                <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="url(#asime-gold-top-app)" />
+                <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
+              </g>
+            </svg>
+          ) : (
+            <img 
+              src={selectedLogo.src} 
+              alt={selectedLogo.name} 
+              className="w-full h-full object-contain rounded-md" 
+              referrerPolicy="no-referrer" 
+            />
+          )}
         </div>
       );
     }
