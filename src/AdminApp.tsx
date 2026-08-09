@@ -3,7 +3,6 @@ import { motion } from "motion/react";
 const LOGO_DESIGNS = [
   { id: "monogramme_plume", name: "Lettre A & Plume d'Or (Officiel) 🪶", src: "/icon.svg" },
 ];
-
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
   getItem(key: string): string | null {
