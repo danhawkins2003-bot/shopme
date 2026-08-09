@@ -96,7 +96,7 @@ export const INITIAL_PROMO_SLIDES: PromoSlide[] = [
     categoryTarget: "Épicerie & Fruits Séchés",
     searchQuery: "",
     bgGradient: "linear-gradient(135deg, #052312 0%, #0c3e1e 50%, #1a2e0a 100%)",
-    imageUrl: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=600",
+    imageUrl: "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?auto=format&fit=crop&q=80&w=600",
     imageAlt: "Miel Sauvage & Terroir du Togo",
     overlayLabelFr: "Miel Sauvage de Kpalimé",
     overlayLabelEe: "Kpalimé Anyitsi",

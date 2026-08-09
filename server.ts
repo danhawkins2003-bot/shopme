@@ -76,7 +76,7 @@ function getImagesForNoun(noun: string): string[] {
   // Made in Togo / Agri / Cosmetics / Premium local elements
   if (norm.includes("miel")) {
     return [
-      "https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=600",
+      "https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?auto=format&fit=crop&q=80&w=600",
       "https://images.unsplash.com/photo-1590156546746-c589fbfb31d6?auto=format&fit=crop&q=80&w=600"
     ];
   }

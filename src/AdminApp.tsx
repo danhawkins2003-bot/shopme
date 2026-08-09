@@ -23,7 +23,8 @@ import logoMonogramRefined from "./assets/images/logo_asime_monogram_refined_178
 import logoModern from "./assets/images/logo_asime_modern_1781086760951.png";
 
 const LOGO_DESIGNS = [
-  { id: "monogramme_plume", name: "Lettre A & Plume d'Or 🪶", src: "/icon.svg" },
+  { id: "monogramme_plume", name: "Lettre A & Plume d'Or (Officiel) 🪶", src: "/icon.svg" },
+  { id: "monogram", name: "Monogramme AYIBA 🏷️", src: logoMonogram },
   { id: "palmier", name: "Palmier National 🌴", src: logoPalmier },
   { id: "prestige", name: "Édition Prestige 👑", src: logoPrestige },
   { id: "monogram_refined", name: "Monogramme Raffiné 🌟", src: logoMonogramRefined },
@@ -32,8 +33,7 @@ const LOGO_DESIGNS = [
   { id: "ebene", name: "Ébène Précieux ✨", src: logoEbene },
   { id: "tradition", name: "Tradition Togolaise 🇹🇬", src: logoTradition },
   { id: "organic", name: "Asime Organique 🌱", src: logoOrganic },
-  { id: "modern", name: "Asime Moderne ⚡", src: logoModern },
-  { id: "monogram", name: "Monogramme Classique 🏷️", src: logoMonogram }
+  { id: "modern", name: "Asime Moderne ⚡", src: logoModern }
 ];
 
 const memoryStorage: Record<string, string> = {};
@@ -1872,7 +1872,7 @@ export default function AdminApp() {
                                 : "border-neutral-200 hover:border-neutral-400"
                             }`}
                           >
-                             <div className="w-16 h-16 flex items-center justify-center p-1 rounded bg-white shadow-3xs mb-2.5">
+                             <div className="w-16 h-16 flex items-center justify-center p-1 rounded bg-white border border-neutral-200 shadow-3xs mb-2.5 overflow-hidden">
                                {logo.id === "monogramme_plume" ? (
                                  <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
                                    <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />

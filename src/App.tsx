@@ -75,7 +75,8 @@ import logoMonogramRefined from "./assets/images/logo_asime_monogram_refined_178
 import logoModern from "./assets/images/logo_asime_modern_1781086760951.png";
 
 const LOGO_DESIGNS = [
-  { id: "monogramme_plume", name: "Lettre A & Plume d'Or 🪶", src: "/icon.svg" },
+  { id: "monogramme_plume", name: "Lettre A & Plume d'Or (Officiel) 🪶", src: "/icon.svg" },
+  { id: "monogram", name: "Monogramme AYIBA 🏷️", src: logoMonogram },
   { id: "palmier", name: "Palmier National 🌴", src: logoPalmier },
   { id: "prestige", name: "Édition Prestige 👑", src: logoPrestige },
   { id: "monogram_refined", name: "Monogramme Raffiné 🌟", src: logoMonogramRefined },
@@ -84,8 +85,7 @@ const LOGO_DESIGNS = [
   { id: "ebene", name: "Ébène Précieux ✨", src: logoEbene },
   { id: "tradition", name: "Tradition Togolaise 🇹🇬", src: logoTradition },
   { id: "organic", name: "Asime Organique 🌱", src: logoOrganic },
-  { id: "modern", name: "Asime Moderne ⚡", src: logoModern },
-  { id: "monogram", name: "Monogramme Classique 🏷️", src: logoMonogram }
+  { id: "modern", name: "Asime Moderne ⚡", src: logoModern }
 ];
 
 const memoryStorage: Record<string, string> = {};
@@ -298,8 +298,26 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
 export default function App() {
   const { language, setLanguage, t } = useLanguage();
   const [activeLogoId, setActiveLogoId] = useState(() => {
-    return safeLocalStorage.getItem("asime-active-logo-id") || "monogramme_plume";
+    return safeLocalStorage.getItem("asime-active-logo-id") || "monogram";
   });
+
+  // Fetch settings from server to sync logo and config across devices
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data) {
+          if (data.activeLogoId) {
+            setActiveLogoId(data.activeLogoId);
+            safeLocalStorage.setItem("asime-active-logo-id", data.activeLogoId);
+          }
+          if (data.whatsappMerchantNumber) {
+            safeLocalStorage.setItem("asime_whatsapp_merchant_number", data.whatsappMerchantNumber);
+          }
+        }
+      })
+      .catch((e) => console.error("Error syncing global settings:", e));
+  }, []);
 
   // Navigation & Tab State
   const [activeTab, setActiveTab] = useState<"accueil" | "catalogue" | "blog" | "contact">("accueil");
@@ -945,32 +963,32 @@ export default function App() {
   const [editQuartier, setEditQuartier] = useState("");
 
   const renderLogoNode = (sizeClass = "w-9 h-9") => {
-    const selectedLogo = LOGO_DESIGNS.find(l => l.id === activeLogoId);
-    if (selectedLogo) {
+    const selectedLogo = LOGO_DESIGNS.find(l => l.id === activeLogoId) || LOGO_DESIGNS[0];
+    if (selectedLogo.id === "monogramme_plume" || !activeLogoId) {
       return (
-        <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
-          {selectedLogo.id === "monogramme_plume" ? (
-            <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-              <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
-              <g>
-                <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-                <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
-                <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
-                <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
-              </g>
-            </svg>
-          ) : (
-            <img 
-              src={selectedLogo.src} 
-              alt={selectedLogo.name} 
-              className="w-full h-full object-contain rounded-md" 
-              referrerPolicy="no-referrer" 
-            />
-          )}
+        <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-xl p-0.5 border border-emerald-100/80 shadow-2xs overflow-hidden`}>
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+            <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
+            <g>
+              <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
+              <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
+              <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
+              <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
+            </g>
+          </svg>
         </div>
       );
     }
-    return null;
+    return (
+      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-xl p-0.5 border border-neutral-200/80 shadow-2xs overflow-hidden`}>
+        <img 
+          src={selectedLogo.src} 
+          alt={selectedLogo.name} 
+          className="w-full h-full object-contain rounded-lg" 
+          referrerPolicy="no-referrer" 
+        />
+      </div>
+    );
   };
 
   // Sync / Prefill checkout details when user changes
