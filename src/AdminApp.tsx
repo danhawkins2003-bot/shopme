@@ -1,39 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion } from "motion/react";
-
-// @ts-ignore
-import logoOrganic from "./assets/images/logo_asime_organic_1781086774790.png";
-// @ts-ignore
-import logoMonogram from "./assets/images/logo_asime_monogram_1781086746857.png";
-// @ts-ignore
-import logoPrestige from "./assets/images/logo_asime_prestige_1781086799630.png";
-// @ts-ignore
-import logoTradition from "./assets/images/logo_asime_tradition_1781086787788.png";
-// @ts-ignore
-import logoPalmier from "./assets/images/logo_asime_palmier_crest_1781087278648.png";
-// @ts-ignore
-import logoBouclier from "./assets/images/logo_asime_bouclier_sacred_1781087291885.png";
-// @ts-ignore
-import logoCorbeille from "./assets/images/logo_asime_corbeille_or_1781087305413.png";
-// @ts-ignore
-import logoEbene from "./assets/images/logo_asime_ebene_1781087249311.png";
-// @ts-ignore
-import logoMonogramRefined from "./assets/images/logo_asime_monogram_refined_1781087265797.png";
-// @ts-ignore
-import logoModern from "./assets/images/logo_asime_modern_1781086760951.png";
-
 const LOGO_DESIGNS = [
   { id: "monogramme_plume", name: "Lettre A & Plume d'Or (Officiel) 🪶", src: "/icon.svg" },
-  { id: "monogram", name: "Monogramme AYIBA 🏷️", src: logoMonogram },
-  { id: "palmier", name: "Palmier National 🌴", src: logoPalmier },
-  { id: "prestige", name: "Édition Prestige 👑", src: logoPrestige },
-  { id: "monogram_refined", name: "Monogramme Raffiné 🌟", src: logoMonogramRefined },
-  { id: "corbeille", name: "Corbeille d'Or 🧺", src: logoCorbeille },
-  { id: "bouclier", name: "Bouclier Sacré 🛡️", src: logoBouclier },
-  { id: "ebene", name: "Ébène Précieux ✨", src: logoEbene },
-  { id: "tradition", name: "Tradition Togolaise 🇹🇬", src: logoTradition },
-  { id: "organic", name: "Asime Organique 🌱", src: logoOrganic },
-  { id: "modern", name: "Asime Moderne ⚡", src: logoModern }
 ];
 
 const memoryStorage: Record<string, string> = {};
