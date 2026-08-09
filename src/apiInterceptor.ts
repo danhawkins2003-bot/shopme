@@ -1932,57 +1932,70 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }, 200, true);
   }
 
+  if (cleanRoute === "/api/settings") {
+    if (method === "GET") {
+      const defaultSettings = {
+        whatsappMerchantNumber: "22890000000",
+        activeLogoId: "monogramme_plume"
+      };
+      try {
+        const stored = localStorage.getItem("asime_emulated_settings");
+        if (stored) {
+          return makeResponse(JSON.parse(stored), 200, true);
+        }
+      } catch (e) {}
+      return makeResponse(defaultSettings, 200, true);
+    }
+
+    if (method === "POST") {
+      try {
+        const body = init?.body ? JSON.parse(init.body as string) : {};
+        const defaultSettings = {
+          whatsappMerchantNumber: "22890000000",
+          activeLogoId: "monogramme_plume"
+        };
+        const currentStored = localStorage.getItem("asime_emulated_settings");
+        const current = currentStored ? JSON.parse(currentStored) : defaultSettings;
+
+        const newSettings = {
+          whatsappMerchantNumber: body.whatsappMerchantNumber || current.whatsappMerchantNumber || "22890000000",
+          activeLogoId: body.activeLogoId || current.activeLogoId || "monogramme_plume"
+        };
+
+        localStorage.setItem("asime_emulated_settings", JSON.stringify(newSettings));
+        
+        localStorage.setItem("asime-active-logo-id", newSettings.activeLogoId);
+        localStorage.setItem("asime_whatsapp_merchant_number", newSettings.whatsappMerchantNumber);
+
+        return makeResponse({ success: true, settings: newSettings }, 200, true);
+      } catch (err: any) {
+        return makeResponse({ success: false, error: err.message }, 500, false);
+      }
+    }
+  }
+
+  if (cleanRoute === "/api/admin/db-status" && method === "GET") {
+    return makeResponse({
+      configured: false,
+      url: "",
+      hasTable: false,
+      error: "Mode Émulation Client Actif. Supabase n'est pas interrogé directement dans ce mode."
+    }, 200, true);
+  }
+
+  if (cleanRoute === "/api/admin/db-push" && method === "POST") {
+    return makeResponse({
+      success: false,
+      error: "La synchronisation forcée vers le cloud n'est pas disponible en mode d'émulation client hors-ligne."
+    }, 400, false);
+  }
+
   return makeResponse({ error: "Endpoint not matched on emulated client database" }, 404, false);
 }
 
 // Override the global Window fetch definition
 const customFetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  let url = typeof input === "string" ? input : (input instanceof Request ? input.url : "");
-
-  // If the request points to our mockable /api backend endpoints
-  if (url.startsWith("/api") || url.startsWith("./api") || url.includes("/api/")) {
-    
-    // Normalize URL path to begin with "/api"
-    let apiPath = url;
-    if (url.includes("/api/")) {
-      apiPath = "/api/" + url.split("/api/")[1];
-    } else if (url.startsWith("api/")) {
-      apiPath = "/" + url;
-    } else if (url.startsWith("./api/")) {
-      apiPath = url.substring(1);
-    }
-
-    // Try normal fetch first (if emulation is not explicitly forced yet)
-    if (useLocalEmulation === null) {
-      try {
-        const res = await originalFetch(input, init);
-        const contentType = res.headers?.get("content-type") || "";
-        
-        // Vercel routes index.html text/html for unhandled server paths or if it receives 404/405
-        if (res.status === 404 || res.status === 405 || res.status >= 500 || contentType.includes("text/html")) {
-          useLocalEmulation = true;
-          console.log("[Asime Interceptor] Switched to client-side emulation database container.");
-          return handleEmulatedRequest(apiPath, init);
-        } else {
-          // Keep using real server-side api
-          useLocalEmulation = false;
-          return res;
-        }
-      } catch (err) {
-        useLocalEmulation = true;
-        console.log("[Asime Interceptor] Server unreachable, fallbacked to client-side localStorage db.");
-        return handleEmulatedRequest(apiPath, init);
-      }
-    }
-
-    if (useLocalEmulation) {
-      return handleEmulatedRequest(apiPath, init);
-    } else {
-      return originalFetch(input, init);
-    }
-  }
-
-  // Fallback to normal fetch for assets (images, fonts, html pages)
+  // Client-side emulation is completely disabled to ensure all data is written to the real backend and Supabase
   return originalFetch(input, init);
 };
 

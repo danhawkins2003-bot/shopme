@@ -28,8 +28,8 @@ export const translations: TranslationDictionary = {
     ee: "Kadodo",
   },
   search_placeholder: {
-    fr: "Rechercher...",
-    ee: "Di adzɔnu...",
+    fr: "Rechercher un produit...",
+    ee: "Di adzɔnu aɖe...",
   },
   banner_promo: {
     fr: "📦 Boutique Officielle du Consommer Togolais 🇹🇬 | Livraison rapide à Lomé et environs.",

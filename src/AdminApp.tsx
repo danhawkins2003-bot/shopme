@@ -97,9 +97,83 @@ import {
 } from "lucide-react";
 import { Product } from "./types";
 import AdminStats from "./components/AdminStats";
+import { InvoiceModal } from "./components/InvoiceModal";
+import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
 
 export default function AdminApp() {
-  const [activeTab, setActiveTab] = useState<"catalog" | "stats" | "settings" | "requests">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "banners" | "stats" | "settings" | "requests">("catalog");
+  const [adminPromoSlides, setAdminPromoSlides] = useState<PromoSlide[]>(() => {
+    try {
+      const saved = localStorage.getItem("asime_promo_slides");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return INITIAL_PROMO_SLIDES;
+  });
+  const [promoSaveSuccess, setPromoSaveSuccess] = useState(false);
+
+  const saveAdminPromoSlides = (newSlides: PromoSlide[]) => {
+    setAdminPromoSlides(newSlides);
+    try {
+      localStorage.setItem("asime_promo_slides", JSON.stringify(newSlides));
+    } catch (e) {
+      console.error("Failed to save promo slides to localStorage", e);
+    }
+    setPromoSaveSuccess(true);
+    setTimeout(() => setPromoSaveSuccess(false), 3000);
+  };
+
+  const handleSlideImageUpload = (index: number, file: File) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result) {
+        const updated = [...adminPromoSlides];
+        updated[index] = { ...updated[index], imageUrl: reader.result as string };
+        saveAdminPromoSlides(updated);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddNewSlide = () => {
+    const newSlide: PromoSlide = {
+      id: `slide-${Date.now()}`,
+      badgeTagFr: "NOUVEAU VISUEL",
+      badgeTagEe: "YEYE",
+      badgeSubFr: "TOGO VI",
+      badgeSubEe: "TOGO VI",
+      titleFr: "Nouvelle Affiche Promo",
+      titleEe: "Nouvelle Affiche Promo",
+      subtitleFr: "Collection exclusive",
+      subtitleEe: "Collection exclusive",
+      offerMainFr: "Offre Spéciale",
+      offerMainEe: "Offre Spéciale",
+      offerSubFr: "Made in Togo",
+      offerSubEe: "Made in Togo",
+      descFr: "Découvrez nos meilleurs produits locaux.",
+      descEe: "Découvrez nos meilleurs produits locaux.",
+      buttonTextFr: "Découvrir la sélection",
+      buttonTextEe: "Découvrir la sélection",
+      categoryTarget: "Made in Togo Premium",
+      bgGradient: "linear-gradient(to right, #0a1f10, #050a06)",
+      imageUrl: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800",
+      imageAlt: "Nouvelle Affiche Promo"
+    };
+    saveAdminPromoSlides([...adminPromoSlides, newSlide]);
+  };
+
+  const handleDeleteSlide = (index: number) => {
+    if (adminPromoSlides.length <= 1) {
+      alert("Il doit y avoir au moins une affiche dans le carrousel.");
+      return;
+    }
+    if (confirm("Voulez-vous vraiment supprimer cette affiche ?")) {
+      const updated = adminPromoSlides.filter((_, i) => i !== index);
+      saveAdminPromoSlides(updated);
+    }
+  };
   const [products, setProducts] = useState<Product[]>([]);
   const [populating, setPopulating] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -117,6 +191,10 @@ export default function AdminApp() {
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Invoice Modal State for Admin
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<any | null>(null);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
 
   // Partners Management State
   const [partnersList, setPartnersList] = useState<{ 
@@ -834,12 +912,23 @@ export default function AdminApp() {
                 onClick={() => setActiveTab("catalog")}
                 className={`py-3 px-6 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
                   activeTab === "catalog"
-                    ? "border-[#d4af37] text-neutral-955"
+                    ? "border-[#d4af37] text-neutral-955 font-black"
                     : "border-transparent text-neutral-400 hover:text-neutral-900"
                 }`}
               >
                 <Database className="w-4 h-4" />
                 <span>Gestion Catalogue</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("banners")}
+                className={`py-3 px-6 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                  activeTab === "banners"
+                    ? "border-[#d4af37] text-neutral-955 font-black"
+                    : "border-transparent text-neutral-400 hover:text-neutral-900"
+                }`}
+              >
+                <ImageIcon className="w-4 h-4 text-[#d4af37]" />
+                <span>Affiches & Bannières ({adminPromoSlides.length})</span>
               </button>
               <button
                 onClick={() => setActiveTab("requests")}
@@ -1520,6 +1609,18 @@ export default function AdminApp() {
                                   <span>Valider Paiement</span>
                                 </button>
                               )}
+
+                              {/* View / Print Official Invoice */}
+                              <button
+                                onClick={() => {
+                                  setSelectedInvoiceOrder(o);
+                                  setIsInvoiceModalOpen(true);
+                                }}
+                                className="bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-950 font-bold text-[9px] uppercase tracking-wider py-1 px-2 rounded-xs transition-colors cursor-pointer flex items-center gap-1"
+                              >
+                                <FileText className="w-3 h-3" />
+                                <span>Facture</span>
+                              </button>
                             </div>
 
                             {/* Delivery Status editor dropdown */}
@@ -1547,9 +1648,179 @@ export default function AdminApp() {
 
             </div>
           </div>
-) : activeTab === "stats" ? (
+        ) : activeTab === "banners" ? (
+          <div className="space-y-6">
+            {/* Header Banner Section */}
+            <div className="bg-neutral-950 text-white p-6 rounded-sm border border-[#d4af37]/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-5 h-5 text-[#d4af37]" />
+                  <h3 className="font-display font-extrabold text-lg uppercase tracking-wider text-white">Gestion des Affiches & Images de l'Accueil</h3>
+                </div>
+                <p className="text-xs text-neutral-300 mt-1 max-w-2xl leading-relaxed">
+                  Remplacez facilement les affiches promotionnelles affichées dans le carrousel principal de la page d'accueil. 
+                  Vous pouvez **télécharger directement une image** depuis votre appareil ou **coller une URL d'image**.
+                </p>
+              </div>
+              <button
+                onClick={handleAddNewSlide}
+                className="bg-[#d4af37] hover:bg-amber-400 text-neutral-955 font-bold text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm transition-colors flex items-center gap-2 cursor-pointer shrink-0 shadow-md"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Ajouter une Affiche</span>
+              </button>
+            </div>
+
+            {promoSaveSuccess && (
+              <div className="bg-emerald-50 text-emerald-800 border border-emerald-300 p-3 rounded text-xs font-bold flex items-center gap-2">
+                <span>✓</span>
+                <span>Affiches mises à jour et enregistrées avec succès ! La page d'accueil a été actualisée.</span>
+              </div>
+            )}
+
+            {/* Grid of Banner Slides */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {adminPromoSlides.map((slide, index) => (
+                <div 
+                  key={slide.id || index}
+                  className="bg-white border border-neutral-250 rounded-md p-4 shadow-xs flex flex-col justify-between space-y-4 hover:border-[#d4af37] transition-colors"
+                >
+                  <div>
+                    {/* Slide Top Badge */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="bg-[#d4af37]/20 text-neutral-900 border border-[#d4af37]/40 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
+                        Affiche #{index + 1}
+                      </span>
+                      <span className="text-[10px] text-neutral-500 font-mono">
+                        ID: {slide.id}
+                      </span>
+                    </div>
+
+                    {/* Image Preview Box */}
+                    <div className="relative w-full h-48 bg-neutral-900 rounded border border-neutral-200 overflow-hidden mb-3 group">
+                      <img 
+                        src={slide.imageUrl} 
+                        alt={slide.titleFr || "Affiche Promo"} 
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 bg-neutral-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center text-white text-xs font-bold">
+                        {slide.titleFr}
+                      </div>
+                    </div>
+
+                    {/* Image Change Controls */}
+                    <div className="space-y-2 mb-4 bg-stone-50 p-3 rounded border border-stone-200">
+                      <label className="block text-[10px] font-bold text-neutral-800 uppercase tracking-wider">
+                        Remplacer le visuel / l'image :
+                      </label>
+                      
+                      {/* Option 1: File Upload */}
+                      <label className="w-full bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-955 font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors cursor-pointer">
+                        <ImageIcon className="w-4 h-4 text-[#d4af37] group-hover:text-neutral-955" />
+                        <span>Télécharger une Image (Fichier)</span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              handleSlideImageUpload(index, e.target.files[0]);
+                            }
+                          }} 
+                        />
+                      </label>
+
+                      {/* Option 2: Image URL */}
+                      <div className="pt-1">
+                        <span className="text-[9px] text-neutral-500 block mb-1">Ou collez l'URL direct de l'image :</span>
+                        <input 
+                          type="url"
+                          value={slide.imageUrl}
+                          onChange={(e) => {
+                            const updated = [...adminPromoSlides];
+                            updated[index] = { ...updated[index], imageUrl: e.target.value };
+                            saveAdminPromoSlides(updated);
+                          }}
+                          placeholder="https://images.unsplash.com/..."
+                          className="w-full text-xs font-mono border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Text details for the Slide */}
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                          Titre de l'Affiche
+                        </label>
+                        <input 
+                          type="text"
+                          value={slide.titleFr || ""}
+                          onChange={(e) => {
+                            const updated = [...adminPromoSlides];
+                            updated[index] = { ...updated[index], titleFr: e.target.value, titleEe: e.target.value };
+                            saveAdminPromoSlides(updated);
+                          }}
+                          className="w-full text-xs font-bold border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                          Sous-Titre / Collection
+                        </label>
+                        <input 
+                          type="text"
+                          value={slide.subtitleFr || ""}
+                          onChange={(e) => {
+                            const updated = [...adminPromoSlides];
+                            updated[index] = { ...updated[index], subtitleFr: e.target.value, subtitleEe: e.target.value };
+                            saveAdminPromoSlides(updated);
+                          }}
+                          className="w-full text-xs border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                          Catégorie cible au clic
+                        </label>
+                        <select 
+                          value={slide.categoryTarget || "Tous"}
+                          onChange={(e) => {
+                            const updated = [...adminPromoSlides];
+                            updated[index] = { ...updated[index], categoryTarget: e.target.value };
+                            saveAdminPromoSlides(updated);
+                          }}
+                          className="w-full text-xs font-bold border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                        >
+                          <option value="Tous">Toutes les catégories</option>
+                          <option value="Made in Togo Premium">Made in Togo Premium</option>
+                          <option value="Paniers Frais & Épicerie">Paniers Frais & Épicerie</option>
+                          <option value="Cosmétique & Beauté Bio">Cosmétique & Beauté Bio</option>
+                          <option value="Mode & Artisanat Lux">Mode & Artisanat Lux</option>
+                          <option value="Plats & Gastronomie Locale">Plats & Gastronomie Locale</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delete Action */}
+                  <button 
+                    onClick={() => handleDeleteSlide(index)}
+                    className="w-full mt-4 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-1.5 transition-colors border border-red-200 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Supprimer cette affiche</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : activeTab === "stats" ? (
           <AdminStats />
-            ) : (
+        ) : (
               <div className="bg-white border border-neutral-200 p-8 rounded-sm shadow-sm max-w-3xl mx-auto animate-fade-in">
                 <div className="flex items-center gap-3 mb-6 pb-3 border-b border-neutral-100">
                   <div className="bg-[#d4af37]/10 p-2.5 text-[#b8901c] rounded-sm">
@@ -1604,29 +1875,11 @@ export default function AdminApp() {
                              <div className="w-16 h-16 flex items-center justify-center p-1 rounded bg-white shadow-3xs mb-2.5">
                                {logo.id === "monogramme_plume" ? (
                                  <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                                   <defs>
-                                     <linearGradient id="asime-green-grad-admin" x1="0" y1="0" x2="1" y2="1">
-                                       <stop offset="0%" stopColor="#0B4D26" />
-                                       <stop offset="40%" stopColor="#0D5E2F" />
-                                       <stop offset="100%" stopColor="#031F0E" />
-                                     </linearGradient>
-                                     <linearGradient id="asime-gold-top-admin" x1="0" y1="1" x2="1" y2="0">
-                                       <stop offset="0%" stopColor="#FAA61A" />
-                                       <stop offset="100%" stopColor="#FDBA74" />
-                                     </linearGradient>
-                                     <linearGradient id="asime-gold-bottom-admin" x1="0" y1="1" x2="1" y2="0">
-                                       <stop offset="0%" stopColor="#D97706" />
-                                       <stop offset="100%" stopColor="#FAB319" />
-                                     </linearGradient>
-                                     <filter id="asime-leaf-shadow-admin" x="-20%" y="-20%" width="140%" height="140%">
-                                       <feDropShadow dx="0.5" dy="1.5" stdDeviation="1" floodColor="#000000" floodOpacity="0.22" />
-                                     </filter>
-                                   </defs>
-                                   <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="url(#asime-green-grad-admin)" />
-                                   <g filter="url(#asime-leaf-shadow-admin)">
+                                   <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
+                                   <g>
                                      <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-                                     <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="url(#asime-gold-bottom-admin)" />
-                                     <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="url(#asime-gold-top-admin)" />
+                                     <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
+                                     <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
                                      <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
                                    </g>
                                  </svg>
@@ -1699,6 +1952,13 @@ export default function AdminApp() {
         )}
       </div>
 
+      {/* --- OFFICIAL PRINTABLE INVOICE MODAL (ADMIN) --- */}
+      <InvoiceModal
+        isOpen={isInvoiceModalOpen}
+        onClose={() => setIsInvoiceModalOpen(false)}
+        order={selectedInvoiceOrder}
+        merchantPhone={whatsappDisplaySetting}
+      />
     </div>
   );
 }

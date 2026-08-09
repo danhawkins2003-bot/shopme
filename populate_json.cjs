@@ -1,5 +1,13 @@
 const fs = require('fs');
 
+if (fs.existsSync('./produits.json')) {
+  console.log("--------------------------------------------------------------------------------");
+  console.log("⚠️  [Populate] Le catalogue produits.json existe déjà.");
+  console.log("👉 Skipping generation pour préserver vos modifications et produits ajoutés !");
+  console.log("--------------------------------------------------------------------------------");
+  process.exit(0);
+}
+
 const categories = [
   {
     name: "Made in Togo Premium",

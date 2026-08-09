@@ -42,11 +42,15 @@ import {
   Eye,
   Bell,
   Store,
-  MessageCircle
+  MessageCircle,
+  FileText
 } from "lucide-react";
 import { Product, CartItem, BlogPost } from "./types";
 import MultiRoleDashboards from "./components/MultiRoleDashboards";
 import SimulatedPaymentPortal from "./components/SimulatedPaymentPortal";
+import { InvoiceModal } from "./components/InvoiceModal";
+import { AIAssistantWidget } from "./components/AIAssistantWidget";
+import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
 import { useLanguage } from "./lib/i18n";
 
 // @ts-ignore
@@ -414,6 +418,33 @@ export default function App() {
   }, [sortBy]);
 
   const [currentPromoSlide, setCurrentPromoSlide] = useState(0);
+  const [promoSlides, setPromoSlides] = useState<PromoSlide[]>(() => {
+    try {
+      const saved = localStorage.getItem("asime_promo_slides");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return INITIAL_PROMO_SLIDES;
+  });
+
+  // Automatically sync promo slides when updated from Admin space
+  useEffect(() => {
+    const handleStorageChange = () => {
+      try {
+        const saved = localStorage.getItem("asime_promo_slides");
+        if (saved) setPromoSlides(JSON.parse(saved));
+      } catch (e) {
+        console.error("Error reading updated promo slides", e);
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("focus", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("focus", handleStorageChange);
+    };
+  }, []);
   const [cartItemToDeleteId, setCartItemToDeleteId] = useState<string | null>(null);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   
@@ -461,6 +492,10 @@ export default function App() {
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState<boolean>(false);
   const [isTrackingLoading, setIsTrackingLoading] = useState<boolean>(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+
+  // Official Invoice Modal States
+  const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<any | null>(null);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState<boolean>(false);
 
   // function to fetch dynamic tracking details
   const fetchTrackingDetails = async (orderId: string) => {
@@ -916,29 +951,11 @@ export default function App() {
         <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-neutral-200/50 shadow-[0_2px_6px_rgba(0,0,0,0.04)]`}>
           {selectedLogo.id === "monogramme_plume" ? (
             <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-              <defs>
-                <linearGradient id="asime-green-grad-app" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#0B4D26" />
-                  <stop offset="40%" stopColor="#0D5E2F" />
-                  <stop offset="100%" stopColor="#031F0E" />
-                </linearGradient>
-                <linearGradient id="asime-gold-top-app" x1="0" y1="1" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#FAA61A" />
-                  <stop offset="100%" stopColor="#FDBA74" />
-                </linearGradient>
-                <linearGradient id="asime-gold-bottom-app" x1="0" y1="1" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#D97706" />
-                  <stop offset="100%" stopColor="#FAB319" />
-                </linearGradient>
-                <filter id="asime-leaf-shadow-app" x="-20%" y="-20%" width="140%" height="140%">
-                  <feDropShadow dx="0.5" dy="1.5" stdDeviation="1" floodColor="#000000" floodOpacity="0.22" />
-                </filter>
-              </defs>
-              <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="url(#asime-green-grad-app)" />
-              <g filter="url(#asime-leaf-shadow-app)">
+              <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
+              <g>
                 <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-                <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="url(#asime-gold-bottom-app)" />
-                <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="url(#asime-gold-top-app)" />
+                <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
+                <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
                 <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
               </g>
             </svg>
@@ -993,12 +1010,12 @@ export default function App() {
 
   // Auto-advance promotional slides every 5 seconds when in Accueil tab
   useEffect(() => {
-    if (activeTab !== "accueil") return;
+    if (activeTab !== "accueil" || promoSlides.length === 0) return;
     const interval = setInterval(() => {
-      setCurrentPromoSlide((prev) => (prev + 1) % 4);
+      setCurrentPromoSlide((prev) => (prev + 1) % promoSlides.length);
     }, 5000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, [activeTab, promoSlides.length]);
 
   const logoutCustomer = () => {
     localStorage.removeItem("asime-user-token");
@@ -1383,7 +1400,7 @@ export default function App() {
       const localWhatsapp = safeLocalStorage.getItem("asime_whatsapp_merchant_number");
       
       // Load server settings first
-      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "monogram" };
+      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "monogramme_plume" };
       try {
         const settingsRes = await fetch("/api/settings?t=" + Date.now());
         if (settingsRes.ok) {
@@ -1391,6 +1408,31 @@ export default function App() {
         }
       } catch (err) {
         console.error("Failed to fetch server settings:", err);
+      }
+      
+      // Self-healing check: If the server settings are default values, but the user has custom settings
+      // cached in their browser, synchronize the local settings to the server so they aren't lost on redeployment!
+      const isServerDefault = serverSettings.whatsappMerchantNumber === "22890000000" && serverSettings.activeLogoId === "monogramme_plume";
+      const hasCustomLocalSettings = (localLogoId && localLogoId !== "monogramme_plume") || (localWhatsapp && localWhatsapp !== "22890000000");
+      
+      if (isServerDefault && hasCustomLocalSettings) {
+        console.log("🔄 Self-healing: restoring custom browser settings to the restarted server container...");
+        try {
+          await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              auth: "asime2026",
+              whatsappMerchantNumber: localWhatsapp || "22890000000",
+              activeLogoId: localLogoId || "monogramme_plume"
+            })
+          });
+          // Update the serverSettings representation so we use it
+          serverSettings.activeLogoId = localLogoId || "monogramme_plume";
+          serverSettings.whatsappMerchantNumber = localWhatsapp || "22890000000";
+        } catch (postErr) {
+          console.error("Failed to restore settings to server:", postErr);
+        }
       }
       
       // Update our local state and configuration with the server settings
@@ -1835,102 +1877,76 @@ export default function App() {
       </div>
 
       {/* Modern Luxury Navigation Header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-sm border-b border-neutral-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-[#FAF8F5] backdrop-blur-md shadow-xs border-b border-[#EAE3D2]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
           
           {/* Logo Brand Design */}
           <div 
-            onClick={() => setActiveTab("accueil")}
-            className="flex items-center gap-2 cursor-pointer group"
+            onClick={() => {
+              setActiveTab("accueil");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0"
           >
-            {renderLogoNode("w-10 h-10")}
-            <div className="flex flex-col justify-start">
-              <span className="font-sans font-bold tracking-[0.15em] text-xl sm:text-2xl text-[#0F5132] uppercase leading-none">
+            {renderLogoNode("w-11 h-11 sm:w-13 sm:h-13 md:w-14 md:h-14")}
+            <div className="flex flex-col justify-center">
+              <span className="font-sans font-black tracking-[0.1em] text-lg sm:text-xl md:text-2xl text-[#0F5132] uppercase leading-none">
                 ASIME
               </span>
-              <p className="text-[9px] text-[#D97706] tracking-[0.08em] leading-normal font-semibold uppercase mt-0.5 font-sans">{t("slogan")}</p>
+              <p className="text-[10px] sm:text-xs md:text-sm text-[#C89D34] font-serif italic font-bold leading-tight mt-0.5 tracking-wide whitespace-nowrap">
+                {t("slogan")}
+              </p>
             </div>
           </div>
 
-          {/* Desktop Links Navigation */}
-          <nav className="hidden md:flex items-center space-x-6 text-sm font-medium tracking-wide uppercase">
-            <button 
-              onClick={() => setActiveTab("accueil")} 
-              className={`pb-1 border-b-2 hover:text-[#d4af37] hover:border-[#d4af37] transition-all ${activeTab === "accueil" ? "text-neutral-950 border-[#d4af37]" : "text-neutral-500 border-transparent"}`}
-            >
-              {t("nav_home")}
-            </button>
-            <button 
-              onClick={() => setActiveTab("catalogue")} 
-              className={`pb-1 border-b-2 hover:text-[#d4af37] hover:border-[#d4af37] transition-all ${activeTab === "catalogue" ? "text-neutral-950 border-[#d4af37]" : "text-neutral-500 border-transparent"}`}
-            >
-              {t("nav_catalog")}
-            </button>
-            <button 
-              onClick={() => setActiveTab("blog")} 
-              className={`pb-1 border-b-2 hover:text-[#d4af37] hover:border-[#d4af37] transition-all ${activeTab === "blog" ? "text-neutral-950 border-[#d4af37]" : "text-neutral-500 border-transparent"}`}
-            >
-              {t("nav_blog")}
-            </button>
-            <button 
-              onClick={() => setActiveTab("contact")} 
-              className={`pb-1 border-b-2 hover:text-[#d4af37] hover:border-[#d4af37] transition-all ${activeTab === "contact" ? "text-neutral-950 border-[#d4af37]" : "text-neutral-500 border-transparent"}`}
-            >
-              {t("nav_contact")}
-            </button>
+          {/* Center Search Bar - Pill Oval with Gold Border & Cream Background */}
+          <div className="hidden md:flex flex-1 max-w-sm lg:max-w-md xl:max-w-lg mx-2 lg:mx-6 relative items-center">
+            <span className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-[#C89D34]">
+              <Search className="h-4.5 w-4.5" />
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                if (activeTab !== "catalogue") {
+                  setActiveTab("catalogue");
+                }
+              }}
+              placeholder={t("search_placeholder")}
+              className="block w-full pl-10 pr-4 py-2 text-xs sm:text-sm border border-[#C89D34] focus:border-[#0F5132] focus:ring-2 focus:ring-[#C89D34]/20 rounded-full bg-[#F4EFE6] hover:bg-white focus:bg-white transition-all font-sans text-[#0F5132] placeholder-[#0F5132]/60 focus:outline-none shadow-2xs font-medium"
+            />
+          </div>
 
-            {/* Elegant Header Search Input next to Contact with distinct separation */}
-            <div className="relative md:flex hidden items-center pl-4 border-l border-neutral-200 ml-2 text-normal normal-case">
-              <span className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
-                <Search className="h-3.5 w-3.5 text-neutral-400" />
-              </span>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (activeTab !== "catalogue") {
-                    setActiveTab("catalogue");
-                  }
-                }}
-                placeholder={t("search_placeholder")}
-                className="block w-36 lg:w-48 pl-7 pr-2.5 py-1 text-[11px] border border-neutral-200 focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37]/40 rounded-sm bg-neutral-50 transition-all font-sans text-neutral-800 placeholder-neutral-400 focus:outline-[#d4af37]"
-              />
-            </div>
-          </nav>
-
-          {/* Vertical Separator for Cart & Action buttons to ensure clean separation from search */}
-          <div className="hidden md:block h-6 w-[1px] bg-neutral-200/80 mx-1"></div>
-
-          {/* Actions Menu Right: Search shortcut & Cart Icon toggle */}
-          <div className="flex items-center gap-3">
+          {/* Actions Menu Right: Dissociated Share, Language, Login Pill & Circular Cart */}
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             
-            {/* Share & Download App Trigger */}
+            {/* Share Button (Separated) */}
             <button 
               type="button"
               onClick={() => setIsShareDownloadOpen(true)}
-              className="p-2 border border-neutral-200 text-neutral-700 hover:text-neutral-950 hover:bg-neutral-50 transition-all rounded-sm flex items-center justify-center gap-1.5 cursor-pointer"
-              title="Partager le site ou Télécharger le catalogue hors-ligne"
+              className="hidden sm:flex bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#C89D34] rounded-full p-2.5 shadow-2xs transition-all cursor-pointer items-center justify-center shrink-0"
+              title="Partager le site ou Télécharger le catalogue"
               id="header-share-app-btn"
             >
-              <Share2 className="w-4 h-4 text-[#b8901c]" />
-              <span className="hidden lg:inline text-[11px] font-bold tracking-widest uppercase text-neutral-800 font-sans">Partager</span>
+              <Share2 className="w-4 h-4 text-[#C89D34]" />
             </button>
 
-            {/* Language Selection Toggle */}
+            {/* Language Selection Button (Separated) */}
             <button
               type="button"
               onClick={() => setLanguage(language === "fr" ? "ee" : "fr")}
-              className="p-2 border border-neutral-200 text-neutral-700 hover:text-neutral-950 hover:bg-neutral-50 transition-all rounded-sm flex items-center justify-center gap-1.5 cursor-pointer font-sans"
+              className="hidden sm:flex items-center gap-1.5 bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#0F5132] rounded-full px-3 py-2 shadow-2xs transition-all cursor-pointer font-sans shrink-0"
               title={language === "fr" ? "Passer en Eʋegbe (Ewe)" : "Passer en Français"}
               id="header-language-toggle-btn"
             >
-              <Globe className="w-4 h-4 text-[#0f5132]" />
-              <span className="text-[11px] font-bold tracking-widest uppercase text-neutral-800">
-                {language === "fr" ? "Eʋegbe" : "FR"}
+              <Globe className="w-4 h-4 text-[#0F5132]" />
+              <span className="text-xs font-black tracking-wider uppercase text-[#0F5132]">
+                {language === "fr" ? "EVEGBE" : "FR"}
               </span>
             </button>
 
+            {/* Account / Connexion Pill Button */}
             {user ? (
               <button
                 onClick={() => {
@@ -1939,12 +1955,12 @@ export default function App() {
                   setEditQuartier(user.quartier || "");
                   setIsProfileOpen(true);
                 }}
-                className="p-2 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 hover:from-amber-500/20 hover:to-yellow-500/20 border border-[#d4af37]/35 text-[#b8901c] rounded-sm flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                className="px-4 py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
                 title="Espace Client - Mon Compte"
                 id="header-user-profile-btn"
               >
-                <User className="w-4 h-4 text-[#b8901c]" />
-                <span className="hidden sm:inline text-[11px] font-extrabold tracking-widest uppercase text-neutral-800 truncate max-w-[90px]">{user.name.split(" ")[0]}</span>
+                <User className="w-4 h-4 text-[#C89D34]" />
+                <span className="text-xs font-extrabold tracking-wider uppercase text-[#C89D34] truncate max-w-[90px]">{user.name.split(" ")[0]}</span>
               </button>
             ) : (
               <button
@@ -1953,25 +1969,25 @@ export default function App() {
                   setAuthError("");
                   setIsAuthOpen(true);
                 }}
-                className="p-2 border border-[#d4af37]/45 text-[#b8901c] hover:bg-amber-500/5 transition-all rounded-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                className="px-4 sm:px-5 py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
                 title="Se connecter / S'inscrire"
                 id="header-user-login-btn"
               >
-                <Lock className="w-4 h-4 text-[#b8901c]" />
-                <span className="hidden sm:inline text-[11px] font-extrabold tracking-widest uppercase text-neutral-800">{t("login_btn")}</span>
+                <span className="text-xs font-black tracking-widest uppercase text-[#C89D34]">{t("login_btn")}</span>
               </button>
             )}
-            {/* Shopping Cart Trigger */}
+
+            {/* Shopping Cart Trigger - Pure Black Circle */}
             <motion.button 
               animate={isCartBouncing ? { scale: [1, 1.25, 0.9, 1.1, 1] } : {}}
               transition={{ duration: 0.4 }}
               onClick={() => setIsCartOpen(true)}
-              className="relative bg-neutral-950 hover:bg-neutral-900 text-white p-2.5 rounded-sm flex items-center transition-all duration-300 shadow-md border hover:border-gold-500/50 cursor-pointer"
+              className="relative bg-neutral-950 hover:bg-neutral-900 text-[#D4AF37] w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-300 shadow-md border border-neutral-800 cursor-pointer shrink-0"
+              title="Mon Panier"
             >
-              <ShoppingCart className="w-4.5 h-4.5 text-[#d4af37]" />
-              <span className="hidden sm:inline text-xs tracking-wider ml-1.5 uppercase font-medium">{t("bottom_cart")}</span>
+              <ShoppingCart className="w-5 h-5 text-[#D4AF37]" />
               {getCartCount() > 0 && (
-                <div className="absolute -top-1.5 -right-1.5 min-w-5 h-5 bg-gold-500 border border-neutral-950 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                <div className="absolute -top-1 -right-1 min-w-5 h-5 bg-[#C81E1E] border-2 border-white text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 shadow-sm">
                   {getCartCount()}
                 </div>
               )}
@@ -1981,67 +1997,63 @@ export default function App() {
         </div>
       </header>
 
-      {/* --- Mobile Sub Navigation Slider --- */}
-      <div className="md:hidden sticky top-[73px] z-30 bg-neutral-900 text-neutral-300 py-3 overflow-x-auto whitespace-nowrap scrollbar-none border-b border-neutral-800">
-        <div className="flex px-4 pr-10 space-x-6 text-xs uppercase font-medium tracking-widest justify-start">
+      {/* --- Refined Sub Navigation Ribbon across all devices (Accueil, Catalogue, Blog, Contact) --- */}
+      <div className="sticky top-[73px] md:top-[76px] z-30 bg-neutral-950 text-neutral-300 py-2.5 px-4 border-b border-neutral-800 shadow-sm">
+        <div className="max-w-7xl mx-auto flex items-center justify-center gap-6 sm:gap-10 md:gap-16 text-[11px] sm:text-xs md:text-sm uppercase font-bold tracking-widest">
           <button 
-            onClick={() => setActiveTab("accueil")} 
-            className={`transition bg-transparent border-none ${activeTab === "accueil" ? "text-[#d4af37] font-bold" : "text-neutral-300"}`}
+            onClick={() => {
+              setActiveTab("accueil");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }} 
+            className={`py-1 px-2 md:px-4 transition-all cursor-pointer bg-transparent border-b-2 ${
+              activeTab === "accueil" 
+                ? "text-[#d4af37] border-[#d4af37] font-black" 
+                : "text-neutral-400 hover:text-white border-transparent"
+            }`}
           >
             {t("nav_home")}
           </button>
+
           <button 
-            onClick={() => setActiveTab("catalogue")} 
-            className={`transition bg-transparent border-none ${activeTab === "catalogue" ? "text-[#d4af37] font-bold" : "text-neutral-300"}`}
+            onClick={() => {
+              setActiveTab("catalogue");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }} 
+            className={`py-1 px-2 md:px-4 transition-all cursor-pointer bg-transparent border-b-2 ${
+              activeTab === "catalogue" 
+                ? "text-[#d4af37] border-[#d4af37] font-black" 
+                : "text-neutral-400 hover:text-white border-transparent"
+            }`}
           >
             {t("nav_catalog")}
           </button>
+
           <button 
-            onClick={() => setActiveTab("blog")} 
-            className={`transition bg-transparent border-none ${activeTab === "blog" ? "text-[#d4af37] font-bold" : "text-neutral-300"}`}
+            onClick={() => {
+              setActiveTab("blog");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }} 
+            className={`py-1 px-2 md:px-4 transition-all cursor-pointer bg-transparent border-b-2 ${
+              activeTab === "blog" 
+                ? "text-[#d4af37] border-[#d4af37] font-black" 
+                : "text-neutral-400 hover:text-white border-transparent"
+            }`}
           >
             {t("nav_blog")}
           </button>
+
           <button 
-            onClick={() => setActiveTab("contact")} 
-            className={`transition bg-transparent border-none ${activeTab === "contact" ? "text-[#d4af37] font-bold" : "text-neutral-300"}`}
+            onClick={() => {
+              setActiveTab("contact");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }} 
+            className={`py-1 px-2 md:px-4 transition-all cursor-pointer bg-transparent border-b-2 ${
+              activeTab === "contact" 
+                ? "text-[#d4af37] border-[#d4af37] font-black" 
+                : "text-neutral-400 hover:text-white border-transparent"
+            }`}
           >
             {t("nav_contact")}
-          </button>
-
-          {user ? (
-            <button 
-              onClick={() => {
-                setEditName(user.name);
-                setEditPhone(user.phone || "");
-                setEditQuartier(user.quartier || "");
-                setIsProfileOpen(true);
-              }}
-              className="transition bg-transparent border-none text-emerald-400 font-bold flex items-center gap-1 cursor-pointer"
-            >
-              <User className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Mon Compte ({user.name.split(" ")[0]})</span>
-            </button>
-          ) : (
-            <button 
-              onClick={() => {
-                setAuthMode("login");
-                setAuthError("");
-                setIsAuthOpen(true);
-              }}
-              className="transition bg-transparent border-none text-[#d4af37] font-bold flex items-center gap-1 cursor-pointer"
-            >
-              <Lock className="w-3.5 h-3.5 text-[#d4af37]" />
-              <span>Connexion</span>
-            </button>
-          )}
-          <button 
-            type="button"
-            onClick={() => setIsShareDownloadOpen(true)} 
-            className="transition bg-transparent border-none text-[#d4af37] font-bold flex items-center gap-1.5 cursor-pointer"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>Partager / Télécharger</span>
           </button>
         </div>
       </div>
@@ -2135,325 +2147,106 @@ export default function App() {
             </div>
             <div className="bg-stone-50 py-8 border-b border-stone-200">
               <div className="max-w-7xl mx-auto px-4 select-none">
+                
                 <div className="relative overflow-hidden rounded-2xl md:rounded-3xl shadow-xl border border-neutral-100 bg-neutral-900 group/carousel">
                   
                   {/* Outer active slide screen */}
                   <div className="relative w-full h-[320px] sm:h-[380px] md:h-[400px] flex items-center overflow-hidden transition-all duration-700">
                     
-                    {/* Slides Render */}
-                    {/* Slide 1: VÊTEMENT DE PROMOTION (HAUTE STYLISATION WAX, KENTE ET PAGNES) */}
-                    <div 
-                      className={`absolute inset-0 w-full h-full transition-all duration-1000 ease-in-out flex flex-col md:flex-row items-center justify-between ${
-                        currentPromoSlide === 0 ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-full -z-10 pointer-events-none"
-                      }`}
-                      style={{ background: "linear-gradient(135deg, #1f0500 0%, #3a0d02 60%, #541c0a 100%)" }}
-                    >
-                      {/* Left: Clothing promo description */}
-                      <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-yellow-500 text-stone-950 font-sans font-black tracking-widest text-[9px] uppercase px-2 py-0.5 rounded-sm">
-                            {language === "fr" ? "PROMO MODE TOGO 🇹🇬" : "TOGO AWUDODO ƑE ASAASI 🇹🇬"}
-                          </div>
-                          <span className="bg-white/10 border border-white/20 text-yellow-400 px-2 py-0.5 text-[8px] font-bold rounded-sm tracking-widest uppercase">
-                            {language === "fr" ? "Habillement de Prestige" : "Prestige Awudodowo"}
-                          </span>
-                        </div>
+                    {/* Dynamic Slides Render */}
+                    {promoSlides.map((slide, index) => {
+                      const isFr = language === "fr";
+                      const isActive = currentPromoSlide === index;
 
-                        <div className="space-y-1 sm:space-y-1.5">
-                          <h4 className="font-mono text-[10px] sm:text-xs text-neutral-300 font-bold uppercase tracking-wider leading-none">
-                            {language === "fr" ? "Tissus & Prêt-à-porter exclusifs" : "Avɔ kple Awu tɔxɛwo"}
-                          </h4>
-                          <h3 className="font-display text-lg sm:text-2xl md:text-3xl font-black text-white leading-tight uppercase tracking-wide">
-                            {language === "fr" ? "Grande Quinzaine du Textile Africain" : "Afrika-tɔwo ƒe Avɔ Dzesi Kwasiɖa"}
-                          </h3>
-                        </div>
-
-                        {/* Stunner Large Promo Highlighting Card */}
-                        <div className="bg-[#b8901c] border border-amber-400 p-3 sm:p-4 rounded-none shadow-lg relative overflow-hidden max-w-md">
-                          <div className="absolute top-0 right-0 w-16 h-16 bg-white/10 rounded-full blur-xl"></div>
-                          <p className="font-display font-black text-white text-xl sm:text-3xl tracking-tight leading-none">
-                            {language === "fr" ? "JUSQU'À -40% DE REMISE" : "ASIƉEƉE YI EDZI -40%"}
-                          </p>
-                          <p className="font-sans font-bold text-stone-900 text-[10px] sm:text-xs tracking-wider uppercase opacity-95 mt-1">
-                            {language === "fr" ? "Sur l'Atelier Wax, Boubous & Chemises Kita" : "Le Wax, Boubous kple Kita Awuwo Dzi"}
-                          </p>
-                        </div>
-
-                        <p className="text-[10px] sm:text-xs text-neutral-350 max-w-sm leading-relaxed font-sans hidden sm:block">
-                          {language === "fr" 
-                            ? "Habillez-vous avec fierté et élégance. Nos créateurs locaux subliment notre héritage vestimentaire avec des coupes d'une qualité irréprochable."
-                            : "Do awu kple dada kple fafɛ. Míaƒe dɔwɔlawo tsɔ míaƒe dekɔnuwo na nɔnɔme nyuitɔ."
-                          }
-                        </p>
-
-                        <div className="pt-2">
-                          <button 
-                            onClick={() => {
-                              setSelectedCategory("Made in Togo Premium");
-                              setSearchQuery("");
-                              setActiveTab("catalogue");
-                              window.scrollTo({ top: 350, behavior: "smooth" });
-                            }}
-                            className="bg-white hover:bg-neutral-100 text-black font-sans text-[10px] sm:text-xs font-bold uppercase tracking-widest px-4 sm:px-6 py-2 sm:py-2.5 rounded-sm transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
-                          >
-                            {language === "fr" ? "Parcourir la Collection" : "Kpɔ Avɔ Hamewo"}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Right Side visual representation */}
-                      <div className="hidden md:flex md:w-2/5 w-full h-1/2 md:h-full relative overflow-hidden items-end justify-center shrink-0">
-                        <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-black to-transparent pointer-events-none z-10"></div>
-                        <div className="relative w-full h-[140px] sm:h-[180px] md:h-[320px] max-w-md flex items-end justify-center select-none pb-4 px-4 gap-2">
-                          
-                          {/* Design Card 1 */}
-                          <div className="w-[45%] h-[90%] bg-gradient-to-b from-stone-900/60 to-stone-950/90 border border-[#d4af37]/30 rounded-none overflow-hidden relative group/art shadow-lg flex flex-col justify-end p-2 transition-transform duration-500 hover:-translate-y-2">
-                            <img 
-                              src="https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&q=80&w=300"
-                              alt="Wax Premium" 
-                              className="absolute inset-0 w-full h-full object-cover opacity-80 mix-blend-normal duration-300"
-                            />
-                            <div className="relative z-10 text-center">
-                              <span className="font-mono text-[8px] sm:text-[10px] font-black text-white tracking-widest leading-none bg-black/70 px-1.5 py-1 rounded-sm block truncate uppercase">
-                                {language === "fr" ? "Collection Wax" : "Wax Hame"}
+                      return (
+                        <div 
+                          key={slide.id}
+                          className={`absolute inset-0 w-full h-full transition-all duration-1000 ease-in-out flex flex-col md:flex-row items-center justify-between ${
+                            isActive ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-full -z-10 pointer-events-none"
+                          }`}
+                          style={{ background: slide.bgGradient }}
+                        >
+                          {/* Left: Text & CTA Promo Content */}
+                          <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
+                            <div className="flex items-center gap-2.5">
+                              <div className="bg-[#C89D34] text-stone-950 font-sans font-black tracking-widest text-[9px] uppercase px-2.5 py-1 rounded-sm shadow-xs">
+                                {isFr ? slide.badgeTagFr : slide.badgeTagEe}
+                              </div>
+                              <span className="bg-white/10 border border-white/20 text-[#D4AF37] px-2.5 py-0.5 text-[8px] font-bold rounded-sm tracking-widest uppercase">
+                                {isFr ? slide.badgeSubFr : slide.badgeSubEe}
                               </span>
                             </div>
-                          </div>
 
-                          {/* Design Card 2 */}
-                          <div className="w-[45%] h-[95%] bg-gradient-to-b from-amber-900/40 to-neutral-950/95 border-2 border-[#d4af37]/50 rounded-none overflow-hidden relative group/art shadow-xl flex flex-col justify-end p-2 transition-transform duration-500 hover:-translate-y-2 z-10">
-                            <div className="absolute top-1 right-1 bg-yellow-500 text-[6px] font-bold text-stone-950 px-1 py-0.5 rounded-sm uppercase tracking-widest animate-pulse z-20">
-                              {language === "fr" ? "Nouveau" : "Yeye"}
+                            <div className="space-y-1 sm:space-y-1.5">
+                              <h4 className="font-mono text-[10px] sm:text-xs text-amber-200/90 font-bold uppercase tracking-wider leading-none">
+                                {isFr ? slide.subtitleFr : slide.subtitleEe}
+                              </h4>
+                              <h3 className="font-display text-xl sm:text-2xl md:text-3xl font-black text-white leading-tight uppercase tracking-wide">
+                                {isFr ? slide.titleFr : slide.titleEe}
+                              </h3>
                             </div>
-                            <img 
-                              src="https://images.unsplash.com/photo-1572494939761-0ae1b53df4aa?auto=format&fit=crop&q=80&w=300" 
-                              alt="Kente Traditional" 
-                              className="absolute inset-0 w-full h-full object-cover opacity-80 mix-blend-normal duration-300"
-                            />
-                            <div className="relative z-10 text-center">
-                              <span className="font-mono text-[8px] sm:text-[10px] font-black text-[#d4af37] tracking-widest leading-none bg-black/80 px-1.5 py-1 rounded-sm block truncate uppercase">
-                                {language === "fr" ? "Mode Prestige" : "Awu Dzɛwo"}
-                              </span>
+
+                            {/* Stunner Large Promo Highlighting Card */}
+                            <div className="bg-gradient-to-r from-[#C89D34] via-[#D4AF37] to-amber-600 border border-yellow-300 p-3 sm:p-4 rounded-md shadow-xl relative overflow-hidden max-w-md">
+                              <div className="absolute top-0 right-0 w-20 h-20 bg-white/15 rounded-full blur-xl"></div>
+                              <p className="font-display font-black text-stone-950 text-xl sm:text-3xl tracking-tight leading-none uppercase">
+                                {isFr ? slide.offerMainFr : slide.offerMainEe}
+                              </p>
+                              <p className="font-sans font-bold text-stone-900 text-[10px] sm:text-xs tracking-wider uppercase mt-1">
+                                {isFr ? slide.offerSubFr : slide.offerSubEe}
+                              </p>
+                            </div>
+
+                            <p className="text-[10px] sm:text-xs text-neutral-200 max-w-sm leading-relaxed font-sans hidden sm:block">
+                              {isFr ? slide.descFr : slide.descEe}
+                            </p>
+
+                            <div className="pt-2">
+                              <button 
+                                onClick={() => {
+                                  if (slide.categoryTarget && slide.categoryTarget !== "Tous") {
+                                    setSelectedCategory(slide.categoryTarget);
+                                  } else {
+                                    setSelectedCategory("Tous");
+                                  }
+                                  setSearchQuery(slide.searchQuery || "");
+                                  setActiveTab("catalogue");
+                                  window.scrollTo({ top: 350, behavior: "smooth" });
+                                }}
+                                className="bg-[#C89D34] hover:bg-amber-500 text-stone-950 font-sans text-[10px] sm:text-xs font-black uppercase tracking-widest px-5 py-2.5 rounded-md transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
+                              >
+                                {isFr ? slide.buttonTextFr : slide.buttonTextEe}
+                              </button>
                             </div>
                           </div>
 
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Slide 2: CAMPAGNE NATIONALE AGRICOLE (TERROIR BIO & ESSENCE DU TOGO) */}
-                    <div 
-                      className={`absolute inset-0 w-full h-full transition-all duration-1000 ease-in-out flex flex-col md:flex-row items-center justify-between ${
-                        currentPromoSlide === 1 ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-full -z-10 pointer-events-none"
-                      }`}
-                      style={{ background: "linear-gradient(135deg, #0a1f10 0%, #05140b 50%, #15220c 100%)" }}
-                    >
-                      <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
-                        <div className="flex items-center gap-3">
-                          <div className="text-emerald-400 font-sans font-bold tracking-widest text-[9px] uppercase">
-                            {language === "fr" ? "🌾 SOUVERAINETÉ ALIMENTAIRE & TERROIR 🇹🇬" : "🌾 NUDUDU ƑE SOGBƆGBƆ & ANYIGBA 🇹🇬"}
+                          {/* Right Side visual representation (Exact 500x500px 1:1 image container) */}
+                          <div className="hidden md:flex md:w-2/5 w-full h-1/2 md:h-full relative overflow-hidden items-center justify-center shrink-0 p-4">
+                            <div className="relative w-full h-[260px] md:h-[300px] flex items-center justify-center">
+                              <img 
+                                src={slide.imageUrl} 
+                                alt={slide.imageAlt} 
+                                className="w-full h-full rounded-xl object-cover shadow-2xl border-2 border-[#C89D34]/40"
+                              />
+                              {(slide.overlayLabelFr || slide.overlayLabelEe) && (
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent rounded-xl flex items-end p-3">
+                                  <span className="font-sans text-xs font-black text-[#C89D34] uppercase tracking-widest">
+                                    {isFr ? slide.overlayLabelFr : slide.overlayLabelEe}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-2 py-0.5 text-[8px] font-bold rounded-full tracking-widest uppercase">
-                            {language === "fr" ? "100% Organique" : "100% Gbeme Nuku"}
-                          </span>
                         </div>
-
-                        <div className="space-y-1 sm:space-y-1.5">
-                          <h4 className="font-mono text-[9px] sm:text-xs text-stone-300 font-bold uppercase tracking-widest">
-                            {language === "fr" ? "Directement de nos fermes :" : "Tso míaƒe agblewo me tɔnn :"}
-                          </h4>
-                          <h3 className="font-display text-lg sm:text-3xl font-black text-white leading-tight uppercase tracking-wider">
-                            {language === "fr" ? "La Quinzaine des Produits Agricoles d'Exception" : "Agble-Nuku Tɔxɛ Kwasiɖa"}
-                          </h3>
-                        </div>
-
-                        {/* Stunner Highlight Box */}
-                        <div className="bg-gradient-to-r from-emerald-600 to-green-800 p-3 sm:p-4 border border-emerald-500/30 rounded-none shadow-lg max-w-md">
-                          <p className="font-display font-black text-white text-xl sm:text-2xl tracking-tight leading-none uppercase">
-                            {language === "fr" ? "Miel Sauvage, Café Robusta, Cajou" : "Anyitsi Gbeme, Café Robusta, Cajou"}
-                          </p>
-                          <p className="font-sans font-bold text-yellow-300 text-[10px] sm:text-xs tracking-widest uppercase mt-1">
-                            {language === "fr" ? "Soutenez l'économie paysanne de nos terrois ! 🍯" : "Kpe de míaƒe agbledelawo ƒe ganyawo ŋu ! 🍯"}
-                          </p>
-                        </div>
-
-                        <p className="text-[10px] sm:text-xs text-stone-300 max-w-sm font-sans hidden sm:block">
-                          {language === "fr"
-                            ? "Commandez le meilleur du Togo. Notre coopérative garantit un prix juste et transparent reversé directement aux agriculteurs des Plateaux et de la Kara."
-                            : "Ɖo adzɔnu nyuitɔ tso Togo. Míaƒe asitsakaka na asixɔme sɔsɔe agbledelawo tso Plateau kple Kara."
-                          }
-                        </p>
-
-                        <div className="pt-2">
-                          <button 
-                            onClick={() => {
-                              setSelectedCategory("Épicerie & Fruits Séchés");
-                              setSearchQuery("");
-                              setActiveTab("catalogue");
-                              window.scrollTo({ top: 350, behavior: "smooth" });
-                            }}
-                            className="bg-emerald-500 hover:bg-emerald-600 text-stone-950 font-sans text-[10px] sm:text-xs font-bold uppercase tracking-widest px-4 sm:px-6 py-2 sm:py-2.5 rounded-sm transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
-                          >
-                            {language === "fr" ? "Découvrir les Produits de la Terre" : "Kpɔ Anyigba ƒe Nukuwo"}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Right artwork visual representation */}
-                      <div className="hidden md:flex md:w-2/5 w-full h-1/2 md:h-full relative overflow-hidden items-center justify-center shrink-0">
-                        <div className="absolute inset-0 bg-radial-gradient from-emerald-500/20 via-green-500/10 to-transparent pointer-events-none"></div>
-                        <div className="relative w-full h-full flex items-center justify-center p-4">
-                          <img 
-                            src="https://images.unsplash.com/photo-1447933601403-0c6688de566e?auto=format&fit=crop&q=80&w=400" 
-                            alt="Agricole Togo" 
-                            className="w-[85%] max-w-[285px] md:max-w-none md:w-[75%] rounded-none object-cover shadow-2xl border border-emerald-500/20 hover:scale-102 transition-transform duration-500 aspect-video md:aspect-square"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div 
-                      className={`absolute inset-0 w-full h-full transition-all duration-1000 ease-in-out flex flex-col md:flex-row items-center justify-between ${
-                        currentPromoSlide === 2 ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-full -z-10 pointer-events-none"
-                      }`}
-                      style={{ background: "linear-gradient(135deg, #02200e 0%, #07381b 50%, #201a04 100%)" }}
-                    >
-                      <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
-                        <div className="flex items-center gap-3">
-                          <div className="text-[#d4af37] font-sans font-bold tracking-widest text-[10px] sm:text-xs uppercase">
-                            {language === "fr" ? "Consommer Local Togolais 🇹🇬" : "Miɖu Anyigbadzinu Togo 🇹🇬"}
-                          </div>
-                          <span className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 px-2 py-0.5 text-[8px] font-bold rounded-full tracking-widest uppercase">
-                            {language === "fr" ? "PARTENAIRE TERROIR" : "DƆWƆLA DZESIO"}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1 sm:space-y-1.5">
-                          <h4 className="font-mono text-[9px] sm:text-xs text-neutral-300 font-bold uppercase tracking-widest">
-                            {language === "fr" ? "ORGANISÉ EN COOPÉRATIVE ÉQUITABLE :" : "MÍEWƆ DƆ KPLE LƆLƆ̃ :"}
-                          </h4>
-                          <h3 className="font-display text-lg sm:text-3xl font-black text-white leading-tight uppercase tracking-wider">
-                            {language === "fr" ? "Grande Foire Agricole de Kpalimé" : "Kpalimé Agble-Nuku Fiase Gã"}
-                          </h3>
-                        </div>
-
-                        {/* Stunner Highlight Box */}
-                        <div className="bg-neutral-900 border-2 border-[#d4af37] p-3 sm:p-4 rounded-lg shadow-lg max-w-md relative overflow-hidden">
-                          <div className="absolute top-0 right-0 w-12 h-[120%] bg-[#d4af37]/10 -skew-x-12"></div>
-                          <p className="font-display font-black text-[#d4af37] text-xl sm:text-3xl tracking-tight leading-none uppercase">
-                            {language === "fr" ? "-20% IMMÉDIAT" : "-20% FIFIA LƐ̃"}
-                          </p>
-                          <p className="font-sans font-bold text-white text-[10px] sm:text-xs tracking-widest uppercase mt-1">
-                            {language === "fr" ? "SUR LA COLLECTION MIELS & KARI-BÉBÉ" : "LE ANYITSI & KARI-BÉBÉ DZI"}
-                          </p>
-                        </div>
-
-                        <p className="text-[10px] sm:text-xs text-neutral-300 max-w-sm font-sans hidden sm:block">
-                          {language === "fr"
-                            ? "Achetez durable : chaque franc investi est reversé directement aux familles productrices des plateaux du grand Est-Mono."
-                            : "Ƒle adzɔnu dedie: ga si nètutu la ayi tɔnn na agbledelawo ƒe ƒomewo le Est-Mono."
-                          }
-                        </p>
-
-                        <div className="pt-2">
-                          <button 
-                            onClick={() => {
-                              setSelectedCategory("Made in Togo Premium");
-                              setSearchQuery("");
-                              setActiveTab("catalogue");
-                              window.scrollTo({ top: 350, behavior: "smooth" });
-                            }}
-                            className="bg-[#d4af37] hover:bg-amber-600 text-stone-950 font-sans text-[10px] sm:text-xs font-bold uppercase tracking-widest px-4 sm:px-6 py-2 sm:py-2.5 rounded-sm transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
-                          >
-                            {language === "fr" ? "Consommer Local" : "Miɖu Anyigbadzinu"}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Right side representation of pure honey */}
-                      <div className="hidden md:flex md:w-2/5 w-full h-1/2 md:h-full relative overflow-hidden items-center justify-center shrink-0">
-                        <div className="absolute inset-0 bg-gradient-to-l from-emerald-950/20 to-transparent pointer-events-none"></div>
-                        <img 
-                          src="https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=400" 
-                          alt="Honey Selection" 
-                          className="w-[85%] max-w-[280px] md:max-w-none md:w-[75%] rounded-xl object-cover shadow-2xl border border-[#d4af37]/25 aspect-video md:aspect-square group-hover/carousel:scale-102 transition-transform duration-700"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Slide 4: FASHION TOGO LUXURY (ROYAL RED & WAX STYLE LOOK) */}
-                    <div 
-                      className={`absolute inset-0 w-full h-full transition-all duration-1000 ease-in-out flex flex-col md:flex-row items-center justify-between ${
-                        currentPromoSlide === 3 ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-full -z-10 pointer-events-none"
-                      }`}
-                      style={{ background: "linear-gradient(135deg, #2b0c03 0%, #461405 50%, #170200 100%)" }}
-                    >
-                      <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
-                        <div className="flex items-center gap-3">
-                          <div className="text-orange-400 font-sans font-bold tracking-widest text-[10px] sm:text-xs uppercase">
-                            {language === "fr" ? "Togo Fashion & Artisans d'Afrique 🇹🇬" : "Togo Atsyɔ̃ & Afrika Aɖaŋudɔ 🇹🇬"}
-                          </div>
-                          <span className="bg-orange-500/10 border border-orange-500/30 text-orange-450 px-2 py-0.5 text-[8px] font-bold rounded-full tracking-widest uppercase pb-1">
-                            {language === "fr" ? "HAUTE COUTURE" : "ATSYƆ̃NYƆ AWU"}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1 sm:space-y-1.5">
-                          <h4 className="font-mono text-[9px] sm:text-xs text-neutral-300 font-bold uppercase tracking-widest">
-                            {language === "fr" ? "CRÉATEURS & DESIGNERS TOGOLAIS :" : "TOGO AWUTƆLAWO KPLE AƉAŊUDƆWƆLAWO :"}
-                          </h4>
-                          <h3 className="font-display text-lg sm:text-3xl font-black text-white leading-tight uppercase tracking-wider">
-                            {language === "fr" ? "Collection Sacs Raphia & Wax" : "Raphia Kusi kple Wax Kotoku Hame"}
-                          </h3>
-                        </div>
-
-                        {/* Stunner Highlight Box */}
-                        <div className="bg-orange-600 border border-orange-500 p-3 sm:p-4 rounded-lg shadow-lg max-w-md relative overflow-hidden">
-                          <p className="font-display font-black text-white text-xl sm:text-3xl tracking-tight leading-none uppercase">
-                            {language === "fr" ? "-30% DE REMISE" : "ASIƉEƉE -30%"}
-                          </p>
-                          <p className="font-sans font-bold text-stone-100 text-[10px] sm:text-xs tracking-widest uppercase mt-1">
-                            {language === "fr" ? "LIVRAISON EN 48H SUR TOUTE LOMÉ 🛍️" : "MÍATSƆE VƐ LE 48H ME LE LOMÉ KATÃ 🛍️"}
-                          </p>
-                        </div>
-
-                        <p className="text-[10px] sm:text-xs text-neutral-300 max-w-sm font-sans hidden sm:block">
-                          {language === "fr"
-                            ? "Des sacs tressés à la main de manière éco-responsable originaires de la côte Sud d'Aného et du pays Mina."
-                            : "Kotoku siwo woƒo kple asi tso Aného kple Mina ƒe anyigba dzi."
-                          }
-                        </p>
-
-                        <div className="pt-2">
-                          <button 
-                            onClick={() => {
-                              setSelectedCategory("Made in Togo Premium");
-                              setSearchQuery("Raphia");
-                              setActiveTab("catalogue");
-                              window.scrollTo({ top: 350, behavior: "smooth" });
-                            }}
-                            className="bg-orange-500 hover:bg-orange-600 text-white font-sans text-[10px] sm:text-xs font-bold uppercase tracking-widest px-4 sm:px-6 py-2 sm:py-2.5 rounded-sm transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
-                          >
-                            {language === "fr" ? "Voir la Collection Mode" : "Kpɔ Awu Atsyɔ̃wo"}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Right art representation */}
-                      <div className="hidden md:flex md:w-2/5 w-full h-1/2 md:h-full relative overflow-hidden items-center justify-center shrink-0">
-                        <img 
-                          src="https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&q=80&w=400" 
-                          alt="Raphia Bag" 
-                          className="w-[85%] max-w-[280px] md:max-w-none md:w-[75%] rounded-xl object-cover shadow-2xl border border-orange-500/20 aspect-video md:aspect-square"
-                        />
-                      </div>
-                    </div>
+                      );
+                    })}
 
                   </div>
 
                   {/* Manual Arrow Controls (Hover Highlight) */}
                   <button 
                     onClick={() => {
-                      setCurrentPromoSlide((prev) => (prev - 1 + 4) % 4);
+                      setCurrentPromoSlide((prev) => (prev - 1 + promoSlides.length) % promoSlides.length);
                     }}
                     className="absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-black/40 hover:bg-black/75 border border-white/10 flex items-center justify-center text-white z-20 cursor-pointer backdrop-blur-xs transition-colors hidden group-hover/carousel:flex"
                   >
@@ -2461,16 +2254,16 @@ export default function App() {
                   </button>
                   <button 
                     onClick={() => {
-                      setCurrentPromoSlide((prev) => (prev + 1) % 4);
+                      setCurrentPromoSlide((prev) => (prev + 1) % promoSlides.length);
                     }}
                     className="absolute right-4 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-black/40 hover:bg-black/75 border border-white/10 flex items-center justify-center text-white z-20 cursor-pointer backdrop-blur-xs transition-colors hidden group-hover/carousel:flex"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>
 
-                  {/* Indicators / Progress dots (exactly matching image setup: with a wider yellow active pill and three smaller circles) */}
+                  {/* Indicators / Progress dots */}
                   <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 bg-black/25 px-3 py-1.5 rounded-full backdrop-blur-md">
-                    {[0, 1, 2, 3].map((index) => (
+                    {promoSlides.map((_, index) => (
                       <button
                         key={index}
                         onClick={() => setCurrentPromoSlide(index)}
@@ -4859,6 +4652,39 @@ export default function App() {
                   </button>
                   <button
                     onClick={() => {
+                      // Construct order object for InvoiceModal
+                      const invoiceOrder = {
+                        id: paymentSession.orderId,
+                        createdAt: Date.now(),
+                        totalAmount: paymentSession.amount,
+                        paymentStatus: "Payé",
+                        orderStatus: "En préparation",
+                        paymentMethod: paymentSession.providerId.toUpperCase(),
+                        shippingDetails: {
+                          name: checkoutName,
+                          phone: checkoutPhone,
+                          quartier: checkoutQuartier
+                        },
+                        items: cart.map(item => ({
+                          product: {
+                            id: item.product.id,
+                            nom: item.product.nom,
+                            prix: item.product.prix,
+                            partenaire: item.product.partenaire
+                          },
+                          quantity: item.quantity
+                        }))
+                      };
+                      setSelectedInvoiceOrder(invoiceOrder);
+                      setIsInvoiceModalOpen(true);
+                    }}
+                    className="w-full bg-[#d4af37] hover:bg-amber-500 text-neutral-950 font-black text-[10px] uppercase tracking-widest py-3 px-4 flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Imprimer / PDF Facture Officielle</span>
+                  </button>
+                  <button
+                    onClick={() => {
                       setCart([]);
                       setIsPaymentModalOpen(false);
                       setPaymentSession(null);
@@ -5093,18 +4919,7 @@ export default function App() {
         </motion.div>
       )}
 
-      {/* Floating Language Switcher Button */}
-      <div className="fixed bottom-6 right-6 z-40">
-        <button
-          onClick={() => setLanguage(language === "fr" ? "ee" : "fr")}
-          className="flex items-center gap-2 bg-neutral-950 hover:bg-[#d4af37] border-2 border-[#d4af37] text-[#d4af37] hover:text-neutral-950 font-sans font-black text-[10px] uppercase tracking-widest px-4 py-2.5 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-pointer"
-          title={language === "fr" ? "Passer en Eʋegbe (Ewe)" : "Passer en Français"}
-          id="floating-language-toggle-btn-bottom"
-        >
-          <span className="text-xs">🌐</span>
-          <span>{language === "fr" ? "Eʋegbe (Ewe)" : "Français"}</span>
-        </button>
-      </div>
+
 
       {/* --- HIGH RESOLUTION ACCENTED IMAGE ZOOM MODAL (MODALE DE ZOOM RAPIDE) --- */}
       {zoomedImage && (
@@ -5718,6 +5533,16 @@ export default function App() {
 
                   {/* Action buttons */}
                   <div className="flex flex-col sm:flex-row gap-2.5">
+                    <button
+                      onClick={() => {
+                        setSelectedInvoiceOrder(order);
+                        setIsInvoiceModalOpen(true);
+                      }}
+                      className="bg-[#d4af37] hover:bg-amber-500 text-neutral-950 font-black text-[10px] uppercase tracking-widest py-3 px-4 flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center"
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span>{language === "fr" ? "Facture Officielle" : "Agbalẽnyigba"}</span>
+                    </button>
                     <a
                       href={`https://wa.me/${ASIME_SETTINGS.WHATSAPP_MERCHANT_NUMBER}?text=${encodeURIComponent(
                         `Bonjour, je souhaite avoir une mise à jour sur ma commande #${order.id} s'il vous plaît.`
@@ -6510,6 +6335,20 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* --- OFFICIAL PRINTABLE INVOICE MODAL --- */}
+      <InvoiceModal
+        isOpen={isInvoiceModalOpen}
+        onClose={() => setIsInvoiceModalOpen(false)}
+        order={selectedInvoiceOrder}
+        merchantPhone={ASIME_SETTINGS.WHATSAPP_MERCHANT_NUMBER}
+      />
+
+      {/* --- AI ASSISTANT AYA WIDGET --- */}
+      <AIAssistantWidget
+        onNavigateToTab={(tab) => setActiveTab(tab)}
+        onSearchProduct={(q) => setSearchQuery(q)}
+      />
 
     </div>
   );

@@ -2,12 +2,29 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { GoogleGenAI } from "@google/genai";
 import { PaymentGateway } from "./paymentGateway";
 import { WalletManager } from "./walletHelper";
-import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions } from "./supabaseHelper";
+import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions, getSupabaseClient } from "./supabaseHelper";
 
 const app = express();
 const PORT = 3000;
+
+// Gemini AI Client Lazy Helper
+let aiClient: GoogleGenAI | null = null;
+function getGeminiClient(): GoogleGenAI | null {
+  if (!aiClient && process.env.GEMINI_API_KEY) {
+    aiClient = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+  }
+  return aiClient;
+}
 
 // Allow large payloads for base64 image uploads (up to 4 images per product can be large)
 app.use(express.json({ limit: "50mb" }));
@@ -786,6 +803,107 @@ app.post("/api/admin/populate-products", (req, res) => {
   } else {
     res.status(500).json({ success: false, error: "Impossible de générer le catalogue de masse." });
   }
+});
+
+// GET /api/admin/db-status - Check Supabase configuration, connection, and table status
+app.get("/api/admin/db-status", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé." });
+  }
+
+  const isConfigured = isSupabaseConfigured();
+  if (!isConfigured) {
+    return res.json({
+      configured: false,
+      url: "",
+      hasTable: false,
+      error: "Supabase n'est pas configuré. Le serveur utilise la persistance locale JSON."
+    });
+  }
+
+  const client = getSupabaseClient();
+  if (!client) {
+    return res.json({
+      configured: false,
+      url: "",
+      hasTable: false,
+      error: "Impossible d'initialiser le client Supabase."
+    });
+  }
+
+  try {
+    const { data, error } = await client
+      .from("asime_store")
+      .select("key")
+      .limit(1);
+
+    if (error) {
+      return res.json({
+        configured: true,
+        url: process.env.SUPABASE_URL || "",
+        hasTable: false,
+        error: `Table 'asime_store' non détectée ou inaccessible : ${error.message}`
+      });
+    }
+
+    return res.json({
+      configured: true,
+      url: process.env.SUPABASE_URL || "",
+      hasTable: true,
+      count: data ? data.length : 0
+    });
+  } catch (err: any) {
+    return res.json({
+      configured: true,
+      url: process.env.SUPABASE_URL || "",
+      hasTable: false,
+      error: `Erreur inattendue : ${err.message || err}`
+    });
+  }
+});
+
+// POST /api/admin/db-push - Force pushing local JSON data to Supabase
+app.post("/api/admin/db-push", async (req, res) => {
+  const { auth } = req.body;
+  if (auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé." });
+  }
+
+  if (!isSupabaseConfigured()) {
+    return res.status(400).json({ success: false, error: "Supabase n'est pas configuré sur ce serveur." });
+  }
+
+  console.log("📤 [Manual Push] Début de la synchronisation forcée des fichiers locaux vers Supabase...");
+  const collections = [
+    { file: PRODUCTS_FILE, key: "produits.json" },
+    { file: BLOGS_FILE, key: "blogs.json" },
+    { file: USERS_FILE, key: "users.json" },
+    { file: PARTNERS_FILE, key: "partners.json" },
+    { file: ORDERS_FILE, key: "orders.json" },
+    { file: WITHDRAWALS_FILE, key: "withdrawals.json" },
+    { file: REVIEWS_FILE, key: "reviews.json" },
+    { file: MESSAGES_FILE, key: "messages.json" },
+    { file: SETTINGS_FILE, key: "settings.json" }
+  ];
+
+  const results: any[] = [];
+  for (const col of collections) {
+    try {
+      if (fs.existsSync(col.file)) {
+        const content = fs.readFileSync(col.file, "utf-8");
+        const data = JSON.parse(content);
+        const success = await saveToSupabaseStore(col.key, data);
+        results.push({ key: col.key, success });
+      } else {
+        results.push({ key: col.key, success: false, error: "Fichier local introuvable." });
+      }
+    } catch (err: any) {
+      results.push({ key: col.key, success: false, error: err.message || err });
+    }
+  }
+
+  res.json({ success: true, results });
 });
 
 // DELETE product (Secure)
@@ -2346,6 +2464,93 @@ app.post("/api/admin/sync-products", (req, res) => {
     res.json({ success: true, count: products.length });
   } else {
     res.status(500).json({ success: false, error: "Impossible d'écrire le catalogue synchronisé dans la base de données." });
+  }
+});
+
+// POST /api/ai/assistant - AI Chatbot Assistant for Asime Togo (Powered by Gemini)
+app.post("/api/ai/assistant", async (req, res) => {
+  try {
+    const { message, history } = req.body;
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ success: false, error: "Message requis." });
+    }
+
+    const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+    const sampleProducts = products.slice(0, 15).map(p => `- ${p.nom} (${p.categorie}): ${p.prix} FCFA`).join("\n");
+
+    const systemInstruction = `Tu es Aya, l'Assistante IA virtuelle officielle d'Asime Togo (la plateforme d'éco-commerce n°1 du consommer local et des opportunités au Togo 🇹🇬).
+Ton rôle est EXCLUSIVEMENT d'aider les acheteurs et vendeurs de la plateforme Asime Togo avec enthousiasme, politesse, clarté et élégance.
+
+PÉRIMÈTRE ET LIMITES STRICTES (RÈGLES ABSOLUES) :
+- Tu es UNIQUEMENT un guide commercial et support client pour Asime Togo.
+- Tu ne dois JAMAIS rédiger de code informatique, créer de projets logiciels, jouer le rôle d'un développeur, ni accomplir de tâches informatiques/techniques hors du cadre d'Asime Togo.
+- Si un utilisateur te demande de créer un projet, d'écrire du code, de programmer une application ou d'aborder un sujet hors du commerce local togolais, réponds poliment que tu es Aya, l'assistante virtuelle d'Asime Togo, et que ta mission est d'orienter les clients sur nos produits locaux, livraisons, paiements et vendeurs.
+
+Informations clés sur Asime Togo :
+- Devise : FCFA (XOF).
+- Produits phares : Artisanat Made in Togo (Miel de Kpalimé, Beurre de Karité Bio, Cafés des Plateaux, Chocolat artisanal, etc.), Paniers Frais & Épicerie, Plats & Gastronomie locale, Mode Wax & T-shirts, Chaussures, Importations & High-Tech.
+- Paiements acceptés : T-Money (Togocom), Flooz (Moov Africa), Carte bancaire, Portefeuille Asime Pay, ou Paiement à la livraison.
+- Livraison : Express à domicile ou au bureau à Lomé et dans les préfectures du Togo, ainsi qu'à l'international.
+- Service client WhatsApp : Disponible directement sur la plateforme.
+
+Aperçu de quelques produits phares du catalogue :
+${sampleProducts}
+
+Consignes de communication :
+- Salue chaleureusement en disant "Miawoezon !" ou "Bienvenue chez Asime !".
+- Tu es bilingue en Français et en Eʋegbe (Ewe). Si l'utilisateur te parle en Ewe ou te demande de lui répondre en Ewe, réponds-lui naturellement et chaleureusement en Ewe (Eʋegbe). S'il te parle en Français, réponds-lui en Français.
+- Sois très utile pour guider le choix des produits, expliquer le fonctionnement de la commande, du panier ou de la livraison.
+- Sois toujours courtoise, chaleureuse et bien structurée.`;
+
+    const ai = getGeminiClient();
+    if (!ai) {
+      // Fallback response if GEMINI_API_KEY is not present
+      const msgLower = message.toLowerCase();
+      let fallbackText = "Miawoezon ! Je suis Aya, l'Assistante IA d'Asime Togo. ";
+      if (msgLower.includes("livraison") || msgLower.includes("livrer")) {
+        fallbackText += "Nous assurons la livraison express le jour même à Lomé et la livraison sécurisée dans toutes les villes du Togo !";
+      } else if (msgLower.includes("paiement") || msgLower.includes("payer") || msgLower.includes("tmoney") || msgLower.includes("flooz")) {
+        fallbackText += "Vous pouvez régler vos achats par T-Money (+228), Flooz, Carte bancaire, Portefeuille Asime Pay ou à la livraison !";
+      } else if (msgLower.includes("produit") || msgLower.includes("miel") || msgLower.includes("karit") || msgLower.includes("cadeau")) {
+        fallbackText += "Découvrez notre catalogue 'Made in Togo' avec le Miel Sauvage de Kpalimé, le Beurre de Karité Bio, les Cafés des Plateaux et l'Artisanat local dans l'onglet Catalogue !";
+      } else {
+        fallbackText += "Comment puis-je vous guider aujourd'hui ? Posez-moi vos questions sur nos produits Made in Togo, nos modes de paiement ou la livraison !";
+      }
+      return res.json({ success: true, response: fallbackText });
+    }
+
+    const contents: any[] = [];
+    if (Array.isArray(history)) {
+      history.forEach((item: { sender: string; text: string }) => {
+        contents.push({
+          role: item.sender === "user" ? "user" : "model",
+          parts: [{ text: item.text }]
+        });
+      });
+    }
+    contents.push({
+      role: "user",
+      parts: [{ text: message }]
+    });
+
+    const result = await ai.models.generateContent({
+      model: "gemini-3.6-flash",
+      contents: contents,
+      config: {
+        systemInstruction: systemInstruction,
+        temperature: 0.7,
+      }
+    });
+
+    const reply = result.text || "Miawoezon ! Comment puis-je vous conseiller aujourd'hui sur Asime Togo ?";
+    res.json({ success: true, response: reply });
+  } catch (error: any) {
+    console.error("AI Assistant Endpoint Error:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "Erreur du serveur d'assistance IA.",
+      response: "Une petite interruption temporaire est survenue. N'hésitez pas à me poser à nouveau votre question !" 
+    });
   }
 });
 
