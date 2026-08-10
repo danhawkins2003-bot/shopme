@@ -1869,10 +1869,10 @@ export default function App() {
             </div>
           </div>
 
-          {/* Center Search Bar - Pill Oval with Gold Border & Cream Background */}
+          {/* Center Search Bar - Same design model as mobile search bar */}
           <div className="hidden md:flex flex-1 max-w-sm lg:max-w-md xl:max-w-lg mx-2 lg:mx-6 relative items-center">
-            <span className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-[#C89D34]">
-              <Search className="h-4.5 w-4.5" />
+            <span className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-neutral-400">
+              <Search className="h-3.5 w-3.5 text-neutral-400" />
             </span>
             <input
               type="text"
@@ -1884,22 +1884,31 @@ export default function App() {
                 }
               }}
               placeholder={t("search_placeholder")}
-              className="block w-full pl-10 pr-4 py-2 text-xs sm:text-sm border border-[#C89D34] focus:border-[#0F5132] focus:ring-2 focus:ring-[#C89D34]/20 rounded-full bg-[#F4EFE6] hover:bg-white focus:bg-white transition-all font-sans text-[#0F5132] placeholder-[#0F5132]/60 focus:outline-none shadow-2xs font-medium"
+              className="block w-full pl-8 pr-7 py-1.5 text-xs sm:text-sm border border-stone-300 focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37]/40 rounded-sm bg-white font-sans text-neutral-800 placeholder-neutral-400 focus:outline-[#d4af37] shadow-2xs"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 text-neutral-400 hover:text-neutral-700"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          {/* Actions Menu Right: Share, Language, Login Pill & Circular Cart */}
+          {/* Actions Menu Right: Share (Desktop only), Language, Login Pill & Circular Cart */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             
-            {/* Share Button (Visible on all devices) */}
+            {/* Share Button (Desktop/Tablet sm+ only, hidden on mobile) */}
             <button 
               type="button"
               onClick={() => setIsShareDownloadOpen(true)}
-              className="flex bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#C89D34] rounded-full p-2 sm:p-2.5 shadow-2xs transition-all cursor-pointer items-center justify-center shrink-0"
+              className="hidden sm:flex bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#C89D34] rounded-full p-2.5 shadow-2xs transition-all cursor-pointer items-center justify-center shrink-0"
               title="Partager le site ou Télécharger le catalogue"
               id="header-share-app-btn"
             >
-              <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#C89D34]" />
+              <Share2 className="w-4 h-4 text-[#C89D34]" />
             </button>
 
             {/* Language Selection Button (Visible on all devices) */}
