@@ -10,17 +10,6 @@ function main() {
       fs.mkdirSync(publicDir, { recursive: true });
     }
 
-    const logoPath = path.join(process.cwd(), "src", "assets", "images", "logo_asime_monogram_1781086746857.png");
-    if (fs.existsSync(logoPath)) {
-      fs.copyFileSync(logoPath, path.join(publicDir, "icon-192.png"));
-      fs.copyFileSync(logoPath, path.join(publicDir, "icon-512.png"));
-      fs.copyFileSync(logoPath, path.join(publicDir, "icon.png"));
-      fs.copyFileSync(logoPath, path.join(publicDir, "logo.png"));
-      console.log("[PWA Assets] Copied PWA logo images to /public");
-    } else {
-      console.warn("[PWA Assets] Warning: Asime logo not found at " + logoPath);
-    }
-
     const logoSvg = `<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="100" height="100" rx="20" fill="#FFFFFF"/>
       <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
@@ -34,6 +23,7 @@ function main() {
 
     fs.writeFileSync(path.join(publicDir, "icon.svg"), logoSvg);
     fs.writeFileSync(path.join(publicDir, "favicon.svg"), logoSvg);
+    fs.writeFileSync(path.join(publicDir, "logo.svg"), logoSvg);
     console.log("[PWA Assets] SVG icons written to /public");
   } catch (err) {
     console.error("[PWA Assets] Error preparing assets:", err.message);

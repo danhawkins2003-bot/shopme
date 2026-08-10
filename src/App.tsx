@@ -53,41 +53,6 @@ import { AIAssistantWidget } from "./components/AIAssistantWidget";
 import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
 import { useLanguage } from "./lib/i18n";
 
-// @ts-ignore
-import logoOrganic from "./assets/images/logo_asime_organic_1781086774790.png";
-// @ts-ignore
-import logoMonogram from "./assets/images/logo_asime_monogram_1781086746857.png";
-// @ts-ignore
-import logoPrestige from "./assets/images/logo_asime_prestige_1781086799630.png";
-// @ts-ignore
-import logoTradition from "./assets/images/logo_asime_tradition_1781086787788.png";
-// @ts-ignore
-import logoPalmier from "./assets/images/logo_asime_palmier_crest_1781087278648.png";
-// @ts-ignore
-import logoBouclier from "./assets/images/logo_asime_bouclier_sacred_1781087291885.png";
-// @ts-ignore
-import logoCorbeille from "./assets/images/logo_asime_corbeille_or_1781087305413.png";
-// @ts-ignore
-import logoEbene from "./assets/images/logo_asime_ebene_1781087249311.png";
-// @ts-ignore
-import logoMonogramRefined from "./assets/images/logo_asime_monogram_refined_1781087265797.png";
-// @ts-ignore
-import logoModern from "./assets/images/logo_asime_modern_1781086760951.png";
-
-const LOGO_DESIGNS = [
-  { id: "monogramme_plume", name: "Lettre A & Plume d'Or (Officiel) 🪶", src: "/icon.svg" },
-  { id: "monogram", name: "Monogramme AYIBA 🏷️", src: logoMonogram },
-  { id: "palmier", name: "Palmier National 🌴", src: logoPalmier },
-  { id: "prestige", name: "Édition Prestige 👑", src: logoPrestige },
-  { id: "monogram_refined", name: "Monogramme Raffiné 🌟", src: logoMonogramRefined },
-  { id: "corbeille", name: "Corbeille d'Or 🧺", src: logoCorbeille },
-  { id: "bouclier", name: "Bouclier Sacré 🛡️", src: logoBouclier },
-  { id: "ebene", name: "Ébène Précieux ✨", src: logoEbene },
-  { id: "tradition", name: "Tradition Togolaise 🇹🇬", src: logoTradition },
-  { id: "organic", name: "Asime Organique 🌱", src: logoOrganic },
-  { id: "modern", name: "Asime Moderne ⚡", src: logoModern }
-];
-
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
   getItem(key: string): string | null {
@@ -963,30 +928,17 @@ export default function App() {
   const [editQuartier, setEditQuartier] = useState("");
 
   const renderLogoNode = (sizeClass = "w-9 h-9") => {
-    const selectedLogo = LOGO_DESIGNS.find(l => l.id === activeLogoId) || LOGO_DESIGNS[0];
-    if (selectedLogo.id === "monogramme_plume" || !activeLogoId) {
-      return (
-        <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-xl p-0.5 border border-emerald-100/80 shadow-2xs overflow-hidden`}>
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-            <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
-            <g>
-              <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-              <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
-              <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
-              <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
-            </g>
-          </svg>
-        </div>
-      );
-    }
     return (
-      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-xl p-0.5 border border-neutral-200/80 shadow-2xs overflow-hidden`}>
-        <img 
-          src={selectedLogo.src} 
-          alt={selectedLogo.name} 
-          className="w-full h-full object-contain rounded-lg" 
-          referrerPolicy="no-referrer" 
-        />
+      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-xl p-0.5 border border-emerald-100/80 shadow-2xs overflow-hidden`}>
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+          <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
+          <g>
+            <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
+            <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
+            <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
+            <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
+          </g>
+        </svg>
       </div>
     );
   };
@@ -1936,31 +1888,31 @@ export default function App() {
             />
           </div>
 
-          {/* Actions Menu Right: Dissociated Share, Language, Login Pill & Circular Cart */}
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Actions Menu Right: Share, Language, Login Pill & Circular Cart */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             
-            {/* Share Button (Separated) */}
+            {/* Share Button (Visible on all devices) */}
             <button 
               type="button"
               onClick={() => setIsShareDownloadOpen(true)}
-              className="hidden sm:flex bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#C89D34] rounded-full p-2.5 shadow-2xs transition-all cursor-pointer items-center justify-center shrink-0"
+              className="flex bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#C89D34] rounded-full p-2 sm:p-2.5 shadow-2xs transition-all cursor-pointer items-center justify-center shrink-0"
               title="Partager le site ou Télécharger le catalogue"
               id="header-share-app-btn"
             >
-              <Share2 className="w-4 h-4 text-[#C89D34]" />
+              <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#C89D34]" />
             </button>
 
-            {/* Language Selection Button (Separated) */}
+            {/* Language Selection Button (Visible on all devices) */}
             <button
               type="button"
               onClick={() => setLanguage(language === "fr" ? "ee" : "fr")}
-              className="hidden sm:flex items-center gap-1.5 bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#0F5132] rounded-full px-3 py-2 shadow-2xs transition-all cursor-pointer font-sans shrink-0"
-              title={language === "fr" ? "Passer en Eʋegbe (Ewe)" : "Passer en Français"}
+              className="flex items-center gap-1 sm:gap-1.5 bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#0F5132] rounded-full px-2 sm:px-3 py-1.5 sm:py-2 shadow-2xs transition-all cursor-pointer font-sans shrink-0"
+              title={language === "fr" ? "Passer en Ewe (Eʋegbe)" : "Passer en Français"}
               id="header-language-toggle-btn"
             >
-              <Globe className="w-4 h-4 text-[#0F5132]" />
-              <span className="text-xs font-black tracking-wider uppercase text-[#0F5132]">
-                {language === "fr" ? "EVEGBE" : "FR"}
+              <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0F5132]" />
+              <span className="text-[10px] sm:text-xs font-black tracking-wider uppercase text-[#0F5132]">
+                {language === "fr" ? "EWE" : "FR"}
               </span>
             </button>
 
@@ -1973,12 +1925,12 @@ export default function App() {
                   setEditQuartier(user.quartier || "");
                   setIsProfileOpen(true);
                 }}
-                className="px-4 py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
+                className="px-2.5 sm:px-4 py-1.5 sm:py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
                 title="Espace Client - Mon Compte"
                 id="header-user-profile-btn"
               >
-                <User className="w-4 h-4 text-[#C89D34]" />
-                <span className="text-xs font-extrabold tracking-wider uppercase text-[#C89D34] truncate max-w-[90px]">{user.name.split(" ")[0]}</span>
+                <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#C89D34]" />
+                <span className="text-[10px] sm:text-xs font-extrabold tracking-wider uppercase text-[#C89D34] truncate max-w-[70px] sm:max-w-[90px]">{user.name.split(" ")[0]}</span>
               </button>
             ) : (
               <button
@@ -1987,11 +1939,12 @@ export default function App() {
                   setAuthError("");
                   setIsAuthOpen(true);
                 }}
-                className="px-4 sm:px-5 py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
+                className="px-2.5 sm:px-5 py-1.5 sm:py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
                 title="Se connecter / S'inscrire"
                 id="header-user-login-btn"
               >
-                <span className="text-xs font-black tracking-widest uppercase text-[#C89D34]">{t("login_btn")}</span>
+                <User className="w-3.5 h-3.5 sm:hidden text-[#C89D34]" />
+                <span className="text-[10px] sm:text-xs font-black tracking-widest uppercase text-[#C89D34]">{t("login_btn")}</span>
               </button>
             )}
 
@@ -2000,12 +1953,12 @@ export default function App() {
               animate={isCartBouncing ? { scale: [1, 1.25, 0.9, 1.1, 1] } : {}}
               transition={{ duration: 0.4 }}
               onClick={() => setIsCartOpen(true)}
-              className="relative bg-neutral-950 hover:bg-neutral-900 text-[#D4AF37] w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-300 shadow-md border border-neutral-800 cursor-pointer shrink-0"
+              className="relative bg-neutral-950 hover:bg-neutral-900 text-[#D4AF37] w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-300 shadow-md border border-neutral-800 cursor-pointer shrink-0"
               title="Mon Panier"
             >
-              <ShoppingCart className="w-5 h-5 text-[#D4AF37]" />
+              <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5 text-[#D4AF37]" />
               {getCartCount() > 0 && (
-                <div className="absolute -top-1 -right-1 min-w-5 h-5 bg-[#C81E1E] border-2 border-white text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 shadow-sm">
+                <div className="absolute -top-1 -right-1 min-w-4 sm:min-w-5 h-4 sm:h-5 bg-[#C81E1E] border-2 border-white text-white text-[9px] sm:text-[10px] font-black rounded-full flex items-center justify-center px-1 shadow-sm">
                   {getCartCount()}
                 </div>
               )}

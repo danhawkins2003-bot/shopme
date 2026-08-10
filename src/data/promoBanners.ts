@@ -122,7 +122,7 @@ export const INITIAL_PROMO_SLIDES: PromoSlide[] = [
     categoryTarget: "Beauté & Santé Bio",
     searchQuery: "",
     bgGradient: "linear-gradient(135deg, #241402 0%, #472905 50%, #1a0e01 100%)",
-    imageUrl: "https://images.unsplash.com/photo-1608248597261-e4d31835787d?auto=format&fit=crop&q=80&w=600",
+    imageUrl: "https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&q=80&w=600",
     imageAlt: "Beurre de Karité & Soins Bio Togo",
     overlayLabelFr: "Cosmétiques Bio du Togo",
     overlayLabelEe: "Togo Atsyõ-Nuwo",

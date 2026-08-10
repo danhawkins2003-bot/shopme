@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion } from "motion/react";
-const LOGO_DESIGNS = [
-  { id: "monogramme_plume", name: "Lettre A & Plume d'Or (Officiel) 🪶", src: "/icon.svg" },
-];
+
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
   getItem(key: string): string | null {
@@ -1817,59 +1815,32 @@ export default function AdminApp() {
                     </p>
                   </div>
 
-                  {/* Logo Style Selection */}
+                  {/* Logo Unique Info Banner */}
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-3">
-                      Design Officiel du Logo de l'Application <span className="text-red-500">*</span>
+                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-2">
+                      Identité Visuelle Officielle
                     </label>
-                    <p className="text-[10px] text-neutral-500 mb-4 leading-relaxed">
-                      Sélectionnez le style de logo haut de gamme à appliquer globalement sur l'en-tête de la boutique pour tous vos visiteurs sur ordinateur et mobile.
-                    </p>
-                    
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                      {LOGO_DESIGNS.map((logo) => {
-                        const isSelected = activeLogoId === logo.id;
-                        return (
-                          <div 
-                            key={logo.id}
-                            onClick={() => setActiveLogoId(logo.id)}
-                            className={`group relative flex flex-col items-center justify-between p-3 border rounded-md cursor-pointer transition-all bg-white hover:shadow-md ${
-                              isSelected 
-                                ? "border-[#d4af37] bg-amber-50/20 shadow-xs ring-1 ring-[#d4af37]" 
-                                : "border-neutral-200 hover:border-neutral-400"
-                            }`}
-                          >
-                             <div className="w-16 h-16 flex items-center justify-center p-1 rounded bg-white border border-neutral-200 shadow-3xs mb-2.5 overflow-hidden">
-                               {logo.id === "monogramme_plume" ? (
-                                 <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                                   <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
-                                   <g>
-                                     <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-                                     <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
-                                     <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
-                                     <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
-                                   </g>
-                                 </svg>
-                               ) : (
-                                 <img 
-                                   src={logo.src} 
-                                   alt={logo.name} 
-                                   className="w-full h-full object-contain rounded" 
-                                   referrerPolicy="no-referrer"
-                                 />
-                               )}
-                             </div>
-                            <span className="text-[9px] text-center font-bold text-neutral-800 leading-tight group-hover:text-neutral-950">
-                              {logo.name}
-                            </span>
-                            {isSelected && (
-                              <div className="absolute top-1.5 right-1.5 bg-[#d4af37] text-neutral-955 text-[8px] font-bold px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
-                                Actif
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div className="flex items-center gap-4 p-4 border rounded-xl bg-emerald-50/50 border-emerald-200/80 shadow-2xs max-w-md">
+                      <div className="w-14 h-14 shrink-0 flex items-center justify-center p-1 rounded-lg bg-white border border-emerald-100 shadow-2xs overflow-hidden">
+                        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                          <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
+                          <g>
+                            <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
+                            <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
+                            <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
+                            <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
+                          </g>
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                          <span>Lettre A & Plume d'Or</span>
+                          <span className="bg-emerald-700 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Logo Unique</span>
+                        </div>
+                        <p className="text-[11px] text-emerald-800/90 mt-0.5 leading-snug">
+                          Seul logo officiel configuré et actif sur l'ensemble du site web et de l'application mobile.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
