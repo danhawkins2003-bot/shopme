@@ -1856,20 +1856,20 @@ export default function App() {
               setActiveTab("accueil");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0"
+            className="flex items-center gap-1.5 sm:gap-2.5 cursor-pointer group shrink-0"
           >
-            {renderLogoNode("w-11 h-11 sm:w-13 sm:h-13 md:w-14 md:h-14")}
+            {renderLogoNode("w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14")}
             <div className="flex flex-col justify-center">
-              <span className="font-sans font-black tracking-[0.1em] text-lg sm:text-xl md:text-2xl text-[#0F5132] uppercase leading-none">
+              <span className="font-sans font-black tracking-[0.1em] text-base sm:text-xl md:text-2xl text-[#0F5132] uppercase leading-none">
                 ASIME
               </span>
-              <p className="text-[10px] sm:text-xs md:text-sm text-[#C89D34] font-serif italic font-bold leading-tight mt-0.5 tracking-wide whitespace-nowrap">
+              <p className="hidden sm:block text-xs md:text-sm text-[#C89D34] font-serif italic font-bold leading-tight mt-0.5 tracking-wide whitespace-nowrap">
                 {t("slogan")}
               </p>
             </div>
           </div>
 
-          {/* Center Search Bar - Same design model as mobile search bar */}
+          {/* Center Search Bar - Desktop Model */}
           <div className="hidden md:flex flex-1 max-w-sm lg:max-w-md xl:max-w-lg mx-2 lg:mx-6 relative items-center">
             <span className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-neutral-400">
               <Search className="h-3.5 w-3.5 text-neutral-400" />
@@ -1900,11 +1900,11 @@ export default function App() {
           {/* Actions Menu Right: Share (Desktop only), Language, Login Pill & Circular Cart */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             
-            {/* Share Button (Desktop/Tablet sm+ only, hidden on mobile) */}
+            {/* Share Button (Desktop md+ only, removed from mobile header) */}
             <button 
               type="button"
               onClick={() => setIsShareDownloadOpen(true)}
-              className="hidden sm:flex bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#C89D34] rounded-full p-2.5 shadow-2xs transition-all cursor-pointer items-center justify-center shrink-0"
+              className="hidden md:flex bg-[#F0EAE0] border border-[#E1D6C5] hover:bg-[#EBE2D3] text-[#C89D34] rounded-full p-2.5 shadow-2xs transition-all cursor-pointer items-center justify-center shrink-0"
               title="Partager le site ou Télécharger le catalogue"
               id="header-share-app-btn"
             >
@@ -1934,12 +1934,12 @@ export default function App() {
                   setEditQuartier(user.quartier || "");
                   setIsProfileOpen(true);
                 }}
-                className="px-2.5 sm:px-4 py-1.5 sm:py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
+                className="px-2 sm:px-4 py-1.5 sm:py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
                 title="Espace Client - Mon Compte"
                 id="header-user-profile-btn"
               >
                 <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#C89D34]" />
-                <span className="text-[10px] sm:text-xs font-extrabold tracking-wider uppercase text-[#C89D34] truncate max-w-[70px] sm:max-w-[90px]">{user.name.split(" ")[0]}</span>
+                <span className="text-[10px] sm:text-xs font-extrabold tracking-wider uppercase text-[#C89D34] truncate max-w-[60px] sm:max-w-[90px]">{user.name.split(" ")[0]}</span>
               </button>
             ) : (
               <button
@@ -1948,22 +1948,23 @@ export default function App() {
                   setAuthError("");
                   setIsAuthOpen(true);
                 }}
-                className="px-2.5 sm:px-5 py-1.5 sm:py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
+                className="px-2 sm:px-4 py-1.5 sm:py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
                 title="Se connecter / S'inscrire"
                 id="header-user-login-btn"
               >
-                <User className="w-3.5 h-3.5 sm:hidden text-[#C89D34]" />
+                <User className="w-3.5 h-3.5 text-[#C89D34]" />
                 <span className="text-[10px] sm:text-xs font-black tracking-widest uppercase text-[#C89D34]">{t("login_btn")}</span>
               </button>
             )}
 
-            {/* Shopping Cart Trigger - Pure Black Circle */}
+            {/* Shopping Cart Trigger - Guaranteed visibility on mobile */}
             <motion.button 
               animate={isCartBouncing ? { scale: [1, 1.25, 0.9, 1.1, 1] } : {}}
               transition={{ duration: 0.4 }}
               onClick={() => setIsCartOpen(true)}
-              className="relative bg-neutral-950 hover:bg-neutral-900 text-[#D4AF37] w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-300 shadow-md border border-neutral-800 cursor-pointer shrink-0"
+              className="relative bg-neutral-950 hover:bg-neutral-900 text-[#D4AF37] w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-300 shadow-md border border-neutral-800 cursor-pointer shrink-0"
               title="Mon Panier"
+              id="header-cart-btn"
             >
               <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5 text-[#D4AF37]" />
               {getCartCount() > 0 && (
@@ -2039,9 +2040,9 @@ export default function App() {
       </div>
 
       {/* --- Responsive Mobile Search Sticky Ribbon --- */}
-      <div className="md:hidden sticky top-[118px] z-20 bg-neutral-150 px-4 py-2 border-b border-stone-200 shadow-xs flex items-center justify-between">
+      <div className="md:hidden sticky top-[108px] z-20 bg-[#FAF8F5] px-4 py-2 border-b border-stone-200 shadow-2xs flex items-center justify-between">
         <div className="relative w-full">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
+          <span className="absolute inset-y-0 left-2.5 flex items-center pointer-events-none text-neutral-400">
             <Search className="h-3.5 w-3.5 text-neutral-400" />
           </span>
           <input
@@ -2053,15 +2054,16 @@ export default function App() {
                 setActiveTab("catalogue");
               }
             }}
-            placeholder="Rechercher des produits locaux..."
-            className="block w-full pl-8 pr-3 py-1.5 text-xs border border-stone-300 focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37]/40 rounded-sm bg-white font-sans text-neutral-800 placeholder-neutral-400 focus:outline-[#d4af37]"
+            placeholder={t("search_placeholder")}
+            className="block w-full pl-8 pr-7 py-1.5 text-xs border border-stone-300 focus:border-[#d4af37] focus:ring-1 focus:ring-[#d4af37]/40 rounded-sm bg-white font-sans text-neutral-800 placeholder-neutral-400 focus:outline-[#d4af37]"
           />
           {searchQuery && (
             <button 
+              type="button"
               onClick={() => setSearchQuery("")} 
-              className="absolute inset-y-0 right-0 pr-2.5 flex items-center"
+              className="absolute inset-y-0 right-2.5 flex items-center text-neutral-400 hover:text-neutral-700"
             >
-              <X className="w-3.5 h-3.5 text-neutral-400 hover:text-neutral-600" />
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
