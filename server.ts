@@ -2648,9 +2648,15 @@ async function start() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[Asime Backend] Server live at http://localhost:${PORT}`);
-  });
+  if (process.env.VERCEL !== "1") {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[Asime Backend] Server live at http://localhost:${PORT}`);
+    });
+  }
 }
 
-start();
+if (process.env.VERCEL !== "1") {
+  start();
+}
+
+export default app;
