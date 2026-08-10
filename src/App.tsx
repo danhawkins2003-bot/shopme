@@ -1090,11 +1090,17 @@ export default function App() {
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
-      if (!res.ok) {
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        data = { success: false, error: "Réponse serveur non valide." };
+      }
+
+      if (!res.ok || !data.success) {
         setAuthError(data.error || "Une erreur s'est produite lors de la connexion.");
       } else {
-        if (data.success && data.token && data.user) {
+        if (data.token && data.user) {
           localStorage.setItem("asime-user-token", data.token);
           setToken(data.token);
           setUser(data.user);
@@ -1121,7 +1127,7 @@ export default function App() {
 
           showToast(authMode === "login" ? `Ravi de vous revoir, ${data.user.name} !` : `Bienvenue parmi nous, ${data.user.name} !`);
         } else {
-          setAuthError("Données de réponse invalides du serveur.");
+          setAuthError(data.error || "Données de réponse invalides du serveur.");
         }
       }
     } catch (err) {
@@ -1863,7 +1869,7 @@ export default function App() {
               <span className="font-sans font-black tracking-[0.1em] text-base sm:text-xl md:text-2xl text-[#0F5132] uppercase leading-none">
                 ASIME
               </span>
-              <p className="hidden sm:block text-xs md:text-sm text-[#C89D34] font-serif italic font-bold leading-tight mt-0.5 tracking-wide whitespace-nowrap">
+              <p className="text-[10px] sm:text-xs md:text-sm text-[#C89D34] font-serif italic font-bold leading-tight mt-0.5 tracking-wide whitespace-nowrap">
                 {t("slogan")}
               </p>
             </div>

@@ -10,8 +10,8 @@
       "destination": "/admin.html"
     },
     {
-      "source": "/api/:path*",
-      "destination": "/api/:path*"
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
     },
     {
       "source": "/((?!api|admin|assets|.*\\.).*)",

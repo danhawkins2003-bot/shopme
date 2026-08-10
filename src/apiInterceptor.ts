@@ -1995,7 +1995,6 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
 
 // Override the global Window fetch definition
 const customFetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  // Client-side emulation is completely disabled to ensure all data is written to the real backend and Supabase
   return originalFetch(input, init);
 };
 
