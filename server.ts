@@ -555,60 +555,66 @@ app.post("/api/admin/auth", (req, res) => {
 
 // Inscription (Sign-up)
 app.post("/api/auth/register", (req, res) => {
-  const { name, email, password, phone, quartier } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ success: false, error: "Veuillez remplir les champs obligatoires (Nom, Email, Mot de passe)." });
-  }
+  try {
+    const { name, email, password, phone, quartier } = req.body || {};
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, error: "Veuillez remplir les champs obligatoires (Nom, Email, Mot de passe)." });
+    }
 
-  const emailLower = String(email).trim().toLowerCase();
-  const users = readJSONFile<any[]>(USERS_FILE, []);
-  
-  const existingUser = users.find(u => u.email.toLowerCase() === emailLower);
-  if (existingUser) {
-    return res.status(400).json({ success: false, error: "Cette adresse email est déjà enregistrée." });
-  }
+    const emailLower = String(email).trim().toLowerCase();
+    const users = readJSONFile<any[]>(USERS_FILE, []);
+    
+    const existingUser = users.find(u => u && u.email && String(u.email).toLowerCase() === emailLower);
+    if (existingUser) {
+      return res.status(400).json({ success: false, error: "Cette adresse email est déjà enregistrée." });
+    }
 
-  const newUser = {
-    id: "user_" + Date.now().toString(),
-    name: String(name).trim(),
-    email: emailLower,
-    passwordHash: hashPassword(password),
-    phone: String(phone || "").trim(),
-    quartier: String(quartier || "").trim(),
-    favorites: [],
-    createdAt: new Date().toISOString()
-  };
+    const newUser = {
+      id: "user_" + Date.now().toString(),
+      name: String(name).trim(),
+      email: emailLower,
+      passwordHash: hashPassword(password),
+      phone: String(phone || "").trim(),
+      quartier: String(quartier || "").trim(),
+      favorites: [],
+      createdAt: new Date().toISOString()
+    };
 
-  users.push(newUser);
-  const success = writeJSONFile(USERS_FILE, users);
-  
-  if (success) {
+    users.push(newUser);
+    writeJSONFile(USERS_FILE, users);
+    
     const sessionToken = createTokenForUser(newUser.id);
     const { passwordHash, ...userResponse } = newUser;
-    res.json({ success: true, token: sessionToken, user: userResponse });
-  } else {
-    res.status(500).json({ success: false, error: "Erreur lors de l'enregistrement de l'utilisateur." });
+    return res.json({ success: true, token: sessionToken, user: userResponse });
+  } catch (err: any) {
+    console.error("Register endpoint error:", err);
+    return res.status(500).json({ success: false, error: "Erreur lors de l'inscription: " + (err.message || "Erreur serveur.") });
   }
 });
 
 // Connexion (Login)
 app.post("/api/auth/login", (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: "Email et mot de passe requis." });
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: "Email et mot de passe requis." });
+    }
+
+    const emailLower = String(email).trim().toLowerCase();
+    const users = readJSONFile<any[]>(USERS_FILE, []);
+    const user = users.find(u => u && u.email && String(u.email).toLowerCase() === emailLower);
+
+    if (!user || !user.passwordHash || user.passwordHash !== hashPassword(password)) {
+      return res.status(401).json({ success: false, error: "Identifiants incorrects. Veuillez réessayer." });
+    }
+
+    const sessionToken = createTokenForUser(user.id);
+    const { passwordHash, ...userResponse } = user;
+    return res.json({ success: true, token: sessionToken, user: userResponse });
+  } catch (err: any) {
+    console.error("Login endpoint error:", err);
+    return res.status(500).json({ success: false, error: "Erreur lors de la connexion: " + (err.message || "Erreur serveur.") });
   }
-
-  const emailLower = String(email).trim().toLowerCase();
-  const users = readJSONFile<any[]>(USERS_FILE, []);
-  const user = users.find(u => u.email.toLowerCase() === emailLower);
-
-  if (!user || user.passwordHash !== hashPassword(password)) {
-    return res.status(401).json({ success: false, error: "Identifiants incorrects. Veuillez réessayer." });
-  }
-
-  const sessionToken = createTokenForUser(user.id);
-  const { passwordHash, ...userResponse } = user;
-  res.json({ success: true, token: sessionToken, user: userResponse });
 });
 
 // Récupérer l'utilisateur courant (Current User details)

@@ -1094,7 +1094,7 @@ export default function App() {
       try {
         data = await res.json();
       } catch (parseErr) {
-        data = { success: false, error: "Réponse serveur non valide." };
+        data = { success: false, error: "Service temporairement indisponible ou réponse serveur non valide." };
       }
 
       if (!res.ok || !data.success) {
@@ -1869,7 +1869,7 @@ export default function App() {
               <span className="font-sans font-black tracking-[0.1em] text-base sm:text-xl md:text-2xl text-[#0F5132] uppercase leading-none">
                 ASIME
               </span>
-              <p className="text-[10px] sm:text-xs md:text-sm text-[#C89D34] font-serif italic font-bold leading-tight mt-0.5 tracking-wide whitespace-nowrap">
+              <p className="text-[9.5px] sm:text-xs md:text-sm text-[#C89D34] font-serif italic font-bold leading-tight mt-0.5 tracking-wide leading-tight">
                 {t("slogan")}
               </p>
             </div>
