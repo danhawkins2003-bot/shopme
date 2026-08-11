@@ -1091,10 +1091,12 @@ export default function App() {
       });
 
       let data: any = {};
+      const resText = await res.text();
       try {
-        data = await res.json();
+        data = JSON.parse(resText);
       } catch (parseErr) {
-        data = { success: false, error: "Service temporairement indisponible ou réponse serveur non valide." };
+        console.error("Non-JSON server response:", resText);
+        data = { success: false, error: "Réponse serveur non valide ou problème de connexion." };
       }
 
       if (!res.ok || !data.success) {

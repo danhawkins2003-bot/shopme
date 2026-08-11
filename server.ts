@@ -29,6 +29,14 @@ function getGeminiClient(): GoogleGenAI | null {
 // Allow large payloads for base64 image uploads (up to 4 images per product can be large)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use((req, res, next) => {
+  if (typeof req.body === "string" && req.body.trim().startsWith("{")) {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (e) {}
+  }
+  next();
+});
 
 // Prevent aggressive caching of API endpoints (especially on mobile/Android browsers)
 app.use("/api", (req, res, next) => {
@@ -602,7 +610,7 @@ app.post("/api/admin/auth", (req, res) => {
 // --- CUSTOMER AUTHENTICATION ENDPOINTS ---
 
 // Inscription (Sign-up)
-app.post("/api/auth/register", (req, res) => {
+app.post(["/api/auth/register", "/auth/register"], (req, res) => {
   try {
     const { name, email, password, phone, quartier } = req.body || {};
     if (!name || !email || !password) {
@@ -641,7 +649,7 @@ app.post("/api/auth/register", (req, res) => {
 });
 
 // Connexion (Login)
-app.post("/api/auth/login", (req, res) => {
+app.post(["/api/auth/login", "/auth/login"], (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) {
@@ -666,7 +674,7 @@ app.post("/api/auth/login", (req, res) => {
 });
 
 // Récupérer l'utilisateur courant (Current User details)
-app.get("/api/auth/me", (req, res) => {
+app.get(["/api/auth/me", "/auth/me"], (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({ success: false, error: "Non connecté." });
@@ -2605,6 +2613,26 @@ Consignes de communication :
       error: "Erreur du serveur d'assistance IA.",
       response: "Une petite interruption temporaire est survenue. N'hésitez pas à me poser à nouveau votre question !" 
     });
+  }
+});
+
+// Fallback for unmatched API routes to ensure JSON response instead of HTML 404
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/") || req.path.startsWith("/auth/") || req.path === "/api" || req.path === "/auth") {
+    if (!res.headersSent) {
+      return res.status(404).json({ success: false, error: `Point de terminaison non trouvé: ${req.method} ${req.originalUrl || req.url}` });
+    }
+  }
+  next();
+});
+
+// Global Express Error Handler to ensure JSON response
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Global Server Error:", err);
+  if (!res.headersSent) {
+    res.status(500).json({ success: false, error: err.message || "Erreur interne du serveur." });
+  } else {
+    next(err);
   }
 });
 
