@@ -473,58 +473,106 @@ function generateCatalogData(): any[] {
   return generatedProducts;
 }
 
+// Helper to manage in-memory cache and safe file persistence
+const memoryStore = new Map<string, any>();
+
+function getTmpFilePath(filePath: string): string {
+  const fileName = path.basename(filePath);
+  return path.join("/tmp", fileName);
+}
+
 // Helper to read JSON files safely
 function readJSONFile<T>(filePath: string, defaultData: T): T {
+  if (memoryStore.has(filePath)) {
+    return memoryStore.get(filePath) as T;
+  }
+
   try {
-    if (!fs.existsSync(filePath)) {
+    let content = "";
+    let loadedFromDisk = false;
+
+    if (fs.existsSync(filePath)) {
+      content = fs.readFileSync(filePath, "utf-8");
+      loadedFromDisk = true;
+    } else {
+      const tmpPath = getTmpFilePath(filePath);
+      if (fs.existsSync(tmpPath)) {
+        content = fs.readFileSync(tmpPath, "utf-8");
+        loadedFromDisk = true;
+      }
+    }
+
+    if (!loadedFromDisk || !content) {
       if (filePath === PRODUCTS_FILE) {
         const initialProducts = generateCatalogData();
-        fs.writeFileSync(filePath, JSON.stringify(initialProducts, null, 2), "utf-8");
+        memoryStore.set(filePath, initialProducts);
+        try {
+          fs.writeFileSync(getTmpFilePath(filePath), JSON.stringify(initialProducts, null, 2), "utf-8");
+        } catch (e) {}
         return initialProducts as unknown as T;
       }
-      fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2), "utf-8");
+      memoryStore.set(filePath, defaultData);
+      try {
+        fs.writeFileSync(getTmpFilePath(filePath), JSON.stringify(defaultData, null, 2), "utf-8");
+      } catch (e) {}
       return defaultData;
     }
-    let content = fs.readFileSync(filePath, "utf-8");
+
     if (content.toLowerCase().includes("shopme")) {
       content = content.replace(/shopme/gi, (match) => {
         if (match === "ShopMe") return "Asime";
         if (match === "SHOPME") return "ASIME";
         return "asime";
       });
-      fs.writeFileSync(filePath, content, "utf-8");
+      try {
+        fs.writeFileSync(filePath, content, "utf-8");
+      } catch (e) {
+        try {
+          fs.writeFileSync(getTmpFilePath(filePath), content, "utf-8");
+        } catch (e2) {}
+      }
     }
+
     const parsed = JSON.parse(content);
     if (filePath === PRODUCTS_FILE && !Array.isArray(parsed)) {
       const initialProducts = generateCatalogData();
-      fs.writeFileSync(filePath, JSON.stringify(initialProducts, null, 2), "utf-8");
+      memoryStore.set(filePath, initialProducts);
       return initialProducts as unknown as T;
     }
+
+    memoryStore.set(filePath, parsed);
     return parsed as unknown as T;
   } catch (err) {
     console.error(`Error reading ${filePath}:`, err);
+    memoryStore.set(filePath, defaultData);
     return defaultData;
   }
 }
 
 // Helper to write JSON files safely
 function writeJSONFile<T>(filePath: string, data: T): boolean {
+  memoryStore.set(filePath, data);
+
   try {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-    
-    // Background replication to Supabase cloud if active
-    if (isSupabaseConfigured()) {
-      const keyName = path.basename(filePath);
-      saveToSupabaseStore(keyName, data).catch((err) => {
-        console.error(`🔴 [Supabase Sync Error] Could not replicate "${keyName}":`, err.message || err);
-      });
+  } catch (primaryErr) {
+    try {
+      const tmpPath = getTmpFilePath(filePath);
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+    } catch (tmpErr) {
+      console.warn(`[Storage] Disk write failed for ${filePath}, preserved in server memory:`, tmpErr);
     }
-    
-    return true;
-  } catch (err) {
-    console.error(`Error writing ${filePath}:`, err);
-    return false;
   }
+
+  // Background replication to Supabase cloud if active
+  if (isSupabaseConfigured()) {
+    const keyName = path.basename(filePath);
+    saveToSupabaseStore(keyName, data).catch((err) => {
+      console.error(`🔴 [Supabase Sync Error] Could not replicate "${keyName}":`, err.message || err);
+    });
+  }
+
+  return true;
 }
 
 // --- API Endpoints ---
