@@ -133,12 +133,18 @@ export class PayDunyaProvider implements IPaymentProvider {
   supportedMethods = ["mobile_money", "card"];
 
   private getApiKeys() {
-    return {
-      masterKey: process.env.PAYDUNYA_MASTER_KEY || "",
-      privateKey: process.env.PAYDUNYA_PRIVATE_KEY || "",
-      token: process.env.PAYDUNYA_TOKEN || "",
-      mode: (process.env.PAYDUNYA_MODE || "test").toLowerCase()
-    };
+    const masterKey = process.env.PAYDUNYA_MASTER_KEY || process.env.PAYDUNYA_MASTER_TOKEN || process.env.PAYDUNYA_MASTER || "";
+    const privateKey = process.env.PAYDUNYA_PRIVATE_KEY || process.env.PAYDUNYA_SECRET_KEY || process.env.PAYDUNYA_PRIVATE || "";
+    const token = process.env.PAYDUNYA_TOKEN || process.env.PAYDUNYA_PUBLIC_KEY || process.env.PAYDUNYA_KEY || "";
+    
+    let mode = (process.env.PAYDUNYA_MODE || "").toLowerCase().trim();
+    if (mode === "production" || mode === "prod" || mode === "live" || (!mode && (privateKey || token))) {
+      mode = "live";
+    } else {
+      mode = "test";
+    }
+
+    return { masterKey, privateKey, token, mode };
   }
 
   private getBaseUrl(): string {
@@ -151,7 +157,7 @@ export class PayDunyaProvider implements IPaymentProvider {
   async initiatePayment(orderId: string, amount: number, customer: PaymentCustomerDetails): Promise<PaymentSession> {
     const { masterKey, privateKey, token, mode } = this.getApiKeys();
     
-    // Fallback if keys are not provided yet (acts as fully functional simulator/sandbox with notification)
+    // Fallback if keys are not provided yet
     if (!privateKey || !token) {
       const transactionId = "TX-PD-MOCK-" + crypto.randomBytes(4).toString("hex").toUpperCase();
       console.warn("[PayDunya] Clés d'API manquantes dans le fichier .env. Utilisation du mode démonstration.");
@@ -168,6 +174,8 @@ export class PayDunyaProvider implements IPaymentProvider {
 
     try {
       const baseUrl = this.getBaseUrl();
+      console.log(`[PayDunya] Initialisation facture en mode ${mode.toUpperCase()} sur URL ${baseUrl}...`);
+
       const payload = {
         invoice: {
           total_amount: amount,
@@ -223,21 +231,12 @@ export class PayDunyaProvider implements IPaymentProvider {
           instructions: "Veuillez compléter votre paiement sur l'interface sécurisée PayDunya."
         };
       } else {
-        throw new Error(resData?.response_text || "Erreur inconnue lors de l'initialisation de la facture PayDunya.");
+        console.error("[PayDunya API] Réponse d'échec de PayDunya:", resData);
+        throw new Error(resData?.response_text || `Code d'erreur PayDunya: ${resData?.response_code || "Inconnu"}`);
       }
     } catch (error: any) {
       console.error("[PayDunya API Error] Failed to create checkout session:", error);
-      // Failover to sandbox simulation so the app is always functional
-      const transactionId = "TX-PD-FAILOVER-" + crypto.randomBytes(4).toString("hex").toUpperCase();
-      return {
-        success: true,
-        transactionId,
-        providerId: this.id,
-        amount,
-        status: "pending",
-        redirectUrl: `/payment-gateway?tx=${transactionId}&provider=${this.id}&amount=${amount}&order=${orderId}&err=api_error`,
-        instructions: `Erreur API PayDunya (${error.message}). Redirection vers le mode démonstration.`
-      };
+      throw new Error(`Erreur API PayDunya (${error.message}). Vérifiez vos clés dans .env.`);
     }
   }
 

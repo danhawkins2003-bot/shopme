@@ -947,7 +947,7 @@ app.post("/api/admin/db-push", async (req, res) => {
 
   console.log("📤 [Manual Push] Début de la synchronisation forcée des fichiers locaux vers Supabase...");
   const collections = [
-    { file: PRODUCTS_FILE, key: "produits.json" },
+    { file: PRODUCTS_FILE, key: "products.json" },
     { file: BLOGS_FILE, key: "blogs.json" },
     { file: USERS_FILE, key: "users.json" },
     { file: PARTNERS_FILE, key: "partners.json" },
@@ -2667,7 +2667,7 @@ async function start() {
   if (isSupabaseConfigured()) {
     console.log("🔄 [Startup] Synchronisation initiale avec Supabase (en parallèle)...");
     const collections = [
-      { file: PRODUCTS_FILE, key: "produits.json" },
+      { file: PRODUCTS_FILE, key: "products.json" },
       { file: BLOGS_FILE, key: "blogs.json" },
       { file: USERS_FILE, key: "users.json" },
       { file: PARTNERS_FILE, key: "partners.json" },
@@ -2682,7 +2682,7 @@ async function start() {
     const syncPromises = collections.map(async (col) => {
       try {
         // Fetch with a timeout of 4 seconds to prevent blocking
-        const cloudData = await Promise.race([
+        let cloudData = await Promise.race([
           loadFromSupabaseStore(col.key),
           new Promise<null>((resolve) => setTimeout(() => {
             console.warn(`⏳ [Startup] Timeout de synchronisation pour ${col.key} après ${timeoutMs}ms.`);
@@ -2690,15 +2690,37 @@ async function start() {
           }, timeoutMs))
         ]);
 
+        // Fallback check for "produits.json" if "products.json" was not found
+        if (!cloudData && col.key === "products.json") {
+          cloudData = await loadFromSupabaseStore("produits.json");
+        }
+
         if (cloudData) {
-          fs.writeFileSync(col.file, JSON.stringify(cloudData, null, 2), "utf-8");
+          memoryStore.set(col.file, cloudData);
+          try {
+            fs.writeFileSync(col.file, JSON.stringify(cloudData, null, 2), "utf-8");
+          } catch (e) {
+            try {
+              fs.writeFileSync(getTmpFilePath(col.file), JSON.stringify(cloudData, null, 2), "utf-8");
+            } catch (e2) {}
+          }
           console.log(`✅ [Startup] Restauré depuis Supabase : ${col.key}`);
         } else {
-          // If Supabase is connected but this key is not found, seed current local file to Supabase
+          // If Supabase is connected but this key is not found, seed current local file to Supabase if exists
+          let localContent = "";
           if (fs.existsSync(col.file)) {
-            const localData = JSON.parse(fs.readFileSync(col.file, "utf-8"));
-            console.log(`🌱 [Startup] Seeding de ${col.key} vers Supabase...`);
-            await saveToSupabaseStore(col.key, localData);
+            localContent = fs.readFileSync(col.file, "utf-8");
+          } else if (fs.existsSync(getTmpFilePath(col.file))) {
+            localContent = fs.readFileSync(getTmpFilePath(col.file), "utf-8");
+          }
+
+          if (localContent) {
+            try {
+              const localData = JSON.parse(localContent);
+              memoryStore.set(col.file, localData);
+              console.log(`🌱 [Startup] Seeding de ${col.key} vers Supabase...`);
+              await saveToSupabaseStore(col.key, localData);
+            } catch (pErr) {}
           }
         }
       } catch (err: any) {
