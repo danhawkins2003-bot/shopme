@@ -210,7 +210,7 @@ export class PayDunyaProvider implements IPaymentProvider {
           name: "Asime Togo",
           tagline: "L'artisanat togolais à portée de clic",
           postal_address: "Lomé, Togo",
-          phone: "+22898434546"
+          phone: "+22890000000"
         },
         custom_data: {
           order_id: orderId,

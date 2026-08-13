@@ -87,8 +87,17 @@ function hashPassword(password: string): string {
 
 // Initialize LocalStorage collections if they do not exist
 function initLocalStorage() {
-  if (!localStorage.getItem("asime_emulated_products")) {
+  const existingProds = localStorage.getItem("asime_emulated_products");
+  if (!existingProds) {
     localStorage.setItem("asime_emulated_products", JSON.stringify(defaultProducts));
+  } else {
+    try {
+      const parsed = JSON.parse(existingProds);
+      if (Array.isArray(parsed) && parsed.some(p => p && p.id && String(p.id).startsWith("prod_pop_"))) {
+        const cleaned = parsed.filter(p => p && p.id && !String(p.id).startsWith("prod_pop_"));
+        localStorage.setItem("asime_emulated_products", JSON.stringify(cleaned));
+      }
+    } catch (e) {}
   }
   if (!localStorage.getItem("asime_emulated_blogs")) {
     localStorage.setItem("asime_emulated_blogs", JSON.stringify(defaultBlogs));

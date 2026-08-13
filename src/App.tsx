@@ -92,8 +92,8 @@ const localStorage = safeLocalStorage;
 export const ASIME_SETTINGS = {
   // Vos numéros d'administration et de commande (Format sans '+' pour WhatsApp, ex: 22890000000)
   WHATSAPP_MERCHANT_NUMBER: typeof window !== "undefined" ? (localStorage.getItem("asime_whatsapp_merchant_number") || import.meta.env.VITE_WHATSAPP_MERCHANT_NUMBER || "22890000000") : "22890000000", 
-  PHONE_DISPLAY_PRIMARY: import.meta.env.VITE_PHONE_DISPLAY_PRIMARY || "+228 98 43 45 46",
-  PHONE_DISPLAY_SECONDARY: import.meta.env.VITE_PHONE_DISPLAY_SECONDARY || "+228 98 43 45 46",
+  PHONE_DISPLAY_PRIMARY: import.meta.env.VITE_PHONE_DISPLAY_PRIMARY || "+228 90 00 00 00",
+  PHONE_DISPLAY_SECONDARY: import.meta.env.VITE_PHONE_DISPLAY_SECONDARY || "+228 97 00 00 00",
   SUPPORT_EMAIL: import.meta.env.VITE_SUPPORT_EMAIL || "support@asime228.com",
   
   // Google AdSense Configuration
@@ -106,6 +106,7 @@ export const ASIME_SETTINGS = {
   DEFAULT_AFFILIATE_URL: import.meta.env.VITE_DEFAULT_AFFILIATE_URL || "https://s.click.aliexpress.com/e/_DdYxyz",
   DEFAULT_AMAZON_COLLECTION_URL: import.meta.env.VITE_DEFAULT_AMAZON_URL || "https://www.amazon.com/Best-Sellers-Electronics/zgbs/electronics"
 };
+
 function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "horizontal" }) {
   const { language } = useLanguage();
   const [adError, setAdError] = useState(false);
