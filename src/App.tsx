@@ -91,9 +91,9 @@ const localStorage = safeLocalStorage;
 // --- CONFIGURATION ASIME TOGO (À MODIFIER AVEC VOS PROPRES INFOS) ---
 export const ASIME_SETTINGS = {
   // Vos numéros d'administration et de commande (Format sans '+' pour WhatsApp, ex: 22890000000)
-  WHATSAPP_MERCHANT_NUMBER: typeof window !== "undefined" ? (localStorage.getItem("asime_whatsapp_merchant_number") || import.meta.env.VITE_WHATSAPP_MERCHANT_NUMBER || "22890000000") : "22890000000", 
-  PHONE_DISPLAY_PRIMARY: import.meta.env.VITE_PHONE_DISPLAY_PRIMARY || "+228 90 00 00 00",
-  PHONE_DISPLAY_SECONDARY: import.meta.env.VITE_PHONE_DISPLAY_SECONDARY || "+228 97 00 00 00",
+  WHATSAPP_MERCHANT_NUMBER: typeof window !== "undefined" ? (localStorage.getItem("asime_whatsapp_merchant_number") || import.meta.env.VITE_WHATSAPP_MERCHANT_NUMBER || "22898434546") : "22898434546", 
+  PHONE_DISPLAY_PRIMARY: import.meta.env.VITE_PHONE_DISPLAY_PRIMARY || "+228 98 43 45 46",
+  PHONE_DISPLAY_SECONDARY: import.meta.env.VITE_PHONE_DISPLAY_SECONDARY || "+228 98 43 45 46",
   SUPPORT_EMAIL: import.meta.env.VITE_SUPPORT_EMAIL || "support@asime228.com",
   
   // Google AdSense Configuration
