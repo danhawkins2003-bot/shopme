@@ -924,50 +924,20 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     return makeResponse({ success: true, order: newOrder }, 200, true);
   }
 
-  // --- EMULATED PAYMENTS: ACTIVE PROVIDERS ---
+  // --- PAYMENTS: ACTIVE PROVIDERS ---
   if (cleanRoute === "/api/payments/providers" && method === "GET") {
     const providers = [
-      { id: "paydunya", name: "PayDunya Gateway", type: "aggregator", active: true, country: "SN/TG" },
-      { id: "tmoney", name: "TMoney", type: "mobile_money", active: true, country: "TG" },
-      { id: "flooz", name: "Flooz", type: "mobile_money", active: true, country: "TG" },
-      { id: "mix_by_yas", name: "Mix by Yas", type: "mobile_money", active: true, country: "TG" }
+      { id: "paydunya", name: "Paiement Sécurisé Mobile Money & Carte", type: "aggregator", active: true, country: "TG" }
     ];
     return makeResponse(providers, 200, true);
   }
 
-  // --- EMULATED PAYMENTS: INITIATE SESSION ---
+  // --- PAYMENTS: INITIATE SESSION (Requires real API configuration) ---
   if (cleanRoute === "/api/payments/initiate" && method === "POST") {
-    const { orderId, providerId } = bodyData;
-    if (!orderId || !providerId) {
-      return makeResponse({ success: false, error: "Identifiant de commande et de prestataire requis." }, 400, false);
-    }
-
-    const orders = JSON.parse(localStorage.getItem("asime_emulated_orders") || "[]");
-    const orderIndex = orders.findIndex((o: any) => o.id === orderId);
-    if (orderIndex === -1) {
-      return makeResponse({ success: false, error: "Commande non trouvée." }, 404, false);
-    }
-
-    const order = orders[orderIndex];
-    if (order.paymentStatus === "Payé") {
-      return makeResponse({ success: false, error: "Cette commande a déjà été payée." }, 400, false);
-    }
-
-    const transactionId = "tx_emulated_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-    order.paymentGatewayTxId = transactionId;
-    order.paymentGatewayProvider = providerId;
-    localStorage.setItem("asime_emulated_orders", JSON.stringify(orders));
-
-    const session = {
-      transactionId,
-      orderId,
-      amount: order.totalAmount,
-      providerId,
-      status: "pending",
-      redirectUrl: `/payment-gateway?tx=${transactionId}&provider=${providerId}`
-    };
-
-    return makeResponse({ success: true, session }, 200, true);
+    return makeResponse({
+      success: false,
+      error: "Clés de paiement PayDunya non configurées. Veuillez renseigner PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY et PAYDUNYA_TOKEN dans votre fichier .env pour activer le paiement en direct."
+    }, 400, false);
   }
 
   // --- EMULATED PAYMENTS: CONFIRM & SPLIT FUNDS ---

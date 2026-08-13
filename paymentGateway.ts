@@ -153,8 +153,8 @@ export class CinetPayProvider implements IPaymentProvider {
 // 4. PayDunya Provider
 export class PayDunyaProvider implements IPaymentProvider {
   id = "paydunya";
-  name = "Asime Pay (En Ligne)";
-  description = "Solutions sécurisées de paiement par Mobile Money (Wave, Orange Money) & Cartes bancaires";
+  name = "Paiement Sécurisé Mobile Money & Carte";
+  description = "Solutions sécurisées de paiement automatique par Mobile Money (TMoney, Flooz, Wave) & Cartes bancaires";
   supportedMethods = ["mobile_money", "card"];
 
   private getApiKeys() {
