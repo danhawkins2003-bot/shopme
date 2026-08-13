@@ -1,4 +1,29 @@
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+
+function loadEnvFile() {
+  try {
+    const envPath = path.join(process.cwd(), ".env");
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, "utf-8");
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
+          const [key, ...vals] = trimmed.split("=");
+          const k = key.trim();
+          let v = vals.join("=").trim();
+          if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+            v = v.slice(1, -1);
+          }
+          if (k && v && !process.env[k]) {
+            process.env[k] = v;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+}
 
 export interface PaymentCustomerDetails {
   name: string;
@@ -133,15 +158,16 @@ export class PayDunyaProvider implements IPaymentProvider {
   supportedMethods = ["mobile_money", "card"];
 
   private getApiKeys() {
-    const masterKey = process.env.PAYDUNYA_MASTER_KEY || process.env.PAYDUNYA_MASTER_TOKEN || process.env.PAYDUNYA_MASTER || "";
-    const privateKey = process.env.PAYDUNYA_PRIVATE_KEY || process.env.PAYDUNYA_SECRET_KEY || process.env.PAYDUNYA_PRIVATE || "";
-    const token = process.env.PAYDUNYA_TOKEN || process.env.PAYDUNYA_PUBLIC_KEY || process.env.PAYDUNYA_KEY || "";
+    loadEnvFile();
+
+    const masterKey = (process.env.PAYDUNYA_MASTER_KEY || process.env.PAYDUNYA_MASTER_TOKEN || process.env.PAYDUNYA_MASTER || process.env.PAYDUNYA_KEY_MASTER || "").trim();
+    const privateKey = (process.env.PAYDUNYA_PRIVATE_KEY || process.env.PAYDUNYA_SECRET_KEY || process.env.PAYDUNYA_PRIVATE || process.env.PAYDUNYA_SECRET || "").trim();
+    const token = (process.env.PAYDUNYA_TOKEN || process.env.PAYDUNYA_PUBLIC_KEY || process.env.PAYDUNYA_PUBLIC_TOKEN || process.env.PAYDUNYA_KEY || "").trim();
     
-    let mode = (process.env.PAYDUNYA_MODE || "").toLowerCase().trim();
-    if (mode === "production" || mode === "prod" || mode === "live" || (!mode && (privateKey || token))) {
+    let modeInput = (process.env.PAYDUNYA_MODE || "").toLowerCase().trim();
+    let mode = "test";
+    if (modeInput === "production" || modeInput === "prod" || modeInput === "live" || (!modeInput && (privateKey || token))) {
       mode = "live";
-    } else {
-      mode = "test";
     }
 
     return { masterKey, privateKey, token, mode };
@@ -157,19 +183,10 @@ export class PayDunyaProvider implements IPaymentProvider {
   async initiatePayment(orderId: string, amount: number, customer: PaymentCustomerDetails): Promise<PaymentSession> {
     const { masterKey, privateKey, token, mode } = this.getApiKeys();
     
-    // Fallback if keys are not provided yet
+    // Strict error if keys are missing in .env (No silent mock fallback)
     if (!privateKey || !token) {
-      const transactionId = "TX-PD-MOCK-" + crypto.randomBytes(4).toString("hex").toUpperCase();
-      console.warn("[PayDunya] Clés d'API manquantes dans le fichier .env. Utilisation du mode démonstration.");
-      return {
-        success: true,
-        transactionId,
-        providerId: this.id,
-        amount,
-        status: "pending",
-        redirectUrl: `/payment-gateway?tx=${transactionId}&provider=${this.id}&amount=${amount}&order=${orderId}`,
-        instructions: "Mode Démo / Intégration PayDunya. Veuillez configurer vos clés PAYDUNYA_PRIVATE_KEY et PAYDUNYA_TOKEN dans le fichier .env pour la production."
-      };
+      console.error("[PayDunya] Clés d'API manquantes dans .env (PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY, PAYDUNYA_TOKEN).");
+      throw new Error("Clés PayDunya non trouvées dans le fichier .env. Veuillez renseigner PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY et PAYDUNYA_TOKEN dans .env pour la production.");
     }
 
     try {
@@ -193,7 +210,7 @@ export class PayDunyaProvider implements IPaymentProvider {
           name: "Asime Togo",
           tagline: "L'artisanat togolais à portée de clic",
           postal_address: "Lomé, Togo",
-          phone: "+22890000000"
+          phone: "+22898434546"
         },
         custom_data: {
           order_id: orderId,

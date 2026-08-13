@@ -2,6 +2,32 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+
+// Synchronous .env loader
+const envPath = path.join(process.cwd(), ".env");
+if (fs.existsSync(envPath)) {
+  try {
+    const envLines = fs.readFileSync(envPath, "utf-8").split(/\r?\n/);
+    for (const line of envLines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
+        const [key, ...vals] = trimmed.split("=");
+        const k = key.trim();
+        let v = vals.join("=").trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        if (k && v) {
+          process.env[k] = v;
+        }
+      }
+    }
+    console.log("✅ [.env] Variables d'environnement chargées avec succès.");
+  } catch (e) {
+    console.error("⚠️ [.env] Erreur de lecture du fichier .env:", e);
+  }
+}
+
 import { GoogleGenAI } from "@google/genai";
 import { PaymentGateway } from "./paymentGateway";
 import { WalletManager } from "./walletHelper";
@@ -512,12 +538,15 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
 
     if (!loadedFromDisk || !content) {
       if (filePath === PRODUCTS_FILE) {
-        const initialProducts = generateCatalogData();
-        memoryStore.set(filePath, initialProducts);
+        memoryStore.set(filePath, []);
         try {
-          fs.writeFileSync(getTmpFilePath(filePath), JSON.stringify(initialProducts, null, 2), "utf-8");
-        } catch (e) {}
-        return initialProducts as unknown as T;
+          fs.writeFileSync(filePath, JSON.stringify([], null, 2), "utf-8");
+        } catch (e) {
+          try {
+            fs.writeFileSync(getTmpFilePath(filePath), JSON.stringify([], null, 2), "utf-8");
+          } catch (e2) {}
+        }
+        return [] as unknown as T;
       }
       memoryStore.set(filePath, defaultData);
       try {
@@ -542,10 +571,14 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
     }
 
     const parsed = JSON.parse(content);
-    if (filePath === PRODUCTS_FILE && !Array.isArray(parsed)) {
-      const initialProducts = generateCatalogData();
-      memoryStore.set(filePath, initialProducts);
-      return initialProducts as unknown as T;
+    if (filePath === PRODUCTS_FILE) {
+      if (!Array.isArray(parsed)) {
+        memoryStore.set(filePath, []);
+        return [] as unknown as T;
+      }
+      const cleaned = parsed.filter((p: any) => p && p.id && !String(p.id).startsWith("prod_pop_"));
+      memoryStore.set(filePath, cleaned);
+      return cleaned as unknown as T;
     }
 
     if ((filePath === USERS_FILE || filePath === ORDERS_FILE || filePath === BLOGS_FILE || filePath === PARTNERS_FILE || filePath === WITHDRAWALS_FILE || filePath === REVIEWS_FILE || filePath === MESSAGES_FILE) && !Array.isArray(parsed)) {

@@ -106,7 +106,6 @@ export const ASIME_SETTINGS = {
   DEFAULT_AFFILIATE_URL: import.meta.env.VITE_DEFAULT_AFFILIATE_URL || "https://s.click.aliexpress.com/e/_DdYxyz",
   DEFAULT_AMAZON_COLLECTION_URL: import.meta.env.VITE_DEFAULT_AMAZON_URL || "https://www.amazon.com/Best-Sellers-Electronics/zgbs/electronics"
 };
-
 function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "horizontal" }) {
   const { language } = useLanguage();
   const [adError, setAdError] = useState(false);

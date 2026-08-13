@@ -51,15 +51,25 @@ export async function saveToSupabaseStore(key: string, value: any): Promise<bool
   const cleanKey = key.replace(/\\/g, "/").split("/").pop() || key;
 
   try {
-    const { error } = await client
+    let { error } = await client
       .from("asime_store")
       .upsert(
         { key: cleanKey, value, updated_at: new Date().toISOString() },
         { onConflict: "key" }
       );
 
+    if (error && error.message?.includes("column \"value\"")) {
+      // Retry with "data" column if table schema was created with "data" column
+      const retryRes = await client
+        .from("asime_store")
+        .upsert(
+          { key: cleanKey, data: value, updated_at: new Date().toISOString() },
+          { onConflict: "key" }
+        );
+      error = retryRes.error;
+    }
+
     if (error) {
-      // If table doesn't exist yet, guide the user on how to create it
       if (error.code === "PGRST116" || error.message?.includes("relation") || error.message?.includes("does not exist")) {
         printSetupInstructions();
       }
@@ -87,7 +97,7 @@ export async function loadFromSupabaseStore(key: string): Promise<any | null> {
   try {
     const { data, error } = await client
       .from("asime_store")
-      .select("value")
+      .select("*")
       .eq("key", cleanKey)
       .maybeSingle();
 
@@ -99,9 +109,12 @@ export async function loadFromSupabaseStore(key: string): Promise<any | null> {
       return null;
     }
 
-    if (data && data.value) {
-      console.log(`📥 [Supabase] Données restaurées depuis le Cloud pour : ${cleanKey}`);
-      return data.value;
+    if (data) {
+      const storeVal = data.value !== undefined ? data.value : data.data;
+      if (storeVal !== undefined && storeVal !== null) {
+        console.log(`📥 [Supabase] Données restaurées depuis le Cloud pour : ${cleanKey}`);
+        return storeVal;
+      }
     }
 
     return null;
