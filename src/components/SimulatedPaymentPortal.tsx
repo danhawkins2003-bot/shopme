@@ -166,8 +166,8 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
         };
       case "paydunya":
         return {
-          title: "Guichet PayDunya",
-          logoText: "PayDunya",
+          title: "Guichet de Paiement Sécurisé",
+          logoText: "Asime Pay",
           primaryColor: "bg-emerald-950",
           textColor: "text-emerald-800",
           borderColor: "border-emerald-500",

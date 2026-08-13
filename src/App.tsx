@@ -47,7 +47,6 @@ import {
 } from "lucide-react";
 import { Product, CartItem, BlogPost } from "./types";
 import MultiRoleDashboards from "./components/MultiRoleDashboards";
-import SimulatedPaymentPortal from "./components/SimulatedPaymentPortal";
 import { InvoiceModal } from "./components/InvoiceModal";
 import { AIAssistantWidget } from "./components/AIAssistantWidget";
 import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
@@ -286,18 +285,6 @@ export default function App() {
 
   // Navigation & Tab State
   const [activeTab, setActiveTab] = useState<"accueil" | "catalogue" | "blog" | "contact">("accueil");
-  
-  // Simulated gateway query params interceptor state
-  const [gatewayParams, setGatewayParams] = useState<{ tx: string; provider: string } | null>(() => {
-    const pathname = window.location.pathname;
-    const params = new URLSearchParams(window.location.search);
-    const tx = params.get("tx") || params.get("transactionId");
-    const provider = params.get("provider") || params.get("providerId");
-    if (pathname.includes("payment-gateway") || pathname.includes("paymentGateway") || (tx && provider)) {
-      return { tx: tx || "", provider: provider || "" };
-    }
-    return null;
-  });
   
   // PWA Install States & Interactive prompt handlers
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -837,76 +824,42 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isPaymentModalOpen && paymentSession && !isPaymentSuccess) {
-      setAutoPaymentStep(0);
-      setAutoPaymentStatusText("Initialisation de la connexion sécurisée...");
-      
-      let timer1: NodeJS.Timeout;
-      let timer2: NodeJS.Timeout;
-      let timer3: NodeJS.Timeout;
-      let timer4: NodeJS.Timeout;
+    // Handle return from PayDunya checkout URL (?payment=success or ?payment=cancel)
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get("payment");
+    const orderId = params.get("orderId") || params.get("order_id");
 
-      timer1 = setTimeout(() => {
-        setAutoPaymentStep(1);
-        setAutoPaymentStatusText("Connexion sécurisée aux serveurs de l'opérateur mobile...");
-        
-        timer2 = setTimeout(() => {
-          setAutoPaymentStep(2);
-          setAutoPaymentStatusText("En attente de la validation de l'invitation Push USSD sur votre téléphone...");
-          
-          timer3 = setTimeout(() => {
-            setAutoPaymentStep(3);
-            setAutoPaymentStatusText("Saisie du code PIN détectée... Traitement de la transaction...");
-            
-            timer4 = setTimeout(async () => {
-              setAutoPaymentStep(4);
-              setAutoPaymentStatusText("Validation finale du transfert de fonds avec Asime Pay...");
-              
-              setIsPaymentVerifying(true);
-              try {
-                const confirmRes = await fetch("/api/payments/confirm", {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { "Authorization": token } : {})
-                  },
-                  body: JSON.stringify({
-                    transactionId: paymentSession.transactionId,
-                    providerId: paymentSession.providerId
-                  })
-                });
+    if (paymentStatus === "success" && orderId) {
+      showToast("✓ Paiement PayDunya reçu ! Votre commande a été enregistrée.");
+      confetti({
+        particleCount: 150,
+        spread: 80,
+        origin: { y: 0.6 }
+      });
+      // Verify payment with server
+      fetch("/api/payments/confirm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": token } : {})
+        },
+        body: JSON.stringify({
+          orderId,
+          providerId: "paydunya",
+          transactionId: orderId
+        })
+      }).catch(err => console.error("Error confirming payment on return:", err));
 
-                const confirmData = await confirmRes.json();
-                if (confirmData.success) {
-                  confetti({
-                    particleCount: 150,
-                    spread: 80,
-                    origin: { y: 0.6 }
-                  });
-                  setIsPaymentSuccess(true);
-                  showToast("✓ Paiement automatique reçu et validé avec succès !");
-                } else {
-                  setIsPaymentSuccess(true);
-                }
-              } catch (err) {
-                console.error("Auto confirmation error:", err);
-                setIsPaymentSuccess(true);
-              } finally {
-                setIsPaymentVerifying(false);
-              }
-            }, 1200);
-          }, 1500);
-        }, 1200);
-      }, 800);
-
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-        clearTimeout(timer3);
-        clearTimeout(timer4);
-      };
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (e) {}
+    } else if (paymentStatus === "cancel") {
+      showToast("Paiement annulé par l'utilisateur.");
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (e) {}
     }
-  }, [isPaymentModalOpen, paymentSession, isPaymentSuccess, token]);
+  }, [token]);
 
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -1750,6 +1703,11 @@ export default function App() {
 
       const payData = await payRes.json();
       if (payData.success) {
+        if (payData.session?.redirectUrl && (payData.session.redirectUrl.startsWith("http://") || payData.session.redirectUrl.startsWith("https://"))) {
+          showToast("Redirection vers le guichet de paiement sécurisé...");
+          window.location.href = payData.session.redirectUrl;
+          return;
+        }
         setPaymentSession(payData.session);
         setIsPaymentModalOpen(true);
         setIsCartOpen(false); // Close cart sidebar
@@ -1836,21 +1794,6 @@ export default function App() {
     "Univers femme",
     "Univers homme"
   ];
-
-  if (gatewayParams) {
-    return (
-      <SimulatedPaymentPortal
-        tx={gatewayParams.tx}
-        provider={gatewayParams.provider}
-        onClose={() => {
-          setGatewayParams(null);
-          try {
-            window.history.replaceState({}, document.title, "/");
-          } catch (e) {}
-        }}
-      />
-    );
-  }
 
   return (
     <div className="min-h-screen flex flex-col pb-16 md:pb-0 font-sans bg-[#FAF9F6] text-neutral-900 selection:bg-gold-500 selection:text-white">
@@ -4508,7 +4451,7 @@ export default function App() {
                           </span>
                         </div>
                         <span className="text-[8px] text-neutral-400 mt-1.5 leading-tight">
-                          {language === "fr" ? "Payez en toute sécurité par Mobile Money (Wave, Orange Money) ou Carte Bancaire" : "Kpɔ mɔ sɔsɔe to Wave kple Orange Money alo Kaɖi dzi"}
+                          {language === "fr" ? "Payez en toute sécurité par Mobile Money (TMoney, Flooz, Wave) ou Carte Bancaire" : "Kpɔ mɔ sɔsɔe to TMoney, Flooz, Wave alo Kaɖi dzi"}
                         </span>
                       </button>
 
@@ -4704,8 +4647,8 @@ export default function App() {
                     <strong className="text-sm font-mono font-black text-neutral-950">{formatFCFA(paymentSession.amount)}</strong>
                   </div>
                   <div className="grid grid-cols-2 gap-y-1 text-[10px]">
-                    <span className="text-neutral-400 font-medium">Fournisseur :</span>
-                    <strong className="text-neutral-800 uppercase font-bold text-right">{paymentSession.providerId}</strong>
+                    <span className="text-neutral-400 font-medium">Mode de paiement :</span>
+                    <strong className="text-neutral-800 font-bold text-right">Mobile Money & Carte</strong>
                     
                     <span className="text-neutral-400 font-medium">Destinataire :</span>
                     <strong className="text-neutral-800 text-right font-bold">Asime Togo Pay</strong>
@@ -4732,73 +4675,15 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Automatic payment tracking indicator */}
-                <div className="space-y-4">
-                  <div className="bg-emerald-50/50 border border-emerald-200/50 p-4 rounded-xl space-y-3.5 text-xs text-neutral-800">
-                    <p className="font-extrabold text-emerald-800 uppercase tracking-widest text-[9px] flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-ping"></span>
-                      <span>{language === "fr" ? "🔄 Suivi Automatique du Paiement Mobile Money" : "🔄 Suivi na Mobile Money Fetututu"}</span>
-                    </p>
-                    
-                    <div className="space-y-2.5 font-sans">
-                      {[
-                        { id: 1, label: language === "fr" ? "Connexion sécurisée aux serveurs de l'opérateur..." : "Kadodo kple kaɖa dɔwɔla ƒe kɔmputaziwo..." },
-                        { id: 2, label: language === "fr" ? "En attente de votre code PIN sur votre mobile..." : "Lala wò PIN code dzesi le wò kaƒomɔ dzi..." },
-                        { id: 3, label: language === "fr" ? "Réception de l'autorisation de prélèvement..." : "Míexɔ kpeɖodzi be dzoɖoɖoa sɔ..." },
-                        { id: 4, label: language === "fr" ? "Validation finale du transfert avec Asime Pay..." : "Wu dzoɖoɖoa nu kple Asime Pay..." }
-                      ].map((step) => {
-                        const isDone = autoPaymentStep >= step.id;
-                        const isActive = autoPaymentStep === (step.id - 1);
-                        return (
-                          <div key={step.id} className="flex items-center gap-3">
-                            <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] border transition-all ${
-                              isDone 
-                                ? "bg-emerald-600 border-emerald-600 text-white" 
-                                : isActive 
-                                ? "bg-amber-100 border-amber-400 text-amber-700 animate-pulse font-black" 
-                                : "bg-stone-50 border-stone-200 text-stone-400"
-                            }`}>
-                              {isDone ? "✓" : step.id}
-                            </div>
-                            <span className={`text-[11px] font-medium leading-relaxed transition-all ${
-                              isDone 
-                                ? "text-stone-400 line-through" 
-                                : isActive 
-                                ? "text-neutral-900 font-extrabold" 
-                                : "text-stone-400"
-                            }`}>
-                              {step.label}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="bg-[#FAF9F5] border border-stone-200 p-4 rounded-xl space-y-2 text-center">
-                    <div className="flex items-center justify-center gap-2 text-neutral-800">
-                      <span className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin animate-duration-1000"></span>
-                      <p className="text-[11px] font-black uppercase tracking-wider text-neutral-900">
-                        {autoPaymentStatusText.includes("Initialisation") 
-                          ? (language === "fr" ? "Initialisation de la connexion sécurisée..." : "Kadzizidzo gɔmedzedze...")
-                          : autoPaymentStatusText.includes("Connexion")
-                          ? (language === "fr" ? "Connexion sécurisée aux serveurs..." : "Kadzizidzo kple kaɖa dɔwɔla...")
-                          : autoPaymentStatusText.includes("En attente")
-                          ? (language === "fr" ? "En attente de votre PIN..." : "Lala wò PIN code...")
-                          : autoPaymentStatusText.includes("Saisie")
-                          ? (language === "fr" ? "Traitement de la transaction..." : "Ele dzo le edzi...")
-                          : autoPaymentStatusText.includes("Validation")
-                          ? (language === "fr" ? "Validation finale..." : "Wu dzoɖoɖoa nu...")
-                          : autoPaymentStatusText}
-                      </p>
-                    </div>
-                    <p className="text-[9px] text-neutral-400 font-medium">
-                      {language === "fr" 
-                        ? "Ne fermez pas cette fenêtre. La validation est entièrement automatisée." 
-                        : "Megatu fɛst sia o. Míaƒe kɔmputazi le dɔwɔm tẽe."}
-                    </p>
-                  </div>
-                </div>
+                {/* Direct Action Link or Status */}
+                {paymentSession.redirectUrl && (
+                  <a
+                    href={paymentSession.redirectUrl}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-center text-xs uppercase tracking-wider py-3 px-4 rounded-sm block transition-colors shadow-sm"
+                  >
+                    {language === "fr" ? "Accéder au guichet de paiement PayDunya →" : "Yi PayDunya fetututu dzi →"}
+                  </a>
+                )}
               </div>
             )}
 
