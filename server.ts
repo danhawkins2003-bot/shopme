@@ -548,6 +548,11 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
       return initialProducts as unknown as T;
     }
 
+    if ((filePath === USERS_FILE || filePath === ORDERS_FILE || filePath === BLOGS_FILE || filePath === PARTNERS_FILE || filePath === WITHDRAWALS_FILE || filePath === REVIEWS_FILE || filePath === MESSAGES_FILE) && !Array.isArray(parsed)) {
+      memoryStore.set(filePath, []);
+      return [] as unknown as T;
+    }
+
     memoryStore.set(filePath, parsed);
     return parsed as unknown as T;
   } catch (err) {
@@ -618,6 +623,10 @@ app.post(["/api/auth/register", "/auth/register"], (req, res) => {
     }
 
     const emailLower = String(email).trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailLower)) {
+      return res.status(400).json({ success: false, error: "Veuillez saisir une adresse email valide (ex: nom@exemple.com)." });
+    }
     const users = readJSONFile<any[]>(USERS_FILE, []);
     
     const existingUser = users.find(u => u && u.email && String(u.email).toLowerCase() === emailLower);

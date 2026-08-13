@@ -313,16 +313,20 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
   }
 
   // --- CUSTOMER AUTHENTICATION ---
-  if (cleanRoute === "/api/auth/register" && method === "POST") {
+  if ((cleanRoute === "/api/auth/register" || cleanRoute === "/auth/register") && method === "POST") {
     const { name, email, password, phone, quartier } = bodyData;
     if (!name || !email || !password) {
       return makeResponse({ success: false, error: "Veuillez remplir les champs obligatoires (Nom, Email, Mot de passe)." }, 400, false);
     }
 
     const emailLower = String(email).trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailLower)) {
+      return makeResponse({ success: false, error: "Veuillez saisir une adresse email valide (ex: nom@exemple.com)." }, 400, false);
+    }
     const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
 
-    const existingUser = users.find((u: any) => u.email.toLowerCase() === emailLower);
+    const existingUser = users.find((u: any) => u.email && u.email.toLowerCase() === emailLower);
     if (existingUser) {
       return makeResponse({ success: false, error: "Cette adresse email est déjà enregistrée." }, 400, false);
     }
@@ -347,7 +351,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     return makeResponse({ success: true, token: sessionToken, user: userResponse }, 200, true);
   }
 
-  if (cleanRoute === "/api/auth/login" && method === "POST") {
+  if ((cleanRoute === "/api/auth/login" || cleanRoute === "/auth/login") && method === "POST") {
     const { email, password } = bodyData;
     if (!email || !password) {
       return makeResponse({ success: false, error: "Email et mot de passe requis." }, 400, false);
@@ -355,7 +359,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
 
     const emailLower = String(email).trim().toLowerCase();
     const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
-    const user = users.find((u: any) => u.email.toLowerCase() === emailLower);
+    const user = users.find((u: any) => u.email && u.email.toLowerCase() === emailLower);
 
     if (!user || user.passwordHash !== hashPassword(password)) {
       return makeResponse({ success: false, error: "Identifiants de connexion incorrects." }, 401, false);
@@ -367,7 +371,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     return makeResponse({ success: true, token: sessionToken, user: userResponse }, 200, true);
   }
 
-  if (cleanRoute === "/api/auth/me" && method === "GET") {
+  if ((cleanRoute === "/api/auth/me" || cleanRoute === "/auth/me") && method === "GET") {
     const authHeader = getAuthHeader(init);
     if (!authHeader) {
       return makeResponse({ success: false, error: "Non connecté." }, 401, false);
@@ -1995,7 +1999,27 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
 
 // Override the global Window fetch definition
 const customFetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return originalFetch(input, init);
+  const urlStr = typeof input === "string" ? input : (input instanceof URL ? input.href : (input as Request).url || "");
+
+  try {
+    const res = await originalFetch(input, init);
+    const isApiRoute = urlStr.includes("/api/") || urlStr.includes("/auth/") || urlStr.endsWith("/api") || urlStr.endsWith("/auth");
+    if (isApiRoute) {
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok && !contentType.includes("application/json")) {
+        console.warn(`[API Interceptor] Route ${urlStr} returned status ${res.status} (Non-JSON). Falling back to client emulation.`);
+        return await handleEmulatedRequest(urlStr, init);
+      }
+    }
+    return res;
+  } catch (err) {
+    console.warn(`[API Interceptor] Fetch to ${urlStr} failed. Falling back to client emulation.`, err);
+    const isApiRoute = urlStr.includes("/api/") || urlStr.includes("/auth/") || urlStr.endsWith("/api") || urlStr.endsWith("/auth");
+    if (isApiRoute) {
+      return await handleEmulatedRequest(urlStr, init);
+    }
+    throw err;
+  }
 };
 
 try {
