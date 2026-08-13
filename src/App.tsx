@@ -1424,8 +1424,7 @@ export default function App() {
         safeLocalStorage.setItem("asime_whatsapp_merchant_number", serverSettings.whatsappMerchantNumber);
       }
       
-      // Clear any stale local emulated databases so that the browser is forced to download the fresh official database from the server
-      safeLocalStorage.removeItem("asime_emulated_products");
+      // Clear stale local settings flags if needed
       safeLocalStorage.removeItem("asime_emulated_partners");
       safeLocalStorage.removeItem("asime_emulated_blogs");
     } catch (e) {
@@ -1502,7 +1501,14 @@ export default function App() {
       const res = await fetch("/api/products?t=" + Date.now());
       if (res.ok) {
         const data = await res.json();
-        setProducts(data);
+        if (Array.isArray(data)) {
+          setProducts(data);
+          safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(data));
+          if (data.length > 0) {
+            const maxP = Math.max(...data.map((p: any) => Number(p.prix) || 0), 150000);
+            setPriceRange(prev => Math.max(prev, maxP));
+          }
+        }
       }
     } catch (e) {
       console.error("Error fetching products", e);
@@ -1817,6 +1823,7 @@ export default function App() {
 
   const categoriesList = [
     "Toutes",
+    "Général",
     "Ustensiles de cuisine",
     "Meubles & Décoration",
     "Électronique",

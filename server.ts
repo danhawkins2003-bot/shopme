@@ -872,17 +872,19 @@ app.post("/api/products/save", (req, res) => {
     phare: !!product.phare,
     stock: typeof product.stock !== "undefined" ? Math.max(0, Math.floor(Number(product.stock))) : 10,
     partenaire: product.partenaire ? String(product.partenaire).trim() : "Boutique en Direct",
-    lienAffilie: product.lienAffilie ? String(product.lienAffilie).trim() : ""
+    lienAffilie: product.lienAffilie ? String(product.lienAffilie).trim() : "",
+    valide: typeof product.valide !== "undefined" ? !!product.valide : true,
+    status: product.status || "actif"
   };
 
-  const existingIndex = products.findIndex((p) => p.id === validatedProduct.id);
+  const existingIndex = products.findIndex((p) => String(p.id) === String(validatedProduct.id));
 
   if (existingIndex > -1) {
     // Update existing product
-    products[existingIndex] = validatedProduct;
+    products[existingIndex] = { ...products[existingIndex], ...validatedProduct };
   } else {
-    // Add new product
-    products.push(validatedProduct);
+    // Add new product to top of catalog
+    products.unshift(validatedProduct);
   }
 
   const success = writeJSONFile(PRODUCTS_FILE, products);

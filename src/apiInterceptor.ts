@@ -250,7 +250,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
 
   if (cleanRoute === "/api/products/save" && method === "POST") {
     const { auth, product } = bodyData;
-    if (auth !== "asime2026-auth-session" && auth !== "shopme2026-auth-session") {
+    if (auth !== "asime2026-auth-session" && auth !== "shopme2026-auth-session" && auth !== "asime2026" && auth !== "shopme2026") {
       return makeResponse({ success: false, error: "Accès refusé. Session d'administrateur invalide." }, 403, false);
     }
 
