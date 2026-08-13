@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { PaymentGateway } from "./paymentGateway";
 import { WalletManager } from "./walletHelper";
-import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions, getSupabaseClient } from "./supabaseHelper";
+import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions, getSupabaseClient, checkSupabaseHealth } from "./supabaseHelper";
 
 const app = express();
 const PORT = 3000;
@@ -2612,6 +2612,22 @@ Consignes de communication :
       success: false, 
       error: "Erreur du serveur d'assistance IA.",
       response: "Une petite interruption temporaire est survenue. N'hésitez pas à me poser à nouveau votre question !" 
+    });
+  }
+});
+
+// Diagnostic de la connexion Supabase
+app.get("/api/supabase-status", async (req, res) => {
+  try {
+    const health = await checkSupabaseHealth();
+    return res.json({
+      success: true,
+      ...health
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Erreur lors du contrôle Supabase."
     });
   }
 });

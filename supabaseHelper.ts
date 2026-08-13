@@ -111,6 +111,59 @@ export async function loadFromSupabaseStore(key: string): Promise<any | null> {
   }
 }
 
+export async function checkSupabaseHealth(): Promise<{ configured: boolean; connected: boolean; urlConfigured: boolean; keyConfigured: boolean; tableExists?: boolean; error?: string }> {
+  const urlConfigured = Boolean(process.env.SUPABASE_URL);
+  const keyConfigured = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY);
+  const client = getSupabaseClient();
+
+  if (!client) {
+    return {
+      configured: false,
+      connected: false,
+      urlConfigured,
+      keyConfigured,
+      error: "Variables d'environnement SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY/SUPABASE_ANON_KEY non définies."
+    };
+  }
+
+  try {
+    const { data, error } = await client
+      .from("asime_store")
+      .select("key")
+      .limit(1);
+
+    if (error) {
+      const tableMissing = error.message?.includes("relation") || error.message?.includes("does not exist") || error.code === "PGRST116";
+      return {
+        configured: true,
+        connected: false,
+        urlConfigured,
+        keyConfigured,
+        tableExists: !tableMissing,
+        error: tableMissing
+          ? "Table 'asime_store' non trouvée. Veuillez exécuter le script SQL de création dans Supabase."
+          : error.message
+      };
+    }
+
+    return {
+      configured: true,
+      connected: true,
+      urlConfigured,
+      keyConfigured,
+      tableExists: true
+    };
+  } catch (err: any) {
+    return {
+      configured: true,
+      connected: false,
+      urlConfigured,
+      keyConfigured,
+      error: err.message || "Erreur lors du test de connexion Supabase."
+    };
+  }
+}
+
 let instructionsPrinted = false;
 
 /**
