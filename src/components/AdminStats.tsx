@@ -310,7 +310,7 @@ export default function AdminStats() {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `asime_stats_ventes_${selectedYear}.csv`);
+    link.setAttribute("download", `miabeasi_stats_ventes_${selectedYear}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -326,7 +326,7 @@ export default function AdminStats() {
             <BarChart2 className="w-4 h-4 text-[#d4af37]" />
             <span>Filtres analytiques de l'entreprise</span>
           </h3>
-          <p className="text-neutral-500 text-xs mt-0.5">Explorez les performances commerciales nationales d'Asime Togo.</p>
+          <p className="text-neutral-500 text-xs mt-0.5">Explorez les performances commerciales nationales de Miabé Asi.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">

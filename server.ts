@@ -3,28 +3,48 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 
-// Synchronous .env loader
-const envPath = path.join(process.cwd(), ".env");
-if (fs.existsSync(envPath)) {
-  try {
-    const envLines = fs.readFileSync(envPath, "utf-8").split(/\r?\n/);
-    for (const line of envLines) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
-        const [key, ...vals] = trimmed.split("=");
-        const k = key.trim();
-        let v = vals.join("=").trim();
-        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-          v = v.slice(1, -1);
+// Synchronous resilient .env loader
+const possibleEnvPaths = [
+  path.join(process.cwd(), ".env"),
+  "./.env",
+  "../.env",
+  "/app/.env"
+];
+
+for (const envFile of possibleEnvPaths) {
+  if (fs.existsSync(envFile)) {
+    try {
+      let content = fs.readFileSync(envFile, "utf-8");
+      if (content.charCodeAt(0) === 0xFEFF) {
+        content = content.slice(1);
+      }
+      for (const line of content.split(/\r?\n/)) {
+        let trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        if (trimmed.startsWith("export ")) {
+          trimmed = trimmed.substring(7).trim();
         }
-        if (k && v) {
-          process.env[k] = v;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx > -1) {
+          const k = trimmed.slice(0, eqIdx).trim();
+          let v = trimmed.slice(eqIdx + 1).trim();
+          if (!v.startsWith('"') && !v.startsWith("'")) {
+            const hashIdx = v.indexOf("#");
+            if (hashIdx > -1) v = v.slice(0, hashIdx).trim();
+          }
+          if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+            v = v.slice(1, -1).trim();
+          }
+          if (k && v) {
+            process.env[k] = v;
+            process.env[k.toUpperCase()] = v;
+          }
         }
       }
+      console.log(`✅ [.env] Variables d'environnement chargées avec succès depuis ${envFile}.`);
+    } catch (e) {
+      console.error(`⚠️ [.env] Erreur de lecture du fichier ${envFile}:`, e);
     }
-    console.log("✅ [.env] Variables d'environnement chargées avec succès.");
-  } catch (e) {
-    console.error("⚠️ [.env] Erreur de lecture du fichier .env:", e);
   }
 }
 
@@ -81,6 +101,8 @@ const WITHDRAWALS_FILE = path.join(process.cwd(), "withdrawals.json");
 const REVIEWS_FILE = path.join(process.cwd(), "reviews.json");
 const MESSAGES_FILE = path.join(process.cwd(), "messages.json");
 const SETTINGS_FILE = path.join(process.cwd(), "settings.json");
+const SHOWCASE_FILE = path.join(process.cwd(), "showcase.json");
+const BANNERS_FILE = path.join(process.cwd(), "banners.json");
 
 // Helper to hash password
 function hashPassword(password: string): string {
@@ -462,7 +484,7 @@ function generateCatalogData(): any[] {
 
     let affiliateUrl = "";
     if (partner === "Amazon") {
-      affiliateUrl = `https://www.amazon.com/dp/B00AFFILIATE${i}?tag=asimetogo-20`;
+      affiliateUrl = `https://www.amazon.com/dp/B00AFFILIATE${i}?tag=miabeasi-20`;
     } else if (partner === "AliExpress") {
       affiliateUrl = `https://s.click.aliexpress.com/e/_Daffiliate${i}`;
     } else if (partner === "Jumia") {
@@ -557,8 +579,8 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
 
     if (content.toLowerCase().includes("shopme")) {
       content = content.replace(/shopme/gi, (match) => {
-        if (match === "ShopMe") return "Asime";
-        if (match === "SHOPME") return "ASIME";
+        if (match === "ShopMe") return "Miabé Asi";
+        if (match === "SHOPME") return "MIABÉ ASI";
         return "asime";
       });
       try {
@@ -576,9 +598,8 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
         memoryStore.set(filePath, []);
         return [] as unknown as T;
       }
-      const cleaned = parsed.filter((p: any) => p && p.id && !String(p.id).startsWith("prod_pop_"));
-      memoryStore.set(filePath, cleaned);
-      return cleaned as unknown as T;
+      memoryStore.set(filePath, parsed);
+      return parsed as unknown as T;
     }
 
     if ((filePath === USERS_FILE || filePath === ORDERS_FILE || filePath === BLOGS_FILE || filePath === PARTNERS_FILE || filePath === WITHDRAWALS_FILE || filePath === REVIEWS_FILE || filePath === MESSAGES_FILE) && !Array.isArray(parsed)) {
@@ -625,8 +646,11 @@ function writeJSONFile<T>(filePath: string, data: T): boolean {
 
 // GET products
 app.get("/api/products", (req, res) => {
-  const products = readJSONFile(PRODUCTS_FILE, []);
-  res.json(products);
+  const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.json(Array.isArray(products) ? products : []);
 });
 
 // GET blog posts
@@ -638,7 +662,7 @@ app.get("/api/blogs", (req, res) => {
 // Admin Authentication check
 app.post("/api/admin/auth", (req, res) => {
   const { password } = req.body;
-  if (password === "asime2026" || password === "shopme2026") {
+  if (password === "miabeasi2026" || password === "asime2026" || password === "shopme2026") {
     res.json({ success: true, token: "asime2026-auth-session" });
   } else {
     res.status(401).json({ success: false, error: "Mot de passe incorrect" });
@@ -1094,7 +1118,7 @@ app.post("/api/auth/role-upgrade", (req, res) => {
     };
     user.contactPhone = contactPhone || sellerPhone || user.phone || "";
     user.vendeurSubscription = vendeurSubscription || "Offre 1";
-    user.vendeurPaymentMethod = vendeurPaymentMethod || "Asime Pay";
+    user.vendeurPaymentMethod = vendeurPaymentMethod || "Miabé Asi Pay";
     user.vendeurPaymentTxId = vendeurPaymentTxId || "";
     user.vendeurStatus = "En attente d'activation";
     
@@ -1159,7 +1183,7 @@ app.post(["/api/products", "/api/products/:id"], (req, res) => {
   const users = readJSONFile<any[]>(USERS_FILE, []);
   let user = users.find(u => u.id === userId);
   if (!user && userId === "user_admin") {
-    user = { id: "user_admin", role: "admin", name: "Administrateur Asime", businessName: "Asime Togo", vendeurSubscription: "Offre 3" };
+    user = { id: "user_admin", role: "admin", name: "Administrateur Miabé Asi", businessName: "Miabé Asi", vendeurSubscription: "Offre 3" };
   }
   if (!user) {
     return res.status(404).json({ success: false, error: "Utilisateur non trouvé." });
@@ -1493,6 +1517,27 @@ app.get("/api/payments/providers", (req, res) => {
   res.json(PaymentGateway.getInstance().getActiveProviders());
 });
 
+// GET status of payment gateway configuration (diagnostic)
+app.get("/api/payments/status", (req, res) => {
+  const masterKey = (process.env.PAYDUNYA_MASTER_KEY || process.env.PAYDUNYA_MASTER || "").trim();
+  const privateKey = (process.env.PAYDUNYA_PRIVATE_KEY || process.env.PAYDUNYA_SECRET_KEY || "").trim();
+  const token = (process.env.PAYDUNYA_TOKEN || process.env.PAYDUNYA_PUBLIC_KEY || "").trim();
+  const mode = (process.env.PAYDUNYA_MODE || "test").trim();
+
+  const isConfigured = Boolean(privateKey && token);
+
+  res.json({
+    provider: "paydunya",
+    configured: isConfigured,
+    mode: mode === "production" || mode === "live" ? "live" : "test",
+    hasMasterKey: Boolean(masterKey),
+    hasPrivateKey: Boolean(privateKey),
+    hasToken: Boolean(token),
+    maskedMasterKey: masterKey ? `${masterKey.slice(0, 4)}...${masterKey.slice(-4)}` : null,
+    maskedToken: token ? `${token.slice(0, 4)}...${token.slice(-4)}` : null
+  });
+});
+
 // POST initiate payment session
 app.post("/api/payments/initiate", (req, res) => {
   const { orderId, providerId, name, phone, email } = req.body;
@@ -1512,7 +1557,7 @@ app.post("/api/payments/initiate", (req, res) => {
   }
 
   try {
-    const customer = { name: name || "Client Asime", phone: phone || "", email };
+    const customer = { name: name || "Client Miabé Asi", phone: phone || "", email };
     PaymentGateway.getInstance().initiatePayment(providerId, orderId, order.totalAmount, customer)
       .then(session => {
         // Associate the transaction with the order record
@@ -1709,8 +1754,8 @@ app.post("/api/withdrawals/create", (req, res) => {
     return res.status(400).json({ success: false, error: "Le montant minimum de retrait est de 5 000 FCFA." });
   }
 
-  if (!method || !["Asime Pay", "Asime Pay (En Ligne)", "EnLigne", "PayDunya", "Paydunya", "Mobile Money", "Virement", "Espèces"].includes(method)) {
-    return res.status(400).json({ success: false, error: "Méthode de retrait invalide (Asime Pay uniquement)." });
+  if (!method || !["Miabé Asi Pay", "Asime Pay", "Asime Pay (En Ligne)", "EnLigne", "PayDunya", "Paydunya", "Mobile Money", "Virement", "Espèces"].includes(method)) {
+    return res.status(400).json({ success: false, error: "Méthode de retrait invalide (Miabé Asi Pay uniquement)." });
   }
 
   if (!phone) {
@@ -1948,7 +1993,7 @@ app.get("/api/admin/dashboard-stats", (req, res) => {
   const globalTurnover = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
   const affiliateCommissions = orders.reduce((sum, o) => sum + (o.affiliateCommission || 0), 0);
   
-  // Asime gets 10% fee. Out of that 10%, we subtract any affiliate commission (3%).
+  // Miabé Asi gets 10% fee. Out of that 10%, we subtract any affiliate commission (3%).
   // So gross platform income is 10% of global turnover, net platform income is 10% minus paid affiliate commissions.
   const rawPlatformFee = Math.floor(globalTurnover * 0.10);
   const asimeNetRevenue = rawPlatformFee - affiliateCommissions;
@@ -2453,7 +2498,7 @@ app.post("/api/messages", (req, res) => {
     if (!thread) {
       // Create new thread
       const targetSeller = users.find(u => u.id === sellerId);
-      const targetSellerName = sellerName || (targetSeller ? (targetSeller.businessName || targetSeller.name) : "Boutique Asime");
+      const targetSellerName = sellerName || (targetSeller ? (targetSeller.businessName || targetSeller.name) : "Boutique Miabé Asi");
       
       thread = {
         id: "thread_" + Date.now().toString() + Math.floor(Math.random() * 100),
@@ -2462,7 +2507,7 @@ app.post("/api/messages", (req, res) => {
         avatar: currentUserName.substring(0, 2).toUpperCase(),
         sellerId: sellerId,
         sellerName: targetSellerName,
-        product: productName || "Produit Asime",
+        product: productName || "Produit Miabé Asi",
         lastMessage: text,
         unread: true,
         messages: []
@@ -2515,6 +2560,134 @@ app.post("/api/messages/:threadId/read", (req, res) => {
   }
 
   res.json({ success: true });
+});
+
+// GET /api/showcase - Fetch curated showcase cards for homepage
+app.get("/api/showcase", (req, res) => {
+  const defaultShowcase = {
+    heroCards: [
+      {
+        id: "miel_dore",
+        title: "Notre Miel Doré",
+        subtitle: "100% sauvage, récolté à Kpalimé du plateau forestier.",
+        imageUrl: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=600",
+        category: "Made in Togo Premium",
+        searchQuery: "Miel"
+      },
+      {
+        id: "soin_karite",
+        title: "Soin au Karité",
+        subtitle: "Pressé par notre coopérative de femmes solidaires.",
+        imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?auto=format&fit=crop&q=80&w=600",
+        category: "Made in Togo Premium",
+        searchQuery: "Karité"
+      },
+      {
+        id: "paniers_kovie",
+        title: "Paniers de Kovié",
+        subtitle: "Cueillette du matin, fraîcheur livrée sous 24h à Lomé.",
+        imageUrl: "https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&q=80&w=600",
+        category: "Paniers Frais & Épicerie",
+        searchQuery: ""
+      },
+      {
+        id: "hibiscus_epices",
+        title: "Hibiscus & Épices",
+        subtitle: "Pour vos infusions et bienfaits naturels au quotidien.",
+        imageUrl: "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?auto=format&fit=crop&q=80&w=600",
+        category: "Made in Togo Premium",
+        searchQuery: "Thé"
+      }
+    ],
+    galleryCards: [
+      {
+        id: "ceramiques_mandouri",
+        title: "Céramiques de Mandouri",
+        collection: "Terre Cuite & Argile",
+        tag: "Argile Sacrée",
+        subtitle: "Des œuvres façonnées en argile brute issues de gisements sacrés de l'extrême Nord du Togo.",
+        imageUrl: "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&q=80&w=800",
+        category: "Made in Togo Premium",
+        searchQuery: "Argile"
+      },
+      {
+        id: "tissage_aneho",
+        title: "Tissage d'Aného",
+        collection: "Raphia & Fibres Organiques",
+        tag: "100% Organique",
+        subtitle: "Tressage méticuleux des fibres végétales pour concevoir des sacs et paniers de prestige.",
+        imageUrl: "https://images.unsplash.com/photo-1590736704728-f4730bb30770?auto=format&fit=crop&q=80&w=800",
+        category: "Made in Togo Premium",
+        searchQuery: "Raphia"
+      },
+      {
+        id: "miels_kpalime",
+        title: "Miels de Kpalimé",
+        collection: "Nectar Sauvage & Café",
+        tag: "Nectar d'Altitude",
+        subtitle: "Récoltes biologiques au cœur des forêts denses du plateau du Togo.",
+        imageUrl: "https://images.unsplash.com/photo-1471193945509-9ad0617afabf?auto=format&fit=crop&q=80&w=800",
+        category: "Made in Togo Premium",
+        searchQuery: "Miel"
+      },
+      {
+        id: "soin_solidaire",
+        title: "Soin Solidaire",
+        collection: "Karité de Tandjouaré",
+        tag: "100% Brut",
+        subtitle: "L'excellence des huiles pressées à l'état pur par notre collective de femmes solidaires.",
+        imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&q=80&w=800",
+        category: "Made in Togo Premium",
+        searchQuery: "Karité"
+      }
+    ]
+  };
+  const data = readJSONFile(SHOWCASE_FILE, defaultShowcase);
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.json(data);
+});
+
+// POST /api/showcase - Update showcase cards
+app.post("/api/showcase", (req, res) => {
+  const { auth, heroCards, galleryCards } = req.body;
+  if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé." });
+  }
+  const current = readJSONFile(SHOWCASE_FILE, { heroCards: [], galleryCards: [] });
+  const updated = {
+    heroCards: Array.isArray(heroCards) ? heroCards : current.heroCards,
+    galleryCards: Array.isArray(galleryCards) ? galleryCards : current.galleryCards,
+  };
+  const success = writeJSONFile(SHOWCASE_FILE, updated);
+  if (success) {
+    res.json({ success: true, showcase: updated });
+  } else {
+    res.status(500).json({ success: false, error: "Erreur lors de la sauvegarde de la vitrine." });
+  }
+});
+
+// GET /api/banners - Fetch carousel banners
+app.get("/api/banners", (req, res) => {
+  const banners = readJSONFile(BANNERS_FILE, null);
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.json(banners);
+});
+
+// POST /api/banners - Save carousel banners
+app.post("/api/banners", (req, res) => {
+  const { auth, slides } = req.body;
+  if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé." });
+  }
+  if (!Array.isArray(slides)) {
+    return res.status(400).json({ success: false, error: "Format invalide." });
+  }
+  const success = writeJSONFile(BANNERS_FILE, slides);
+  if (success) {
+    res.json({ success: true, slides });
+  } else {
+    res.status(500).json({ success: false, error: "Erreur sauvegarde bannières." });
+  }
 });
 
 // GET /api/settings - Fetch global app configuration (WhatsApp and active logo ID)
@@ -2573,7 +2746,7 @@ app.post("/api/admin/sync-products", (req, res) => {
   }
 });
 
-// POST /api/ai/assistant - AI Chatbot Assistant for Asime Togo (Powered by Gemini)
+// POST /api/ai/assistant - AI Chatbot Assistant for Miabé Asi (Powered by Gemini)
 app.post("/api/ai/assistant", async (req, res) => {
   try {
     const { message, history } = req.body;
@@ -2584,18 +2757,19 @@ app.post("/api/ai/assistant", async (req, res) => {
     const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
     const sampleProducts = products.slice(0, 15).map(p => `- ${p.nom} (${p.categorie}): ${p.prix} FCFA`).join("\n");
 
-    const systemInstruction = `Tu es Aya, l'Assistante IA virtuelle officielle d'Asime Togo (la plateforme d'éco-commerce n°1 du consommer local et des opportunités au Togo 🇹🇬).
-Ton rôle est EXCLUSIVEMENT d'aider les acheteurs et vendeurs de la plateforme Asime Togo avec enthousiasme, politesse, clarté et élégance.
+    const systemInstruction = `Tu es Aya, l'Assistante IA virtuelle officielle de Miabé Asi (la plateforme d'éco-commerce n°1 du consommer local et des opportunités au Togo 🇹🇬 — "Le local, notre fierté").
+Ton rôle est EXCLUSIVEMENT d'aider les acheteurs et vendeurs de la plateforme Miabé Asi avec enthousiasme, politesse, clarté et élégance.
 
 PÉRIMÈTRE ET LIMITES STRICTES (RÈGLES ABSOLUES) :
-- Tu es UNIQUEMENT un guide commercial et support client pour Asime Togo.
-- Tu ne dois JAMAIS rédiger de code informatique, créer de projets logiciels, jouer le rôle d'un développeur, ni accomplir de tâches informatiques/techniques hors du cadre d'Asime Togo.
-- Si un utilisateur te demande de créer un projet, d'écrire du code, de programmer une application ou d'aborder un sujet hors du commerce local togolais, réponds poliment que tu es Aya, l'assistante virtuelle d'Asime Togo, et que ta mission est d'orienter les clients sur nos produits locaux, livraisons, paiements et vendeurs.
+- Tu es UNIQUEMENT un guide commercial et support client pour Miabé Asi.
+- Tu ne dois JAMAIS rédiger de code informatique, créer de projets logiciels, jouer le rôle d'un développeur, ni accomplir de tâches informatiques/techniques hors du cadre de Miabé Asi.
+- Si un utilisateur te demande de créer un projet, d'écrire du code, de programmer une application ou d'aborder un sujet hors du commerce local togolais, réponds poliment que tu es Aya, l'assistante virtuelle de Miabé Asi, et que ta mission est d'orienter les clients sur nos produits locaux, livraisons, paiements et vendeurs.
 
-Informations clés sur Asime Togo :
+Informations clés sur Miabé Asi :
 - Devise : FCFA (XOF).
+- Slogan : "Le local, notre fierté".
 - Produits phares : Artisanat Made in Togo (Miel de Kpalimé, Beurre de Karité Bio, Cafés des Plateaux, Chocolat artisanal, etc.), Paniers Frais & Épicerie, Plats & Gastronomie locale, Mode Wax & T-shirts, Chaussures, Importations & High-Tech.
-- Paiements acceptés : T-Money (Togocom), Flooz (Moov Africa), Carte bancaire, Portefeuille Asime Pay, ou Paiement à la livraison.
+- Paiements acceptés : Carte bancaire, Mobile Money (T-Money, Flooz), Portefeuille Miabé Asi Pay, ou Paiement à la livraison.
 - Livraison : Express à domicile ou au bureau à Lomé et dans les préfectures du Togo, ainsi qu'à l'international.
 - Service client WhatsApp : Disponible directement sur la plateforme.
 
@@ -2603,7 +2777,7 @@ Aperçu de quelques produits phares du catalogue :
 ${sampleProducts}
 
 Consignes de communication :
-- Salue chaleureusement en disant "Miawoezon !" ou "Bienvenue chez Asime !".
+- Salue chaleureusement en disant "Miawoezon !" ou "Bienvenue chez Miabé Asi !".
 - Tu es bilingue en Français et en Eʋegbe (Ewe). Si l'utilisateur te parle en Ewe ou te demande de lui répondre en Ewe, réponds-lui naturellement et chaleureusement en Ewe (Eʋegbe). S'il te parle en Français, réponds-lui en Français.
 - Sois très utile pour guider le choix des produits, expliquer le fonctionnement de la commande, du panier ou de la livraison.
 - Sois toujours courtoise, chaleureuse et bien structurée.`;
@@ -2612,11 +2786,11 @@ Consignes de communication :
     if (!ai) {
       // Fallback response if GEMINI_API_KEY is not present
       const msgLower = message.toLowerCase();
-      let fallbackText = "Miawoezon ! Je suis Aya, l'Assistante IA d'Asime Togo. ";
+      let fallbackText = "Miawoezon ! Je suis Aya, l'Assistante IA de Miabé Asi — Le local, notre fierté. ";
       if (msgLower.includes("livraison") || msgLower.includes("livrer")) {
         fallbackText += "Nous assurons la livraison express le jour même à Lomé et la livraison sécurisée dans toutes les villes du Togo !";
       } else if (msgLower.includes("paiement") || msgLower.includes("payer") || msgLower.includes("tmoney") || msgLower.includes("flooz")) {
-        fallbackText += "Vous pouvez régler vos achats par T-Money (+228), Flooz, Carte bancaire, Portefeuille Asime Pay ou à la livraison !";
+        fallbackText += "Vous pouvez régler vos achats par Carte bancaire, Mobile Money, Portefeuille Miabé Asi Pay ou à la livraison !";
       } else if (msgLower.includes("produit") || msgLower.includes("miel") || msgLower.includes("karit") || msgLower.includes("cadeau")) {
         fallbackText += "Découvrez notre catalogue 'Made in Togo' avec le Miel Sauvage de Kpalimé, le Beurre de Karité Bio, les Cafés des Plateaux et l'Artisanat local dans l'onglet Catalogue !";
       } else {
@@ -2648,7 +2822,7 @@ Consignes de communication :
       }
     });
 
-    const reply = result.text || "Miawoezon ! Comment puis-je vous conseiller aujourd'hui sur Asime Togo ?";
+    const reply = result.text || "Miawoezon ! Comment puis-je vous conseiller aujourd'hui sur Miabé Asi ?";
     res.json({ success: true, response: reply });
   } catch (error: any) {
     console.error("AI Assistant Endpoint Error:", error);
@@ -2806,7 +2980,7 @@ async function start() {
         }
       }
     }));
-    app.get("*", (req, res) => {
+    app.get("*all", (req, res) => {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
       res.sendFile(path.join(distPath, "index.html"));
     });
@@ -2814,7 +2988,7 @@ async function start() {
 
   if (process.env.VERCEL !== "1") {
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`[Asime Backend] Server live at http://localhost:${PORT}`);
+      console.log(`[Miabé Asi Backend] Server live at http://localhost:${PORT}`);
     });
   }
 }

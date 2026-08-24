@@ -354,8 +354,8 @@ export const translations: TranslationDictionary = {
     ee: "Míekpɔ agbegbɔkpɔnuwo katã dzi.",
   },
   footer_slogan: {
-    fr: "Asime Togo - Valoriser nos artisans et producteurs locaux pour bâtir une économie togolaise forte et souveraine.",
-    ee: "Asime Togo - Kpekpeɖeŋu nana míaƒe aɖaŋudɔwɔlawo kple afitɔwo be Togo ƒe ganyawo gasẽ ɖe edzi.",
+    fr: "Miabé Asi - Le local, notre fierté. Valoriser nos artisans et producteurs locaux pour bâtir une économie togolaise forte et souveraine.",
+    ee: "Miabé Asi - Le local, notre fierté. Kpekpeɖeŋu nana míaƒe aɖaŋudɔwɔlawo kple afitɔwo be Togo ƒe ganyawo gasẽ ɖe edzi.",
   },
 
   // Toasts / Notifications

@@ -11,6 +11,12 @@
   --color-gold-100: #faf1d6;
 }
 
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 @media print {
   body * {
     visibility: hidden !important;

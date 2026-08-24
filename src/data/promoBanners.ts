@@ -30,21 +30,21 @@ export interface PromoSlide {
 export const RECOMMENDED_BANNER_DIMENSIONS = {
   // Format des images illustratives à droite du carrousel
   sideImage: {
-    recommendedWidth: "500px",
-    recommendedHeight: "500px",
-    aspectRatio: "1:1 (Carré) ou 4:3",
+    recommendedWidth: "600px",
+    recommendedHeight: "400px",
+    aspectRatio: "16:9 ou 3:2 (Format Paysage)",
     format: "JPG, PNG, WebP",
     maxSizeKB: 300,
-    description: "Visuel produit ou modèle à droite de l'affiche"
+    description: "Visuel produit ou modèle en format paysage"
   },
-  // Format des bannières complètes (Full-width posters)
+  // Format des bannières complètes (Full-width landscape posters)
   fullPoster: {
     recommendedWidth: "1200px",
-    recommendedHeight: "500px",
-    aspectRatio: "12:5 ou 16:9",
+    recommendedHeight: "450px",
+    aspectRatio: "16:6 ou 21:9 (Format Paysage Panoramique)",
     format: "JPG, PNG, WebP",
     maxSizeKB: 500,
-    description: "Affiche publicitaire complète avec texte déjà intégré sur l'image"
+    description: "Affiche publicitaire complète au format paysage panoramique"
   }
 };
 
@@ -141,16 +141,16 @@ export const INITIAL_PROMO_SLIDES: PromoSlide[] = [
     offerMainEe: "FEFE DEDIE & LOMÉ DELIVERY",
     offerSubFr: "Payez facilement via T-Money, Flooz ou Carte 💳",
     offerSubEe: "T-Money, Flooz kple Card 💳",
-    descFr: "Chaque achat sur Asime Togo reverse directement les revenus aux coopératives et artisans pour faire grandir l'économie togolaise.",
+    descFr: "Chaque achat sur Miabé Asi reverse directement les revenus aux coopératives et artisans pour faire grandir l'économie togolaise.",
     descEe: "Nudɔdɔ ɖesiaɖe kpena ɖe míaƒe asitsalawo kple agbledelawo ŋu le Togo.",
     buttonTextFr: "Découvrir la Boutique Officielle",
-    buttonTextEe: "Kpɔ Asime Fiase Katã",
+    buttonTextEe: "Kpɔ Miabé Asi Fiase Katã",
     categoryTarget: "Tous",
     searchQuery: "",
     bgGradient: "linear-gradient(135deg, #02200e 0%, #0a4020 50%, #291e02 100%)",
     imageUrl: "https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&q=80&w=600",
-    imageAlt: "Boutique Officielle Asime Togo",
-    overlayLabelFr: "Boutique Officielle Asime 🇹🇬",
-    overlayLabelEe: "Asime Togo Fiase",
+    imageAlt: "Boutique Officielle Miabé Asi",
+    overlayLabelFr: "Boutique Officielle Miabé Asi 🇹🇬",
+    overlayLabelEe: "Miabé Asi Fiase",
   }
 ];

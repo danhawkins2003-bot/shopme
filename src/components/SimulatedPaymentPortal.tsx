@@ -114,7 +114,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
       }
     } catch (err) {
       setTimeout(() => {
-        setErrorMsg("Impossible d'établir la connexion avec les serveurs d'Asime Gateway.");
+        setErrorMsg("Impossible d'établir la connexion avec les serveurs de Miabé Asi Gateway.");
         setStep("error");
       }, 4000);
     }
@@ -167,7 +167,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
       case "paydunya":
         return {
           title: "Guichet de Paiement Sécurisé",
-          logoText: "Asime Pay",
+          logoText: "Miabé Asi Pay",
           primaryColor: "bg-emerald-950",
           textColor: "text-emerald-800",
           borderColor: "border-emerald-500",
@@ -197,7 +197,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
       default:
         return {
           title: "Portail de Paiement Sécurisé",
-          logoText: "Asime Gateway",
+          logoText: "Miabé Asi Gateway",
           primaryColor: "bg-neutral-900",
           textColor: "text-neutral-900",
           borderColor: "border-gold-500",
@@ -225,7 +225,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
             <Lock className="w-3.5 h-3.5 animate-pulse" />
             <span className="uppercase tracking-wider font-extrabold">Cryptage SSL 256-Bit Activé</span>
           </div>
-          <span className="text-stone-500">ASIME GATEWAY v4.2</span>
+          <span className="text-stone-500">MIABÉ ASI GATEWAY v4.2</span>
         </div>
 
         {/* Portal Header with dynamic theme */}
@@ -654,7 +654,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
                 className="w-full py-3 bg-neutral-950 hover:bg-neutral-900 text-white font-extrabold text-[10px] uppercase tracking-widest rounded-sm transition-all cursor-pointer shadow flex items-center justify-center gap-1.5"
               >
                 <Check className="w-4 h-4" />
-                <span>Retourner sur Asime Togo</span>
+                <span>Retourner sur Miabé Asi</span>
               </button>
             </motion.div>
           )}

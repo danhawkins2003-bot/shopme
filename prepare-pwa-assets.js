@@ -5,38 +5,113 @@ async function main() {
   const publicDir = path.join(process.cwd(), "public");
 
   try {
-    console.log("[PWA Assets] Preparing PWA Assets...");
+    console.log("[PWA Assets] Preparing Miabé Asi PWA Assets...");
     if (!fs.existsSync(publicDir)) {
       fs.mkdirSync(publicDir, { recursive: true });
     }
 
-    const logoSvg = `<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100" height="100" rx="20" fill="#FFFFFF"/>
-      <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
-      <g>
-        <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-        <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
-        <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
-        <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
+    // Official Miabé Asi Icon (Basket with two fresh leaves)
+    const iconSvg = `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="120" height="120" rx="24" fill="#FFFFFF"/>
+      <g transform="translate(10, 8)">
+        <!-- Basket Double Arch Handle -->
+        <path d="M 33 46 C 33 22, 67 22, 67 46" stroke="#C88A24" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+        <path d="M 38 46 C 38 27, 62 27, 62 46" stroke="#C88A24" stroke-width="3" stroke-linecap="round" fill="none"/>
+
+        <!-- Leaves on top right -->
+        <!-- Left Leaf -->
+        <path d="M 61 42 C 61 27, 49 25, 49 25 C 49 25, 53 38, 61 42 Z" fill="#135B28"/>
+        <!-- Right Leaf -->
+        <path d="M 60 41 C 60 22, 75 16, 75 16 C 75 16, 76 34, 60 41 Z" fill="#135B28"/>
+
+        <!-- Basket Top Rim -->
+        <rect x="23" y="44" width="54" height="6.5" rx="3.25" fill="#FFFFFF" stroke="#C88A24" stroke-width="3.5" stroke-linejoin="round"/>
+
+        <!-- Basket Woven Body Outline -->
+        <path d="M 26 50.5 C 27 68, 35 78, 50 78 C 65 78, 73 68, 74 50.5 Z" fill="#FFFFFF" stroke="#C88A24" stroke-width="3.5" stroke-linejoin="round"/>
+
+        <!-- Woven horizontal ribs -->
+        <path d="M 28 59 C 35 63, 65 63, 72 59" stroke="#C88A24" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <path d="M 32 68 C 38 72, 62 72, 68 68" stroke="#C88A24" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+
+        <!-- Vertical wicker weave markings -->
+        <line x1="39" y1="52" x2="39" y2="58" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="61" y1="52" x2="61" y2="58" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="50" y1="60" x2="50" y2="67" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="36" y1="61" x2="36" y2="67" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="64" y1="61" x2="64" y2="67" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="50" y1="69" x2="50" y2="76" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+
+        <!-- Basket Bottom Stand -->
+        <path d="M 37 78 C 43 82, 57 82, 63 78" stroke="#C88A24" stroke-width="3.5" stroke-linecap="round" fill="none"/>
       </g>
     </svg>`;
 
-    fs.writeFileSync(path.join(publicDir, "icon.svg"), logoSvg);
-    fs.writeFileSync(path.join(publicDir, "favicon.svg"), logoSvg);
-    fs.writeFileSync(path.join(publicDir, "logo.svg"), logoSvg);
+    // Full Miabé Asi Brand Logo with Typography and Slogan
+    const fullLogoSvg = `<svg viewBox="0 0 500 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="500" height="500" rx="36" fill="#FFFFFF"/>
+      <g transform="translate(0, -10)">
+        <!-- Basket Group Centered -->
+        <g transform="translate(130, 40) scale(2.4)">
+          <!-- Handle -->
+          <path d="M 33 46 C 33 22, 67 22, 67 46" stroke="#C88A24" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+          <path d="M 38 46 C 38 27, 62 27, 62 46" stroke="#C88A24" stroke-width="3" stroke-linecap="round" fill="none"/>
+
+          <!-- Leaves -->
+          <path d="M 61 42 C 61 27, 49 25, 49 25 C 49 25, 53 38, 61 42 Z" fill="#135B28"/>
+          <path d="M 60 41 C 60 22, 75 16, 75 16 C 75 16, 76 34, 60 41 Z" fill="#135B28"/>
+
+          <!-- Rim -->
+          <rect x="23" y="44" width="54" height="6.5" rx="3.25" fill="#FFFFFF" stroke="#C88A24" stroke-width="3.5" stroke-linejoin="round"/>
+
+          <!-- Body -->
+          <path d="M 26 50.5 C 27 68, 35 78, 50 78 C 65 78, 73 68, 74 50.5 Z" fill="#FFFFFF" stroke="#C88A24" stroke-width="3.5" stroke-linejoin="round"/>
+
+          <!-- Ribs -->
+          <path d="M 28 59 C 35 63, 65 63, 72 59" stroke="#C88A24" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+          <path d="M 32 68 C 38 72, 62 72, 68 68" stroke="#C88A24" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+
+          <!-- Weave details -->
+          <line x1="39" y1="52" x2="39" y2="58" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="61" y1="52" x2="61" y2="58" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="50" y1="60" x2="50" y2="67" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="36" y1="61" x2="36" y2="67" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="64" y1="61" x2="64" y2="67" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="50" y1="69" x2="50" y2="76" stroke="#C88A24" stroke-width="2.5" stroke-linecap="round"/>
+
+          <!-- Base -->
+          <path d="M 37 78 C 43 82, 57 82, 63 78" stroke="#C88A24" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+        </g>
+
+        <!-- Brand Name Text: Miabé Asi -->
+        <text x="250" y="365" text-anchor="middle" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="64" fill="#0E5224" letter-spacing="1.5">Miabé Asi</text>
+
+        <!-- Slogan: — Le local, notre fierté — -->
+        <g transform="translate(250, 410)">
+          <line x1="-185" y1="-5" x2="-145" y2="-5" stroke="#C88A24" stroke-width="2" stroke-linecap="round"/>
+          <text x="0" y="0" text-anchor="middle" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="21" fill="#135B28" letter-spacing="2">Le local, notre fierté</text>
+          <line x1="145" y1="-5" x2="185" y2="-5" stroke="#C88A24" stroke-width="2" stroke-linecap="round"/>
+        </g>
+      </g>
+    </svg>`;
+
+    fs.writeFileSync(path.join(publicDir, "icon.svg"), iconSvg);
+    fs.writeFileSync(path.join(publicDir, "favicon.svg"), iconSvg);
+    fs.writeFileSync(path.join(publicDir, "logo.svg"), fullLogoSvg);
 
     try {
       const sharpModule = await import("sharp");
       const sharp = sharpModule.default || sharpModule;
-      const svgBuffer = Buffer.from(logoSvg);
+      const fullLogoBuffer = Buffer.from(fullLogoSvg);
+      const iconBuffer = Buffer.from(iconSvg);
 
-      await sharp(svgBuffer).resize(192, 192).png().toFile(path.join(publicDir, "icon-192.png"));
-      await sharp(svgBuffer).resize(512, 512).png().toFile(path.join(publicDir, "icon-512.png"));
-      await sharp(svgBuffer).resize(180, 180).png().toFile(path.join(publicDir, "apple-touch-icon.png"));
-      await sharp(svgBuffer).resize(512, 512).png().toFile(path.join(publicDir, "icon.png"));
-      await sharp(svgBuffer).resize(512, 512).png().toFile(path.join(publicDir, "logo.png"));
+      await sharp(iconBuffer).resize(192, 192).png().toFile(path.join(publicDir, "icon-192.png"));
+      await sharp(iconBuffer).resize(512, 512).png().toFile(path.join(publicDir, "icon-512.png"));
+      await sharp(iconBuffer).resize(180, 180).png().toFile(path.join(publicDir, "apple-touch-icon.png"));
+      await sharp(iconBuffer).resize(512, 512).png().toFile(path.join(publicDir, "icon.png"));
+      await sharp(fullLogoBuffer).resize(512, 512).png().toFile(path.join(publicDir, "logo.png"));
 
-      console.log("[PWA Assets] SVG and PNG icons (192, 512, apple-touch-icon) generated with official logo.");
+      console.log("[PWA Assets] SVG and PNG icons (192, 512, apple-touch-icon, logo.png) generated with official Miabé Asi branding.");
     } catch (sharpErr) {
       console.warn("[PWA Assets] Sharp conversion skipped or unavailable in current environment:", sharpErr.message);
     }

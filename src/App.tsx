@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import React, { useState, useEffect, useRef } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
 import {
   Home,
@@ -43,14 +43,19 @@ import {
   Bell,
   Store,
   MessageCircle,
-  FileText
+  FileText,
+  Truck,
+  ShieldCheck,
+  Camera
 } from "lucide-react";
 import { Product, CartItem, BlogPost } from "./types";
 import MultiRoleDashboards from "./components/MultiRoleDashboards";
 import { InvoiceModal } from "./components/InvoiceModal";
 import { AIAssistantWidget } from "./components/AIAssistantWidget";
 import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
+import { DEFAULT_HERO_CARDS, DEFAULT_GALLERY_CARDS, ShowcaseCard } from "./data/showcaseCards";
 import { useLanguage } from "./lib/i18n";
+import officialLogoImg from "./assets/images/miabe_asi_official_logo_1787563252544.jpg";
 
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
@@ -90,10 +95,10 @@ const localStorage = safeLocalStorage;
 // --- CONFIGURATION ASIME TOGO (À MODIFIER AVEC VOS PROPRES INFOS) ---
 export const ASIME_SETTINGS = {
   // Vos numéros d'administration et de commande (Format sans '+' pour WhatsApp, ex: 22890000000)
-  WHATSAPP_MERCHANT_NUMBER: typeof window !== "undefined" ? (localStorage.getItem("asime_whatsapp_merchant_number") || import.meta.env.VITE_WHATSAPP_MERCHANT_NUMBER || "22898434546") : "22898434546", 
-  PHONE_DISPLAY_PRIMARY: import.meta.env.VITE_PHONE_DISPLAY_PRIMARY || "+228 98 43 45 46",
-  PHONE_DISPLAY_SECONDARY: import.meta.env.VITE_PHONE_DISPLAY_SECONDARY || "+228 98 43 45 46",
-  SUPPORT_EMAIL: import.meta.env.VITE_SUPPORT_EMAIL || "support@asime228.com",
+  WHATSAPP_MERCHANT_NUMBER: typeof window !== "undefined" ? (localStorage.getItem("asime_whatsapp_merchant_number") || import.meta.env.VITE_WHATSAPP_MERCHANT_NUMBER || "22890000000") : "22890000000", 
+  PHONE_DISPLAY_PRIMARY: import.meta.env.VITE_PHONE_DISPLAY_PRIMARY || "+228 90 00 00 00",
+  PHONE_DISPLAY_SECONDARY: import.meta.env.VITE_PHONE_DISPLAY_SECONDARY || "+228 97 00 00 00",
+  SUPPORT_EMAIL: import.meta.env.VITE_SUPPORT_EMAIL || "support@miabeasi.com",
   
   // Google AdSense Configuration
   ADSENSE_CLIENT_ID: import.meta.env.VITE_ADSENSE_CLIENT_ID || "ca-pub-XXXXXXXXXXXXXXXX",
@@ -181,7 +186,7 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
     <div className={getBannerStyle()}>
       {/* Tiny Ad badge */}
       <div className="absolute top-1.5 left-2 text-[7px] font-bold text-neutral-400 uppercase tracking-widest pointer-events-none">
-        {language === "fr" ? "Annonce Asime Exclusive" : "Asime ƒe Adzɔnudraɖe Tɔxɛ"}
+        {language === "fr" ? "Annonce Miabé Asi Exclusive" : "Miabé Asi ƒe Adzɔnudraɖe Tɔxɛ"}
       </div>
       {format === "leaderboard" && (
         <>
@@ -259,11 +264,74 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
   );
 }
 
+const ANNOUNCEMENT_MESSAGES = [
+  {
+    id: "official",
+    icon: Sparkles,
+    frPrefix: "🇹🇬 Boutique Officielle :",
+    frHighlight: "Miabé Asi",
+    frText: "Le meilleur du Consommer Local Togolais & Terroir Authentique",
+    eePrefix: "🇹🇬 Miabé Asi Fiase :",
+    eeHighlight: "Togo-tɔwo ƒe Asime",
+    eeText: "Míaƒe Dekɔnuwo kple Terroir Vavã",
+    badge: "100% TOGOLAIS",
+    categoryTarget: "Tous"
+  },
+  {
+    id: "delivery",
+    icon: Truck,
+    frPrefix: "🚀 Expédition & Livraison :",
+    frHighlight: "Express Lomé",
+    frText: "Livraison rapide à domicile à Lomé et dans tout le Togo",
+    eePrefix: "🚀 Nudɔdɔ Kaba :",
+    eeHighlight: "Lomé & Togo Katã",
+    eeText: "Adzɔnuwo tsɔtsɔ vɛ kaba le wò aƒeme dedie",
+    badge: "LIVRAISON RAPIDE",
+    categoryTarget: "Tous"
+  },
+  {
+    id: "payment",
+    icon: ShieldCheck,
+    frPrefix: "💳 Paiements Sécurisés :",
+    frHighlight: "T-Money & Flooz",
+    frText: "Réglez directement via Mobile Money et Cartes Bancaires",
+    eePrefix: "💳 Fefe Dedie :",
+    eeHighlight: "T-Money & Flooz",
+    eeText: "Fe bɔbɔe to asitsamɔnu dediewo dzi",
+    badge: "SÉCURISÉ SSL",
+    categoryTarget: "Tous"
+  },
+  {
+    id: "artisans",
+    icon: Store,
+    frPrefix: "🌿 Circuit Court :",
+    frHighlight: "+90% aux Producteurs",
+    frText: "Vos achats soutiennent directement les coopératives et artisans togolais",
+    eePrefix: "🌿 Agbledelawo Gbɔ :",
+    eeHighlight: "Kpekpeɖeŋu Vavã",
+    eeText: "Nudɔdɔwo kpena ɖe míaƒe asitsalawo kple agbledelawo ŋu",
+    badge: "ÉQUITABLE",
+    categoryTarget: "Tous"
+  }
+];
+
 export default function App() {
   const { language, setLanguage, t } = useLanguage();
   const [activeLogoId, setActiveLogoId] = useState(() => {
     return safeLocalStorage.getItem("asime-active-logo-id") || "monogram";
   });
+
+  // Top Announcement Bar Animated State
+  const [announcementIndex, setAnnouncementIndex] = useState(0);
+  const [isAnnouncementPaused, setIsAnnouncementPaused] = useState(false);
+
+  useEffect(() => {
+    if (isAnnouncementPaused) return;
+    const interval = setInterval(() => {
+      setAnnouncementIndex((prev) => (prev + 1) % ANNOUNCEMENT_MESSAGES.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isAnnouncementPaused]);
 
   // Fetch settings from server to sync logo and config across devices
   useEffect(() => {
@@ -388,6 +456,7 @@ export default function App() {
   }, [sortBy]);
 
   const [currentPromoSlide, setCurrentPromoSlide] = useState(0);
+  const [loadedPromoImages, setLoadedPromoImages] = useState<Record<string, boolean>>({});
   const [promoSlides, setPromoSlides] = useState<PromoSlide[]>(() => {
     try {
       const saved = localStorage.getItem("asime_promo_slides");
@@ -415,9 +484,85 @@ export default function App() {
       window.removeEventListener("focus", handleStorageChange);
     };
   }, []);
+
+  // Homepage Showcase Cards State (Terroir Vitrine + Galerie Lookbook)
+  const [heroCards, setHeroCards] = useState<ShowcaseCard[]>(() => {
+    try {
+      const stored = localStorage.getItem("asime_showcase_cards");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed.heroCards) && parsed.heroCards.length > 0) return parsed.heroCards;
+      }
+    } catch (e) {}
+    return DEFAULT_HERO_CARDS;
+  });
+
+  const [galleryCards, setGalleryCards] = useState<ShowcaseCard[]>(() => {
+    try {
+      const stored = localStorage.getItem("asime_showcase_cards");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed.galleryCards) && parsed.galleryCards.length > 0) return parsed.galleryCards;
+      }
+    } catch (e) {}
+    return DEFAULT_GALLERY_CARDS;
+  });
+
+  // Fetch showcase cards from server
+  useEffect(() => {
+    fetch("/api/showcase")
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          if (Array.isArray(data.heroCards) && data.heroCards.length > 0) {
+            setHeroCards(data.heroCards);
+          }
+          if (Array.isArray(data.galleryCards) && data.galleryCards.length > 0) {
+            setGalleryCards(data.galleryCards);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Save showcase cards changes helper
+  const handleUpdateShowcaseCard = async (cardId: string, newImageUrl: string, isHero: boolean) => {
+    let newHero = [...heroCards];
+    let newGallery = [...galleryCards];
+
+    if (isHero) {
+      newHero = newHero.map(c => c.id === cardId ? { ...c, imageUrl: newImageUrl } : c);
+      setHeroCards(newHero);
+    } else {
+      newGallery = newGallery.map(c => c.id === cardId ? { ...c, imageUrl: newImageUrl } : c);
+      setGalleryCards(newGallery);
+    }
+
+    const payload = { heroCards: newHero, galleryCards: newGallery };
+    try {
+      localStorage.setItem("asime_showcase_cards", JSON.stringify(payload));
+      await fetch("/api/showcase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.error("Failed to save showcase card", e);
+    }
+  };
+
   const [cartItemToDeleteId, setCartItemToDeleteId] = useState<string | null>(null);
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   
+  // Featured products horizontal carousel ref and scroll handler
+  const featuredScrollRef = useRef<HTMLDivElement>(null);
+  const scrollFeatured = (direction: "left" | "right") => {
+    if (featuredScrollRef.current) {
+      const scrollAmount = direction === "left" ? -300 : 300;
+      featuredScrollRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+    }
+  };
+
   // Selected Detail Product
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0);
@@ -882,16 +1027,13 @@ export default function App() {
 
   const renderLogoNode = (sizeClass = "w-9 h-9") => {
     return (
-      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-xl p-0.5 border border-emerald-100/80 shadow-2xs overflow-hidden`}>
-        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-          <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
-          <g>
-            <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-            <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
-            <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
-            <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
-          </g>
-        </svg>
+      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-xl p-0.5 border border-[#C88A24]/30 shadow-2xs overflow-hidden`}>
+        <img 
+          src={officialLogoImg} 
+          alt="Miabé Asi Logo Officiel" 
+          className="w-full h-full object-contain"
+          referrerPolicy="no-referrer"
+        />
       </div>
     );
   };
@@ -1135,10 +1277,10 @@ export default function App() {
     e.stopPropagation(); // Avoid triggering standard card detail action
     
     // Construct robust localized share URL
-    const origin = window.location.origin || "https://asime.local";
+    const origin = window.location.origin || "https://miabeasi.tg";
     const shareUrl = `${origin}${window.location.pathname}?product=${product.id}`;
-    const shareTitle = `✨ ${product.nom} | Asime Togo`;
-    const shareText = `Découvrez "${product.nom}" fabriqué localement au Togo. Des exclusivités de haute volée !`;
+    const shareTitle = `✨ ${product.nom} | Miabé Asi`;
+    const shareText = `Découvrez "${product.nom}" fabriqué localement au Togo sur Miabé Asi — Le local, notre fierté !`;
 
     if (navigator.share) {
       try {
@@ -1174,10 +1316,10 @@ export default function App() {
   };
 
   const handleShareApp = async () => {
-    const origin = window.location.origin || "https://asime.local";
+    const origin = window.location.origin || "https://miabeasi.tg";
     const shareUrl = `${origin}${window.location.pathname}`;
-    const shareTitle = `✨ Asime Togo | Boutique du Consommer Local`;
-    const shareText = `Explorez la mode togolaise, l'artisanat local et de sublimes promotions sur Asime !`;
+    const shareTitle = `✨ Miabé Asi | Le local, notre fierté`;
+    const shareText = `Explorez la mode togolaise, l'artisanat local et de sublimes créations sur Miabé Asi !`;
 
     if (navigator.share) {
       try {
@@ -1206,7 +1348,7 @@ export default function App() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Catalogue Offline - Asime Togo 🇹🇬</title>
+    <title>Catalogue Offline - Miabé Asi 🇹🇬</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -1215,8 +1357,8 @@ export default function App() {
 </head>
 <body class="text-neutral-900 min-h-screen flex flex-col">
     <header class="bg-neutral-950 text-white py-6 px-4 border-b border-[#d4af37]/30 shadow-lg text-center">
-        <h1 class="text-xl sm:text-2xl font-extrabold tracking-widest">ASIME TOGO</h1>
-        <p class="text-[9px] text-[#d4af37] tracking-widest font-semibold uppercase mt-1">🌿 Catalogue de Poche Hors-Ligne 🌿</p>
+        <h1 class="text-xl sm:text-2xl font-extrabold tracking-widest text-[#0E5224]">MIABÉ ASI</h1>
+        <p class="text-[9px] text-[#C88A24] tracking-widest font-semibold uppercase mt-1">🌿 Le local, notre fierté — Catalogue Hors-Ligne 🌿</p>
     </header>
 
     <main class="max-w-6xl mx-auto px-4 py-8 flex-grow w-full">
@@ -1229,7 +1371,7 @@ export default function App() {
     </main>
 
     <footer class="bg-neutral-950 text-neutral-500 py-6 text-center text-[10px] uppercase tracking-widest border-t border-neutral-800">
-        <p>© ${new Date().getFullYear()} Asime. CONÇU POUR LE CONSOMMER LOCAL TOGOLAIS 🇹🇬</p>
+        <p>© ${new Date().getFullYear()} Miabé Asi. CONÇU POUR LE CONSOMMER LOCAL TOGOLAIS 🇹🇬</p>
     </footer>
 
     <script>
@@ -1423,7 +1565,7 @@ export default function App() {
     if (matchedPartner) {
       if (matchedPartner.contractType === "subscription" && matchedPartner.contactPhone) {
         // Build Whatsapp text
-        const text = `Bonjour ${matchedPartner.name}, je souhaite commander votre produit "${product.nom}" (${product.prix.toLocaleString("fr-FR")} F CFA) aperçu sur la vitrine Asime ! 🇹🇬✨ \nLien : ${window.location.origin}?product=${product.id}`;
+        const text = `Bonjour ${matchedPartner.name}, je souhaite commander votre produit "${product.nom}" (${product.prix.toLocaleString("fr-FR")} F CFA) aperçu sur la vitrine Miabé Asi ! 🇹🇬✨ \nLien : ${window.location.origin}?product=${product.id}`;
         url = `https://wa.me/${matchedPartner.contactPhone}?text=${encodeURIComponent(text)}`;
         isWhatsapp = true;
         partnerPhone = matchedPartner.contactPhone;
@@ -1607,7 +1749,7 @@ export default function App() {
           name: checkoutName.trim(),
           phone: checkoutPhone.trim(),
           quartier: checkoutQuartier.trim(),
-          notes: `Commande sécurisée payée par ${checkoutPayment} via Asime Gateway.`
+          notes: `Commande sécurisée payée par ${checkoutPayment} via Miabé Asi Gateway.`
         },
         paymentMethod: checkoutPayment,
         affiliateRef: affiliateRef || undefined
@@ -1650,7 +1792,7 @@ export default function App() {
       localStorage.removeItem("asime_affiliate_timestamp");
 
       // Build the order message text
-      let message = `*✨ NOUVELLE COMMANDE ASIME (Paiement à la livraison) ✨*\n\n`;
+      let message = `*✨ NOUVELLE COMMANDE MIABÉ ASI (Paiement à la livraison) ✨*\n\n`;
       message += `🆔 *Commande :* \`${orderId}\`\n`;
       message += `👤 *Client :* ${checkoutName.trim()}\n`;
       message += `📞 *Téléphone :* ${checkoutPhone.trim()}\n`;
@@ -1735,7 +1877,7 @@ export default function App() {
       setContactSubject("");
       setContactMessage("");
       setContactSent(false);
-      alert("Votre message a été transmis avec succès à l'équipe Asime !");
+      alert("Votre message a été transmis avec succès à l'équipe Miabé Asi !");
     }, 1200);
   };
 
@@ -1779,9 +1921,15 @@ export default function App() {
     return 0; // default order based on index/id
   });
 
-  const categoriesList = [
-    "Toutes",
-    "Général",
+  const defaultCategoriesList = [
+    "Made in Togo Premium",
+    "Vêtements & Mode",
+    "Chaussures Premium",
+    "Montres & Accessoires",
+    "Plats & Gastronomie",
+    "Importations Trends",
+    "Paniers Frais & Épicerie",
+    "Print-on-Demand Localisé",
     "Ustensiles de cuisine",
     "Meubles & Décoration",
     "Électronique",
@@ -1792,16 +1940,113 @@ export default function App() {
     "Bébé & Enfant",
     "Sports & Accessoires",
     "Univers femme",
-    "Univers homme"
+    "Univers homme",
+    "Général"
   ];
+
+  const categoriesList = React.useMemo(() => {
+    const fromProducts = products.map(p => p.categorie).filter(Boolean);
+    const set = new Set(["Toutes", ...defaultCategoriesList, ...fromProducts]);
+    return Array.from(set);
+  }, [products]);
 
   return (
     <div className="min-h-screen flex flex-col pb-16 md:pb-0 font-sans bg-[#FAF9F6] text-neutral-900 selection:bg-gold-500 selection:text-white">
-      {/* Dynamic Gold Announcement Bar */}
-      <div className="bg-neutral-950 text-white py-2 px-4 text-xs tracking-widest text-center uppercase font-semibold border-b border-gold-500/25 flex items-center justify-center gap-1 sm:gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-[#d4af37] animate-pulse" />
-        <span>{t("banner_promo")}</span>
-        <Sparkles className="w-3.5 h-3.5 text-[#d4af37] animate-pulse" />
+      {/* Dynamic Gold Animated Announcement Bar */}
+      <div 
+        className="bg-neutral-950 text-white text-[11px] sm:text-xs tracking-wider border-b border-gold-500/25 relative overflow-hidden group select-none transition-colors"
+        onMouseEnter={() => setIsAnnouncementPaused(true)}
+        onMouseLeave={() => setIsAnnouncementPaused(false)}
+      >
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between min-h-[34px] sm:min-h-[36px]">
+          {/* Left prev button (visible on hover on desktop) */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setAnnouncementIndex((prev) => (prev - 1 + ANNOUNCEMENT_MESSAGES.length) % ANNOUNCEMENT_MESSAGES.length);
+            }}
+            className="text-[#d4af37]/70 hover:text-[#d4af37] p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 hidden sm:block shrink-0 cursor-pointer"
+            title="Précédent"
+            aria-label="Message précédent"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Center animated text ticker */}
+          <div 
+            className="flex-1 flex items-center justify-center overflow-hidden cursor-pointer px-1"
+            onClick={() => {
+              setActiveTab("catalogue");
+              window.scrollTo({ top: 350, behavior: "smooth" });
+            }}
+            title="Cliquer pour voir le catalogue"
+          >
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={announcementIndex + "_" + language}
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                transition={{ duration: 0.35, ease: "easeInOut" }}
+                className="flex items-center justify-center gap-1.5 sm:gap-2 text-center"
+              >
+                {(() => {
+                  const currentItem = ANNOUNCEMENT_MESSAGES[announcementIndex];
+                  const IconComp = currentItem.icon;
+                  return (
+                    <>
+                      <span className="p-0.5 rounded-full bg-[#d4af37]/15 border border-[#d4af37]/40 text-[#d4af37] shrink-0 flex items-center justify-center">
+                        <IconComp className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-pulse" />
+                      </span>
+                      <span className="font-extrabold text-[#d4af37] uppercase tracking-wider whitespace-nowrap">
+                        {language === "fr" ? currentItem.frPrefix : currentItem.eePrefix}
+                      </span>
+                      <span className="font-black text-amber-200 uppercase tracking-tight whitespace-nowrap">
+                        {language === "fr" ? currentItem.frHighlight : currentItem.eeHighlight}
+                      </span>
+                      <span className="text-neutral-300 font-medium hidden md:inline truncate max-w-md">
+                        — {language === "fr" ? currentItem.frText : currentItem.eeText}
+                      </span>
+                      <span className="hidden lg:inline-block bg-[#d4af37]/20 text-[#d4af37] border border-[#d4af37]/35 px-1.5 py-0.5 rounded-xs text-[8px] font-black tracking-widest uppercase">
+                        {currentItem.badge}
+                      </span>
+                    </>
+                  );
+                })()}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* Right next button + Indicators */}
+          <div className="flex items-center gap-1 shrink-0">
+            <div className="hidden sm:flex items-center gap-1 mr-1">
+              {ANNOUNCEMENT_MESSAGES.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAnnouncementIndex(i);
+                  }}
+                  className={`transition-all duration-300 rounded-full cursor-pointer ${
+                    announcementIndex === i ? "w-3.5 h-1 bg-[#d4af37]" : "w-1 h-1 bg-neutral-600 hover:bg-neutral-400"
+                  }`}
+                  aria-label={`Aller au message ${i + 1}`}
+                />
+              ))}
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setAnnouncementIndex((prev) => (prev + 1) % ANNOUNCEMENT_MESSAGES.length);
+              }}
+              className="text-[#d4af37]/70 hover:text-[#d4af37] p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 hidden sm:block cursor-pointer"
+              title="Suivant"
+              aria-label="Message suivant"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Modern Luxury Navigation Header */}
@@ -1818,10 +2063,10 @@ export default function App() {
           >
             {renderLogoNode("w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14")}
             <div className="flex flex-col justify-center">
-              <span className="font-sans font-black tracking-[0.1em] text-base sm:text-xl md:text-2xl text-[#0F5132] uppercase leading-none">
-                ASIME
+              <span className="font-sans font-black tracking-[0.04em] text-base sm:text-xl md:text-2xl text-[#0E5224] leading-none">
+                Miabé Asi
               </span>
-              <p className="text-[9.5px] sm:text-xs md:text-sm text-[#C89D34] font-serif italic font-bold leading-tight mt-0.5 tracking-wide leading-tight">
+              <p className="text-[9.5px] sm:text-xs md:text-sm text-[#C88A24] font-medium leading-tight mt-0.5 tracking-wide">
                 {t("slogan")}
               </p>
             </div>
@@ -1915,12 +2160,12 @@ export default function App() {
               </button>
             )}
 
-            {/* Shopping Cart Trigger - Guaranteed visibility on mobile */}
+            {/* Shopping Cart Trigger - Hidden on mobile phones (already in bottom nav), visible on tablets/desktop */}
             <motion.button 
               animate={isCartBouncing ? { scale: [1, 1.25, 0.9, 1.1, 1] } : {}}
               transition={{ duration: 0.4 }}
               onClick={() => setIsCartOpen(true)}
-              className="relative bg-neutral-950 hover:bg-neutral-900 text-[#D4AF37] w-9 h-9 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all duration-300 shadow-md border border-neutral-800 cursor-pointer shrink-0"
+              className="hidden sm:flex relative bg-neutral-950 hover:bg-neutral-900 text-[#D4AF37] w-9 h-9 sm:w-11 sm:h-11 rounded-full items-center justify-center transition-all duration-300 shadow-md border border-neutral-800 cursor-pointer shrink-0"
               title="Mon Panier"
               id="header-cart-btn"
             >
@@ -2085,63 +2330,101 @@ export default function App() {
                 <div className="w-16 h-[1.5px] bg-gradient-to-r from-transparent via-[#d4af37]/80 to-transparent rounded-full mt-3 opacity-80"></div>
               </div>
             </div>
-            <div className="bg-stone-50 py-8 border-b border-stone-200">
-              <div className="max-w-7xl mx-auto px-4 select-none">
+            <div className="bg-stone-50 py-3 sm:py-5 border-b border-stone-200">
+              <div className="max-w-7xl mx-auto px-3 sm:px-4 select-none">
                 
-                <div className="relative overflow-hidden rounded-2xl md:rounded-3xl shadow-xl border border-neutral-100 bg-neutral-900 group/carousel">
+                <div className="relative overflow-hidden rounded-xl sm:rounded-2xl md:rounded-3xl shadow-md sm:shadow-lg border border-neutral-800 bg-neutral-950 group/carousel">
                   
-                  {/* Outer active slide screen */}
-                  <div className="relative w-full h-[320px] sm:h-[380px] md:h-[400px] flex items-center overflow-hidden transition-all duration-700">
+                  {/* Outer active slide screen in Fixed 21:9 Landscape Aspect Ratio */}
+                  <div className="relative w-full aspect-[21/9] min-h-[140px] flex items-center overflow-hidden transition-all duration-700 bg-neutral-950">
                     
+                    {/* Background Elegant Skeleton Screen (Shimmer & Pulsing Golden Placeholders) */}
+                    <div className="absolute inset-0 w-full h-full flex flex-row items-center justify-between p-2.5 sm:p-4 md:p-6 lg:p-8 bg-gradient-to-r from-neutral-950 via-neutral-900 to-neutral-950 pointer-events-none select-none z-0 overflow-hidden">
+                      {/* Animated Shimmer Sweep */}
+                      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/[0.04] to-transparent"></div>
+
+                      {/* Left Skeleton Elements */}
+                      <div className="w-[60%] sm:w-3/5 space-y-1.5 sm:space-y-2 md:space-y-3 z-10">
+                        {/* Badges placeholder */}
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <div className="h-3 sm:h-4 w-16 sm:w-24 bg-[#C89D34]/25 rounded-xs animate-pulse"></div>
+                          <div className="h-3 sm:h-4 w-14 sm:w-20 bg-neutral-800/80 rounded-xs animate-pulse"></div>
+                        </div>
+                        {/* Subtitle & Title placeholder */}
+                        <div className="space-y-1">
+                          <div className="h-2.5 sm:h-3.5 w-28 sm:w-44 bg-amber-400/20 rounded-xs animate-pulse"></div>
+                          <div className="h-4 sm:h-6 md:h-7 w-4/5 max-w-sm bg-neutral-800/90 rounded-xs animate-pulse"></div>
+                        </div>
+                        {/* Gold Offer Box placeholder */}
+                        <div className="h-7 sm:h-11 md:h-12 w-full max-w-xs sm:max-w-sm bg-gradient-to-r from-[#C89D34]/20 via-[#D4AF37]/15 to-amber-600/20 border border-yellow-500/20 rounded-xs p-1.5 sm:p-2 flex flex-col justify-center gap-1">
+                          <div className="h-2.5 sm:h-3.5 w-3/5 bg-[#C89D34]/40 rounded-xs animate-pulse"></div>
+                          <div className="h-2 sm:h-2.5 w-2/5 bg-neutral-700/60 rounded-xs animate-pulse"></div>
+                        </div>
+                        {/* Button placeholder */}
+                        <div className="h-5 sm:h-7 md:h-8 w-20 sm:w-32 bg-[#C89D34]/35 rounded-xs animate-pulse"></div>
+                      </div>
+
+                      {/* Right Media Skeleton */}
+                      <div className="w-[38%] sm:w-2/5 h-full p-1.5 sm:p-2.5 md:p-3 flex items-center justify-center z-10">
+                        <div className="relative w-full h-full rounded-sm sm:rounded-md md:rounded-lg bg-neutral-900/90 border border-neutral-800 flex flex-col items-center justify-center gap-1 sm:gap-1.5 overflow-hidden animate-pulse">
+                          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#C89D34]/15 border border-[#C89D34]/30 flex items-center justify-center">
+                            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#d4af37]/70 animate-pulse" />
+                          </div>
+                          <div className="h-2 w-12 sm:w-16 bg-neutral-800 rounded-full"></div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Dynamic Slides Render */}
                     {promoSlides.map((slide, index) => {
                       const isFr = language === "fr";
                       const isActive = currentPromoSlide === index;
+                      const isImgLoaded = !!loadedPromoImages[slide.id];
 
                       return (
                         <div 
                           key={slide.id}
-                          className={`absolute inset-0 w-full h-full transition-all duration-1000 ease-in-out flex flex-col md:flex-row items-center justify-between ${
+                          className={`absolute inset-0 w-full h-full transition-all duration-700 ease-in-out flex flex-row items-center justify-between ${
                             isActive ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-full -z-10 pointer-events-none"
                           }`}
                           style={{ background: slide.bgGradient }}
                         >
                           {/* Left: Text & CTA Promo Content */}
-                          <div className="p-6 sm:p-10 md:w-3/5 text-left flex flex-col justify-center h-full space-y-3 sm:space-y-4 relative z-10">
-                            <div className="flex items-center gap-2.5">
-                              <div className="bg-[#C89D34] text-stone-950 font-sans font-black tracking-widest text-[9px] uppercase px-2.5 py-1 rounded-sm shadow-xs">
+                          <div className="p-2.5 sm:p-4 md:p-6 lg:p-8 w-[62%] sm:w-3/5 text-left flex flex-col justify-center h-full space-y-0.5 sm:space-y-1.5 md:space-y-2 relative z-10">
+                            <div className="flex items-center gap-1 sm:gap-2">
+                              <div className="bg-[#C89D34] text-stone-950 font-sans font-black tracking-widest text-[6.5px] sm:text-[8px] md:text-[9px] uppercase px-1.5 sm:px-2 py-0.5 rounded-xs sm:rounded-sm shadow-xs">
                                 {isFr ? slide.badgeTagFr : slide.badgeTagEe}
                               </div>
-                              <span className="bg-white/10 border border-white/20 text-[#D4AF37] px-2.5 py-0.5 text-[8px] font-bold rounded-sm tracking-widest uppercase">
+                              <span className="bg-white/10 border border-white/20 text-[#D4AF37] px-1.5 sm:px-2 py-0.5 text-[6.5px] sm:text-[7.5px] md:text-[8px] font-bold rounded-xs sm:rounded-sm tracking-wider uppercase truncate">
                                 {isFr ? slide.badgeSubFr : slide.badgeSubEe}
                               </span>
                             </div>
 
-                            <div className="space-y-1 sm:space-y-1.5">
-                              <h4 className="font-mono text-[10px] sm:text-xs text-amber-200/90 font-bold uppercase tracking-wider leading-none">
+                            <div className="space-y-0 sm:space-y-0.5">
+                              <h4 className="font-mono text-[7.5px] sm:text-[9px] md:text-[11px] text-amber-200/90 font-bold uppercase tracking-wider leading-none truncate">
                                 {isFr ? slide.subtitleFr : slide.subtitleEe}
                               </h4>
-                              <h3 className="font-display text-xl sm:text-2xl md:text-3xl font-black text-white leading-tight uppercase tracking-wide">
+                              <h3 className="font-display text-[10px] sm:text-base md:text-lg lg:text-xl font-black text-white leading-tight uppercase tracking-tight line-clamp-1">
                                 {isFr ? slide.titleFr : slide.titleEe}
                               </h3>
                             </div>
 
-                            {/* Stunner Large Promo Highlighting Card */}
-                            <div className="bg-gradient-to-r from-[#C89D34] via-[#D4AF37] to-amber-600 border border-yellow-300 p-3 sm:p-4 rounded-md shadow-xl relative overflow-hidden max-w-md">
-                              <div className="absolute top-0 right-0 w-20 h-20 bg-white/15 rounded-full blur-xl"></div>
-                              <p className="font-display font-black text-stone-950 text-xl sm:text-3xl tracking-tight leading-none uppercase">
+                            {/* Stunner Compact Promo Highlighting Card */}
+                            <div className="bg-gradient-to-r from-[#C89D34] via-[#D4AF37] to-amber-600 border border-yellow-300 px-1.5 sm:px-2.5 md:px-3 py-0.5 sm:py-1 md:py-1.5 rounded-xs sm:rounded-sm shadow-xs relative overflow-hidden max-w-sm">
+                              <div className="absolute top-0 right-0 w-12 h-12 bg-white/15 rounded-full blur-md pointer-events-none"></div>
+                              <p className="font-display font-black text-stone-950 text-[9px] sm:text-sm md:text-base lg:text-lg tracking-tight leading-none uppercase truncate">
                                 {isFr ? slide.offerMainFr : slide.offerMainEe}
                               </p>
-                              <p className="font-sans font-bold text-stone-900 text-[10px] sm:text-xs tracking-wider uppercase mt-1">
+                              <p className="font-sans font-bold text-stone-900 text-[6.5px] sm:text-[8px] md:text-[10px] tracking-wider uppercase mt-0.5 truncate">
                                 {isFr ? slide.offerSubFr : slide.offerSubEe}
                               </p>
                             </div>
 
-                            <p className="text-[10px] sm:text-xs text-neutral-200 max-w-sm leading-relaxed font-sans hidden sm:block">
+                            <p className="text-[8px] sm:text-[10px] text-neutral-200 max-w-sm leading-tight font-sans hidden md:line-clamp-1">
                               {isFr ? slide.descFr : slide.descEe}
                             </p>
 
-                            <div className="pt-2">
+                            <div className="pt-0.5">
                               <button 
                                 onClick={() => {
                                   if (slide.categoryTarget && slide.categoryTarget !== "Tous") {
@@ -2153,24 +2436,40 @@ export default function App() {
                                   setActiveTab("catalogue");
                                   window.scrollTo({ top: 350, behavior: "smooth" });
                                 }}
-                                className="bg-[#C89D34] hover:bg-amber-500 text-stone-950 font-sans text-[10px] sm:text-xs font-black uppercase tracking-widest px-5 py-2.5 rounded-md transition-all shadow-md active:scale-95 duration-200 cursor-pointer"
+                                className="bg-[#C89D34] hover:bg-amber-500 text-stone-950 font-sans text-[7px] sm:text-[9px] md:text-[11px] font-black uppercase tracking-wider px-2 sm:px-3 md:px-4 py-0.5 sm:py-1 md:py-1.5 rounded-xs sm:rounded-sm transition-all shadow-xs active:scale-95 duration-150 cursor-pointer inline-flex items-center gap-1"
                               >
-                                {isFr ? slide.buttonTextFr : slide.buttonTextEe}
+                                <span>{isFr ? slide.buttonTextFr : slide.buttonTextEe}</span>
                               </button>
                             </div>
                           </div>
 
-                          {/* Right Side visual representation (Exact 500x500px 1:1 image container) */}
-                          <div className="hidden md:flex md:w-2/5 w-full h-1/2 md:h-full relative overflow-hidden items-center justify-center shrink-0 p-4">
-                            <div className="relative w-full h-[260px] md:h-[300px] flex items-center justify-center">
+                          {/* Right Side visual representation (21:9 landscape fit with Skeleton) */}
+                          <div className="w-[38%] sm:w-2/5 h-full relative overflow-hidden flex items-center justify-center shrink-0 p-1.5 sm:p-2.5 md:p-3">
+                            <div className="relative w-full h-full flex items-center justify-center">
+                              {/* Dedicated Image Skeleton with Shimmer */}
+                              {!isImgLoaded && (
+                                <div className="absolute inset-0 rounded-sm sm:rounded-md md:rounded-lg bg-neutral-900/90 border border-neutral-800 flex flex-col items-center justify-center gap-1 overflow-hidden z-0">
+                                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-pulse"></div>
+                                  <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-[#C89D34]/50 animate-pulse" />
+                                  <div className="h-1.5 sm:h-2 w-12 bg-neutral-800 rounded-full"></div>
+                                </div>
+                              )}
+
                               <img 
                                 src={slide.imageUrl} 
                                 alt={slide.imageAlt} 
-                                className="w-full h-full rounded-xl object-cover shadow-2xl border-2 border-[#C89D34]/40"
+                                onLoad={() => {
+                                  setLoadedPromoImages((prev) => ({ ...prev, [slide.id]: true }));
+                                }}
+                                className={`w-full h-full rounded-sm sm:rounded-md md:rounded-lg object-cover shadow-sm border border-[#C89D34]/30 transition-opacity duration-500 z-10 ${
+                                  isImgLoaded ? "opacity-100" : "opacity-0"
+                                }`}
                               />
                               {(slide.overlayLabelFr || slide.overlayLabelEe) && (
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent rounded-xl flex items-end p-3">
-                                  <span className="font-sans text-xs font-black text-[#C89D34] uppercase tracking-widest">
+                                <div className={`absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent rounded-sm sm:rounded-md md:rounded-lg flex items-end p-1 sm:p-2 z-20 transition-opacity duration-300 ${
+                                  isImgLoaded ? "opacity-100" : "opacity-0"
+                                }`}>
+                                  <span className="font-sans text-[6.5px] sm:text-[8px] md:text-[10px] font-black text-[#C89D34] uppercase tracking-wider truncate">
                                     {isFr ? slide.overlayLabelFr : slide.overlayLabelEe}
                                   </span>
                                 </div>
@@ -2188,29 +2487,31 @@ export default function App() {
                     onClick={() => {
                       setCurrentPromoSlide((prev) => (prev - 1 + promoSlides.length) % promoSlides.length);
                     }}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-black/40 hover:bg-black/75 border border-white/10 flex items-center justify-center text-white z-20 cursor-pointer backdrop-blur-xs transition-colors hidden group-hover/carousel:flex"
+                    className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-black/50 hover:bg-black/80 border border-white/10 flex items-center justify-center text-white z-20 cursor-pointer backdrop-blur-xs transition-colors hidden group-hover/carousel:flex"
+                    aria-label="Slide précédente"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                   <button 
                     onClick={() => {
                       setCurrentPromoSlide((prev) => (prev + 1) % promoSlides.length);
                     }}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-black/40 hover:bg-black/75 border border-white/10 flex items-center justify-center text-white z-20 cursor-pointer backdrop-blur-xs transition-colors hidden group-hover/carousel:flex"
+                    className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-black/50 hover:bg-black/80 border border-white/10 flex items-center justify-center text-white z-20 cursor-pointer backdrop-blur-xs transition-colors hidden group-hover/carousel:flex"
+                    aria-label="Slide suivante"
                   >
-                    <ChevronRight className="w-5 h-5" />
+                    <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
 
                   {/* Indicators / Progress dots */}
-                  <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-20 bg-black/25 px-3 py-1.5 rounded-full backdrop-blur-md">
+                  <div className="absolute bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-1.5 z-20 bg-black/35 px-2.5 py-1 rounded-full backdrop-blur-md">
                     {promoSlides.map((_, index) => (
                       <button
                         key={index}
                         onClick={() => setCurrentPromoSlide(index)}
                         className={`transition-all duration-300 rounded-full cursor-pointer ${
                           currentPromoSlide === index 
-                            ? "w-6 h-2.5 bg-[#d4af37]" 
-                            : "w-2.5 h-2.5 bg-neutral-450 hover:bg-neutral-300"
+                            ? "w-4 sm:w-5 h-1.5 sm:h-2 bg-[#d4af37]" 
+                            : "w-1.5 sm:w-2 h-1.5 sm:h-2 bg-neutral-400/60 hover:bg-neutral-300"
                         }`}
                         title={`Slide ${index + 1}`}
                       ></button>
@@ -2305,67 +2606,222 @@ export default function App() {
                   {/* Right Column: Beautiful Authentic Local Product Showcase Board */}
                   <div className="lg:col-span-5 relative w-full mt-6 lg:mt-0 px-2 sm:px-0">
                     <div className="grid grid-cols-2 gap-4">
-                      
-                      {/* Product Image 1: Honey harvesting / pure amber honey */}
-                      <div className="bg-white p-2 border border-neutral-200 shadow-md group cursor-pointer hover:-translate-y-1 transition-transform"
-                           onClick={() => { setSearchQuery("Miel"); setSelectedCategory("Made in Togo Premium"); setActiveTab("catalogue"); }}>
-                        <div className="aspect-square w-full overflow-hidden bg-stone-100 mb-2">
-                          <img 
-                            src="https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=400" 
-                            alt="Miel Sauvage de Kpalimé" 
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
-                          />
-                        </div>
-                        <h4 className="text-xs font-bold text-neutral-800 uppercase tracking-tight">Notre Miel Doré</h4>
-                        <p className="text-[9.5px] text-stone-500 font-sans leading-tight">100% sauvage, récolté à Kpalimé du plateau forestier.</p>
-                      </div>
+                      {heroCards.map((card, idx) => {
+                        const defaultImg = DEFAULT_HERO_CARDS[idx]?.imageUrl || card.imageUrl;
+                        return (
+                          <div 
+                            key={card.id || idx}
+                            className={`bg-white p-2 border border-neutral-200 shadow-md group relative transition-transform hover:-translate-y-1 ${
+                              idx === 1 ? "md:mt-4 mt-0" : idx === 2 ? "md:-mt-4 mt-0" : ""
+                            }`}
+                          >
+                            {/* Image Container */}
+                            <div 
+                              className="aspect-square w-full overflow-hidden bg-stone-100 mb-2 relative cursor-pointer"
+                              onClick={() => {
+                                if (card.category) setSelectedCategory(card.category);
+                                setSearchQuery(card.searchQuery || "");
+                                setActiveTab("catalogue");
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }}
+                            >
+                              <img 
+                                src={card.imageUrl || defaultImg} 
+                                alt={card.title} 
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = defaultImg;
+                                }}
+                                className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
 
-                      {/* Product Image 2: Organic raw African Shea Butter */}
-                      <div className="bg-white p-2 border border-neutral-200 shadow-md md:mt-4 mt-0 group cursor-pointer hover:-translate-y-1 transition-transform"
-                           onClick={() => { setSearchQuery("Karité"); setSelectedCategory("Made in Togo Premium"); setActiveTab("catalogue"); }}>
-                        <div className="aspect-square w-full overflow-hidden bg-stone-100 mb-2">
-                          <img 
-                            src="https://images.unsplash.com/photo-1608248597481-496100c80836?auto=format&fit=crop&q=80&w=400" 
-                            alt="Beurre de Karité de Notsé & Tandjouaré" 
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
-                          />
-                        </div>
-                        <h4 className="text-xs font-bold text-neutral-800 uppercase tracking-tight">Soin au Karité</h4>
-                        <p className="text-[9.5px] text-stone-500 font-sans leading-tight">Pressé par notre coopérative de femmes solidaires.</p>
-                      </div>
-
-                      {/* Product Image 3: Colorful Organic Vegetable Basket */}
-                      <div className="bg-white p-2 border border-neutral-200 shadow-md md:-mt-4 mt-0 group cursor-pointer hover:-translate-y-1 transition-transform"
-                           onClick={() => { setSelectedCategory("Paniers Frais & Épicerie"); setSearchQuery(""); setActiveTab("catalogue"); }}>
-                        <div className="aspect-square w-full overflow-hidden bg-[#fbfbf8] mb-2">
-                          <img 
-                            src="https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=400" 
-                            alt="Maraîchage de Kovié fruits et légumes" 
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
-                          />
-                        </div>
-                        <h4 className="text-xs font-bold text-neutral-800 uppercase tracking-tight">Paniers de Kovié</h4>
-                        <p className="text-[9.5px] text-stone-500 font-sans leading-tight">Cueillette du matin, fraîcheur livrée sous 24h à Lomé.</p>
-                      </div>
-
-                      {/* Product Image 4: Organic herbal tea & crafts */}
-                      <div className="bg-white p-2 border border-neutral-200 shadow-md group cursor-pointer hover:-translate-y-1 transition-transform"
-                           onClick={() => { setSearchQuery("Thé"); setSelectedCategory("Made in Togo Premium"); setActiveTab("catalogue"); }}>
-                        <div className="aspect-square w-full overflow-hidden bg-stone-100 mb-2">
-                          <img 
-                            src="https://images.unsplash.com/photo-1506368249639-73a05d6f6488?auto=format&fit=crop&q=80&w=400" 
-                            alt="Fleurs d'Hibiscus séchées Bisap" 
-                            className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
-                          />
-                        </div>
-                        <h4 className="text-xs font-bold text-neutral-800 uppercase tracking-tight">Hibiscus & Épices</h4>
-                        <p className="text-[9.5px] text-stone-500 font-sans leading-tight">Pour vos infusions et bienfaits naturels au quotidien.</p>
-                      </div>
-
+                            <div 
+                              className="cursor-pointer"
+                              onClick={() => {
+                                if (card.category) setSelectedCategory(card.category);
+                                setSearchQuery(card.searchQuery || "");
+                                setActiveTab("catalogue");
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }}
+                            >
+                              <h4 className="text-xs font-bold text-neutral-800 uppercase tracking-tight">{card.title}</h4>
+                              <p className="text-[9.5px] text-stone-500 font-sans leading-tight mt-0.5">{card.subtitle}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
                 </div>
+              </div>
+            </section>
+
+            {/* Featured Section (Produits Phares) - Single compact horizontal scroll row */}
+            <section className="py-8 bg-gradient-to-b from-stone-100/90 to-stone-50/50 border-b border-stone-200 px-4">
+              <div className="max-w-7xl mx-auto">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-3">
+                  <div>
+                    <span className="text-[#b8901c] text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />
+                      {language === "fr" ? "Sélection Exclusive Immédiate" : "Adzɔnu Tɔxɛ Kpeɖodzi"}
+                    </span>
+                    <h2 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 uppercase">{t("featured_products")}</h2>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-between sm:justify-end">
+                    {/* Horizontal scroll left/right arrow controls */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => scrollFeatured("left")}
+                        title="Faire défiler vers la gauche"
+                        className="w-8 h-8 rounded-full border border-neutral-300 hover:border-neutral-950 bg-white hover:bg-neutral-100 text-neutral-800 flex items-center justify-center transition-all shadow-sm active:scale-95 cursor-pointer"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => scrollFeatured("right")}
+                        title="Faire défiler vers la droite"
+                        className="w-8 h-8 rounded-full border border-neutral-300 hover:border-neutral-950 bg-white hover:bg-neutral-100 text-neutral-800 flex items-center justify-center transition-all shadow-sm active:scale-95 cursor-pointer"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <button 
+                      onClick={() => { setSelectedCategory("Toutes"); setActiveTab("catalogue"); }}
+                      className="bg-neutral-950 text-white hover:bg-[#d4af37] hover:text-neutral-950 px-4 py-2 rounded-sm text-xs font-bold tracking-widest uppercase transition-all flex items-center gap-1.5 shadow"
+                    >
+                      <span>{t("explore_catalog")}</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {loadingProducts ? (
+                  <div className="flex flex-col items-center justify-center py-10">
+                    <div className="w-8 h-8 border-3 border-[#d4af37] border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-xs mt-3 text-neutral-500 font-medium">{t("loading")}</p>
+                  </div>
+                ) : (
+                  <div 
+                    ref={featuredScrollRef}
+                    className="flex gap-3.5 sm:gap-5 overflow-x-auto pb-3 pt-1 snap-x snap-mandatory scroll-smooth"
+                    style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                  >
+                    {(products.some(p => p.phare) ? products.filter(p => p.phare) : products.slice(0, 10)).map(product => {
+                      return (
+                        <div 
+                          key={product.id} 
+                          className="w-[200px] xs:w-[225px] sm:w-[255px] md:w-[270px] flex-shrink-0 snap-start bg-white rounded-none shadow-sm hover:shadow-md border border-neutral-200 overflow-hidden flex flex-col justify-between group transition-all duration-300"
+                        >
+                          {/* Photo container */}
+                          <div className="relative aspect-square overflow-hidden bg-neutral-100 cursor-pointer" onClick={() => { setSelectedProduct(product); setCurrentGalleryIndex(0); }}>
+                            <img 
+                              src={product.images[0] || "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=300"} 
+                              alt={product.nom} 
+                              className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105"
+                            />
+
+                            {/* Wishlist Heart toggle */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFavorite(product.id);
+                              }}
+                              className="absolute top-2.5 right-2.5 z-10 w-7 h-7 rounded-full bg-white/95 backdrop-blur-[2px] shadow border border-neutral-200/50 hover:bg-white flex items-center justify-center transition-all cursor-pointer pointer-events-auto group/heart"
+                              title={user?.favorites?.includes(product.id) ? "Retirer de vos favoris" : "Ajouter à vos favoris"}
+                            >
+                              <Heart 
+                                className={`w-3.5 h-3.5 transition-transform duration-300 group-hover/heart:scale-110 ${
+                                  user?.favorites?.includes(product.id) 
+                                    ? "fill-red-500 text-red-500" 
+                                    : "text-neutral-500 hover:text-red-500"
+                                }`} 
+                              />
+                            </button>
+                            {/* Stock and Promo Tag */}
+                            <div className="absolute top-2.5 left-2.5 bg-neutral-950/85 backdrop-blur-sm text-white px-1.5 py-0.5 text-[8px] sm:text-[8.5px] font-bold uppercase tracking-widest">
+                              {product.categorie}
+                            </div>
+                            {product.prixBarre && (
+                              <div className="absolute top-10 right-2.5 bg-red-600 text-white px-1.5 py-0.5 text-[8px] sm:text-[8.5px] font-bold rounded-sm uppercase tracking-widest">
+                                Promo
+                              </div>
+                            )}
+                            {product.partenaire && product.partenaire !== "Boutique en Direct" ? (
+                              <div className="absolute bottom-1.5 xs:bottom-2.5 right-1.5 xs:right-2.5 bg-neutral-950/95 text-[#d4af37] border border-[#d4af37]/40 font-extrabold px-1 xs:px-1.5 py-0.5 text-[6.5px] xs:text-[7.5px] rounded-sm uppercase tracking-widest shadow-md flex items-center gap-1">
+                                <span className="w-1 h-1 rounded-full bg-green-500 animate-pulse"></span>
+                                <span>EXCLUSIVITÉ</span>
+                              </div>
+                            ) : (
+                              product.partenaire && (
+                                <div className="absolute bottom-1.5 xs:bottom-2.5 right-1.5 xs:right-2.5 bg-neutral-950/90 text-[#d4af37] border border-[#d4af37]/35 px-1 xs:px-1.5 py-0.5 text-[6.5px] xs:text-[7px] font-bold rounded-sm uppercase tracking-widest">
+                                  LOCAL EN DIRECT
+                                </div>
+                              )
+                            )}
+                          </div>
+
+                          {/* Detail fields */}
+                          <div className="p-2.5 xs:p-3 sm:p-3.5 flex-grow flex flex-col justify-between">
+                            <div>
+                              <h3 className="font-display font-semibold text-neutral-950 text-xs xs:text-sm group-hover:text-[#b8901c] transition-colors line-clamp-1 mb-0.5">{product.nom}</h3>
+                              <p className="text-neutral-500 text-[10px] xs:text-xs line-clamp-1 leading-relaxed mb-2">{product.description}</p>
+                            </div>
+
+                            <div>
+                              <div className="flex items-baseline mb-2 flex-wrap gap-1">
+                                {product.prixBarre ? (
+                                  <>
+                                    <span className="line-through text-neutral-400 text-[10px] xs:text-xs font-semibold tracking-wider mr-1">
+                                      {formatFCFA(product.prixBarre)}
+                                    </span>
+                                    <span className="font-bold text-[#b8901c] text-xs xs:text-sm tracking-wide">
+                                      {formatFCFA(product.prix)}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="font-bold text-neutral-950 text-xs xs:text-sm tracking-wide">
+                                    {formatFCFA(product.prix)}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1 sm:gap-2">
+                                <button
+                                  onClick={() => { setSelectedProduct(product); setCurrentGalleryIndex(0); }}
+                                  className="w-1/2 text-center border border-neutral-300 hover:border-neutral-950 hover:bg-neutral-50 text-neutral-700 hover:text-neutral-900 py-1.5 text-[9px] xs:text-[10px] font-bold tracking-widest uppercase transition-all"
+                                >
+                                  Détails
+                                </button>
+                                <button
+                                  onClick={() => addToCart(product, 1)}
+                                  disabled={product.stock <= 0 && (!product.partenaire || product.partenaire === "Boutique en Direct")}
+                                  className={`w-1/2 py-1.5 text-[8.5px] xs:text-[9.5px] font-bold tracking-wider uppercase transition-all truncate cursor-pointer ${
+                                    product.partenaire && product.partenaire !== "Boutique en Direct"
+                                      ? "bg-[#b8901c] hover:bg-neutral-950 text-white hover:text-white shadow font-bold"
+                                      : product.stock > 0 
+                                        ? "bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white" 
+                                        : "bg-neutral-200 text-neutral-450 cursor-not-allowed"
+                                  }`}
+                                >
+                                  {product.partenaire && product.partenaire !== "Boutique en Direct" 
+                                    ? "Acheter" 
+                                    : (product.stock > 0 ? "+ Panier" : "Rupture")}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </section>
 
@@ -2476,96 +2932,63 @@ export default function App() {
 
                 {/* Grid Lookbook */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
-                  {[
-                    {
-                      title: language === "fr" ? "Céramiques de Mandouri" : "Mandouri Anyi-Dze",
-                      collection: language === "fr" ? "Terre Cuite & Argile" : "Anyi Kple Anyigba",
-                      desc: language === "fr" 
-                        ? "Des œuvres façonnées en argile brute issues de gisements sacrés de l'extrême Nord du Togo."
-                        : "Anyinu siwo wowɔ tso anyigba kɔkɔe me le Togo dzigbe lɔgɔ̃.",
-                      image: "https://images.unsplash.com/photo-1590156546746-c589fbfb31d6?auto=format&fit=crop&q=80&w=600",
-                      tag: language === "fr" ? "Argile Sacrée" : "Anyi Kɔkɔe",
-                      category: "Made in Togo Premium",
-                      search: "Argile"
-                    },
-                    {
-                      title: language === "fr" ? "Tissage d'Aného" : "Aného Avɔ-Lɔlɔ̃",
-                      collection: language === "fr" ? "Raphia & Fibres Organiques" : "Raphia kple Dzɔdzɔme Kawo",
-                      desc: language === "fr"
-                        ? "Tressage méticuleux des fibres végétales pour concevoir des sacs et paniers de prestige."
-                        : "Kotoku kple kusi siwo woƒo kple dzɔdzɔme kawo na atsyɔ̃.",
-                      image: "https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&q=80&w=600",
-                      tag: language === "fr" ? "100% Organique" : "100% Dzɔdzɔme",
-                      category: "Made in Togo Premium",
-                      search: "Raphia"
-                    },
-                    {
-                      title: language === "fr" ? "Miels de Kpalimé" : "Kpalimé Anyitsi",
-                      collection: language === "fr" ? "Nectar Sauvage & Café" : "Anyitsi kple Café",
-                      desc: language === "fr"
-                        ? "Récoltes biologiques au cœur des forêts denses du plateau du Togo."
-                        : "Anyitsi tɔxɛ siwo wodi le Togo Plateaux ƒe aveme.",
-                      image: "https://images.unsplash.com/photo-1471193945509-9ad0617afabf?auto=format&fit=crop&q=80&w=600",
-                      tag: language === "fr" ? "Nectar d'Altitude" : "To-dzi Anyitsi",
-                      category: "Made in Togo Premium",
-                      search: "Miel"
-                    },
-                    {
-                      title: language === "fr" ? "Soin Solidaire" : "Lanyɔ Atike",
-                      collection: language === "fr" ? "Karité de Tandjouaré" : "Tandjouaré Karité",
-                      desc: language === "fr"
-                        ? "L'excellence des huiles pressées à l'état pur par notre collective de femmes solidaires."
-                        : "Karité nyuitɔ si nyɔnuwo ƒe asitsakaka dze gɔme le dzigbe.",
-                      image: "https://images.unsplash.com/photo-1628144211110-ecd038ea8271?auto=format&fit=crop&q=80&w=600",
-                      tag: language === "fr" ? "100% Brut" : "100% Vavã",
-                      category: "Made in Togo Premium",
-                      search: "Karité"
-                    }
-                  ].map((look, index) => (
-                    <div 
-                      key={index}
-                      onClick={() => {
-                        setSelectedCategory(look.category);
-                        setSearchQuery(look.search);
-                        setActiveTab("catalogue");
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                      className="group relative h-[210px] sm:h-[350px] lg:h-[380px] w-full rounded-none overflow-hidden border border-neutral-300 shadow-sm cursor-pointer hover:border-emerald-650 hover:shadow-md transition-all duration-350 bg-neutral-900"
-                    >
-                      {/* Image background with zoom on hover */}
-                      <img 
-                        src={look.image} 
-                        alt={look.title}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 ease-out opacity-85 group-hover:opacity-60"
-                      />
-                      
-                      {/* Premium Top layout tags */}
-                      <div className="absolute top-2.5 left-2.5 sm:top-4 sm:left-4 z-20 flex gap-2">
-                        <span className="bg-emerald-800 text-white border border-emerald-600 text-[7px] sm:text-[8.5px] font-black uppercase tracking-widest px-1.5 py-0.5 sm:px-2.5 sm:py-1">
-                          {look.tag}
-                        </span>
-                      </div>
+                  {galleryCards.map((look, index) => {
+                    const defaultImg = DEFAULT_GALLERY_CARDS[index]?.imageUrl || look.imageUrl;
+                    const tagLabel = language === "fr" ? (look.tag || "Terroir") : (look.tagEe || look.tag || "Anyigba");
+                    const collectionLabel = language === "fr" ? (look.collection || "Collection") : (look.collectionEe || look.collection || "Collection");
+                    const titleLabel = language === "fr" ? look.title : (look.titleEe || look.title);
+                    const descLabel = language === "fr" ? look.subtitle : (look.subtitleEe || look.subtitle);
 
-                      {/* Bottom Overlay Gradient & description */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent z-10 flex flex-col justify-end p-3 sm:p-5 transition-colors group-hover:bg-neutral-950/80">
-                        <span className="text-[#d4af37] text-[7px] sm:text-[8.5px] font-extrabold uppercase tracking-widest block mb-0.5 sm:mb-1">
-                          {look.collection}
-                        </span>
-                        <h4 className="font-display font-extrabold text-[#ffffff] text-xs sm:text-lg uppercase tracking-wider leading-tight group-hover:text-emerald-400 transition-colors">
-                          {look.title}
-                        </h4>
-                        <p className="text-neutral-300 text-[10px] sm:text-[11px] leading-relaxed mt-1.5 sm:mt-2 opacity-0 group-hover:opacity-100 transition-all duration-300 max-h-0 group-hover:max-h-24 overflow-hidden font-sans">
-                          {look.desc}
-                        </p>
+                    return (
+                      <div 
+                        key={look.id || index}
+                        onClick={() => {
+                          if (look.category) setSelectedCategory(look.category);
+                          setSearchQuery(look.searchQuery || "");
+                          setActiveTab("catalogue");
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="group relative h-[210px] sm:h-[350px] lg:h-[380px] w-full rounded-none overflow-hidden border border-neutral-300 shadow-sm cursor-pointer hover:border-emerald-650 hover:shadow-md transition-all duration-350 bg-neutral-900"
+                      >
+                        {/* Image background with zoom on hover and fallback */}
+                        <img 
+                          src={look.imageUrl || defaultImg} 
+                          alt={titleLabel}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = defaultImg;
+                          }}
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 ease-out opacity-85 group-hover:opacity-60"
+                          referrerPolicy="no-referrer"
+                        />
                         
-                        <div className="flex items-center gap-1 text-white text-[8px] sm:text-[9.5px] font-bold tracking-widest uppercase mt-2 sm:mt-3 pt-1.5 sm:pt-2 border-t border-neutral-800/60 w-full group-hover:text-emerald-400 transition-colors">
-                          <span>{language === "fr" ? "Voir plus" : "Kpɔ kpee"}</span>
-                          <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
+                        {/* Premium Top layout tags */}
+                        <div className="absolute top-2.5 left-2.5 sm:top-4 sm:left-4 z-20">
+                          <span className="bg-emerald-800 text-white border border-emerald-600 text-[7px] sm:text-[8.5px] font-black uppercase tracking-widest px-1.5 py-0.5 sm:px-2.5 sm:py-1">
+                            {tagLabel}
+                          </span>
                         </div>
-                      </div>
 
-                    </div>
-                  ))}
+                        {/* Bottom Overlay Gradient & description */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent z-10 flex flex-col justify-end p-3 sm:p-5 transition-colors group-hover:bg-neutral-950/80">
+                          <span className="text-[#d4af37] text-[7px] sm:text-[8.5px] font-extrabold uppercase tracking-widest block mb-0.5 sm:mb-1">
+                            {collectionLabel}
+                          </span>
+                          <h4 className="font-display font-extrabold text-[#ffffff] text-xs sm:text-lg uppercase tracking-wider leading-tight group-hover:text-emerald-400 transition-colors">
+                            {titleLabel}
+                          </h4>
+                          <p className="text-neutral-300 text-[10px] sm:text-[11px] leading-relaxed mt-1.5 sm:mt-2 opacity-0 group-hover:opacity-100 transition-all duration-300 max-h-0 group-hover:max-h-24 overflow-hidden font-sans">
+                            {descLabel}
+                          </p>
+                          
+                          <div className="flex items-center gap-1 text-white text-[8px] sm:text-[9.5px] font-bold tracking-widest uppercase mt-2 sm:mt-3 pt-1.5 sm:pt-2 border-t border-neutral-800/60 w-full group-hover:text-emerald-400 transition-colors">
+                            <span>{language === "fr" ? "Voir plus" : "Kpɔ kpee"}</span>
+                            <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 group-hover:translate-x-1 transition-transform" />
+                          </div>
+                        </div>
+
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Promotional banner inside the Lookbook section */}
@@ -2580,8 +3003,8 @@ export default function App() {
                     </h4>
                     <p className="text-[11px] sm:text-xs text-neutral-550 font-sans max-w-2xl">
                       {language === "fr" 
-                        ? "Chez Asime, plus de 90% du prix des produits de la Coopérative est directement versé aux apiculteurs, horticulteurs et artisans locaux du Togo."
-                        : "Le Asime la, asixɔme si wotsɔ nɔa adzɔnuwo ƒlem la ƒe alafa me 90 dzea agbledelawo kple aɖaŋudɔwɔlawo si tẽe le Togo."}
+                        ? "Chez Miabé Asi, plus de 90% du prix des produits de la Coopérative est directement versé aux apiculteurs, horticulteurs et artisans locaux du Togo."
+                        : "Le Miabé Asi la, asixɔme si wotsɔ nɔa adzɔnuwo ƒlem la ƒe alafa me 90 dzea agbledelawo kple aɖaŋudɔwɔlawo si tẽe le Togo."}
                     </p>
                   </div>
                   <button 
@@ -2607,7 +3030,7 @@ export default function App() {
                 
                 <div className="text-center mb-6 sm:mb-12">
                   <span className="text-[#d4af37] text-[10px] sm:text-xs font-bold tracking-widest uppercase block mb-1.5 sm:mb-2">
-                    {language === "fr" ? "L'Expérience Asime Togo" : "Asime Togo ƒe Nuteƒekpɔkpɔ"}
+                    {language === "fr" ? "L'Expérience Miabé Asi" : "Miabé Asi ƒe Nuteƒekpɔkpɔ"}
                   </span>
                   <h3 className="font-display font-extrabold text-xl sm:text-3xl uppercase tracking-widest text-white">
                     {language === "fr" ? "Pourquoi Commander chez Nous ?" : "Nukaŋuti Nàɖo Nu Mía Gbɔ?"}
@@ -2667,141 +3090,6 @@ export default function App() {
               </div>
             </section>
 
-            {/* Featured Section (Produits Phares) */}
-            <section className="py-12 bg-neutral-100/60 border-t border-b border-neutral-200/50 px-4">
-              <div className="max-w-7xl mx-auto">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-                  <div>
-                    <span className="text-[#d4af37] text-xs font-semibold uppercase tracking-widest">{language === "fr" ? "Sélection Exclusive" : "Adzɔnu Tɔxɛ Kpeɖodzi"}</span>
-                    <h2 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-950 uppercase">{t("featured_products")}</h2>
-                  </div>
-                  <button 
-                    onClick={() => { setSelectedCategory("Toutes"); setActiveTab("catalogue"); }}
-                    className="bg-neutral-950 text-white hover:bg-[#d4af37] hover:text-neutral-950 px-5 py-2.5 rounded-sm text-xs font-bold tracking-widest uppercase transition-all flex items-center gap-1.5 self-start shadow"
-                  >
-                    <span>{t("explore_catalog")}</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {loadingProducts ? (
-                  <div className="flex flex-col items-center justify-center py-16">
-                    <div className="w-10 h-10 border-4 border-gold-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-sm mt-4 text-neutral-500 font-medium">{t("loading")}</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-6">
-                    {products.filter(p => p.phare).slice(0, 4).map(product => {
-                      return (
-                        <div key={product.id} className="bg-white rounded-none shadow-sm hover:shadow-md border border-neutral-200 overflow-hidden flex flex-col justify-between group transition-all duration-300">
-                          {/* Photo container */}
-                          <div className="relative aspect-square overflow-hidden bg-neutral-100 cursor-pointer" onClick={() => { setSelectedProduct(product); setCurrentGalleryIndex(0); }}>
-                            <img 
-                              src={product.images[0] || "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=300"} 
-                              alt={product.nom} 
-                              className="w-full h-full object-cover transition-all duration-500 group-hover:scale-105"
-                            />
-
-                            {/* Wishlist Heart toggle absolutely-positioned */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleFavorite(product.id);
-                              }}
-                              className="absolute top-[48px] right-3 z-10 w-8 h-8 rounded-full bg-white/95 backdrop-blur-[2px] shadow border border-neutral-200/50 hover:bg-white flex items-center justify-center transition-all cursor-pointer pointer-events-auto group/heart"
-                              title={user?.favorites?.includes(product.id) ? "Retirer de vos favoris" : "Ajouter à vos favoris"}
-                            >
-                              <Heart 
-                                className={`w-4 h-4 transition-transform duration-300 group-hover/heart:scale-110 ${
-                                  user?.favorites?.includes(product.id) 
-                                    ? "fill-red-500 text-red-500" 
-                                    : "text-neutral-500 hover:text-red-500"
-                                }`} 
-                              />
-                            </button>
-                            {/* Stock and Promo Tag */}
-                            <div className="absolute top-2.5 left-2.5 bg-neutral-950/85 backdrop-blur-sm text-white px-1.5 py-0.5 text-[8px] sm:text-[9px] font-bold uppercase tracking-widest">
-                              {product.categorie}
-                            </div>
-                            {product.prixBarre && (
-                              <div className="absolute top-2.5 right-2.5 bg-red-600 text-white px-1.5 py-0.5 text-[8px] sm:text-[9px] font-bold rounded-sm uppercase tracking-widest">
-                                Promo
-                              </div>
-                            )}
-                            {product.partenaire && product.partenaire !== "Boutique en Direct" ? (
-                              <div className="absolute bottom-1.5 xs:bottom-3 right-1.5 xs:right-3 bg-neutral-950/95 text-[#d4af37] border border-[#d4af37]/40 font-extrabold px-1 xs:px-2 py-0.5 xs:py-1 text-[6.5px] xs:text-[8px] sm:text-[8.5px] rounded-sm uppercase tracking-widest shadow-md flex items-center gap-1 pb-[3px]">
-                                <span className="w-1 h-1 xs:w-1.5 xs:h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                                <span>EXCLUSIVITÉ EN LIGNE</span>
-                              </div>
-                            ) : (
-                              product.partenaire && (
-                                <div className="absolute bottom-1.5 xs:bottom-3 right-1.5 xs:right-3 bg-neutral-950/90 text-[#d4af37] border border-[#d4af37]/35 px-1 xs:px-2 py-0.5 text-[6.5px] xs:text-[7.5px] sm:text-[8px] font-bold rounded-sm uppercase tracking-widest">
-                                  LOCAL EN DIRECT
-                                </div>
-                              )
-                            )}
-                          </div>
-
-                          {/* Detail fields */}
-                          <div className="p-2.5 xs:p-3 sm:p-4 flex-grow flex flex-col justify-between">
-                            <div>
-                              <h3 className="font-display font-semibold text-neutral-950 text-xs xs:text-sm group-hover:text-[#b8901c] transition-colors line-clamp-1 mb-0.5 sm:mb-1">{product.nom}</h3>
-                              <p className="text-neutral-500 text-[10px] xs:text-xs line-clamp-1 sm:line-clamp-2 leading-relaxed mb-2.5 sm:mb-4">{product.description}</p>
-                            </div>
-
-                            <div>
-                              {/* Spaced slash price solving Issue 4 */}
-                              <div className="flex items-baseline mb-2.5 sm:mb-4 flex-wrap gap-1">
-                                {product.prixBarre ? (
-                                  <>
-                                    <span className="line-through text-neutral-400 text-[10px] xs:text-xs font-semibold tracking-wider mr-1 sm:mr-2">
-                                      {formatFCFA(product.prixBarre)}
-                                    </span>
-                                    <span className="font-bold text-[#b8901c] text-xs xs:text-sm tracking-wide">
-                                      {formatFCFA(product.prix)}
-                                    </span>
-                                  </>
-                                ) : (
-                                  <span className="font-bold text-neutral-950 text-xs xs:text-sm tracking-wide">
-                                    {formatFCFA(product.prix)}
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-1 sm:gap-2">
-                                <button
-                                  onClick={() => { setSelectedProduct(product); setCurrentGalleryIndex(0); }}
-                                  className="w-1/2 text-center border border-neutral-300 hover:border-neutral-950 hover:bg-neutral-50 text-neutral-700 hover:text-neutral-900 py-1.5 xs:py-2 sm:py-2.5 text-[9px] xs:text-[10px] sm:text-[11px] font-bold tracking-widest uppercase transition-all"
-                                >
-                                  Détails
-                                </button>
-                                <button
-                                  onClick={() => addToCart(product, 1)}
-                                  disabled={product.stock <= 0 && (!product.partenaire || product.partenaire === "Boutique en Direct")}
-                                  className={`w-1/2 py-1.5 xs:py-2 sm:py-2.5 text-[8.5px] xs:text-[9.5px] sm:text-[10px] font-bold tracking-wider uppercase transition-all truncate cursor-pointer ${
-                                    product.partenaire && product.partenaire !== "Boutique en Direct"
-                                      ? "bg-[#b8901c] hover:bg-neutral-950 text-white hover:text-white shadow font-bold"
-                                      : product.stock > 0 
-                                        ? "bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white" 
-                                        : "bg-neutral-200 text-neutral-450 cursor-not-allowed"
-                                  }`}
-                                >
-                                  {product.partenaire && product.partenaire !== "Boutique en Direct" 
-                                    ? "Acheter" 
-                                    : (product.stock > 0 ? "+ Panier" : "Rupture")}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </section>
-
             {/* Quick Promo Banner - Consommer Local */}
             <section className="bg-neutral-900 text-white py-12 px-4 border-t border-b border-[#d4af37]/35">
               <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-8">
@@ -2855,7 +3143,7 @@ export default function App() {
             {/* Page Header */}
             <div className="text-center mb-10">
               <span className="text-[#d4af37] text-xs font-semibold tracking-widest uppercase mb-1 block">Découvrez notre collection</span>
-              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 uppercase">Le Catalogue Asime</h1>
+              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 uppercase">Le Catalogue Miabé Asi</h1>
               <div className="w-16 h-1 bg-[#d4af37] mx-auto mt-3"></div>
             </div>
 
@@ -3218,7 +3506,7 @@ export default function App() {
             {/* Page Header */}
             <div className="text-center mb-10">
               <span className="text-[#d4af37] text-xs font-semibold tracking-widest uppercase mb-1 block">Histoires indigènes et conseils</span>
-              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 uppercase">Le Journal de Asime</h1>
+              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 uppercase">Le Journal de Miabé Asi</h1>
               <p className="text-neutral-500 text-sm max-w-lg mx-auto mt-2">Découvrez nos analyses exclusives sur l'essor du made in Togo et comment s'habiller d'élégance.</p>
               <div className="w-16 h-1 bg-[#d4af37] mx-auto mt-3"></div>
             </div>
@@ -3324,7 +3612,7 @@ export default function App() {
                 {/* Simulated Affiliate Deal Plate */}
                 <div className="bg-gradient-to-br from-neutral-950 to-neutral-800 text-white p-6 rounded-sm border border-[#d4af37]/35 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
-                    <span className="bg-[#d4af37] text-neutral-950 text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-sm">Club VIP Asime</span>
+                    <span className="bg-[#d4af37] text-neutral-950 text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-sm">Club VIP Miabé Asi</span>
                     <ExternalLink className="w-4 h-4 text-[#d4af37]" />
                   </div>
                   <h4 className="font-display font-extrabold text-sm uppercase tracking-wider mb-2 text-white">Privilèges Fret Groupé & Transit</h4>
@@ -3391,7 +3679,7 @@ export default function App() {
                     <MapPin className="w-5 h-5 text-[#d4af37] shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-semibold text-xs uppercase tracking-widest text-white">
-                        {language === "fr" ? "Service Client Asime" : "Asime ƒe Asitsala Kpekpeɖeŋu"}
+                        {language === "fr" ? "Service Client Miabé Asi" : "Miabé Asi ƒe Asitsala Kpekpeɖeŋu"}
                       </h4>
                       <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed">
                         {language === "fr"
@@ -3523,7 +3811,7 @@ export default function App() {
                   {language === "fr" ? "RÉPONSES À VOS QUESTIONS" : "NYƆWƆWƆ NA MI"}
                 </span>
                 <h2 className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-neutral-900 uppercase">
-                  {language === "fr" ? "Foire Aux Questions Asime" : "Biabia Siwo Bɔ Dzidzi"}
+                  {language === "fr" ? "Foire Aux Questions Miabé Asi" : "Biabia Siwo Bɔ Dzidzi"}
                 </h2>
                 <p className="text-neutral-500 text-xs max-w-sm mx-auto mt-1">
                   {language === "fr" ? "Tout savoir sur la livraison à Lomé et la provenance de nos produits du terroir." : "Nya nuwo katã tso nuxɔxɔ le Lomé kple afi si míeƒlea míeƒe nukuwo tsoe."}
@@ -3543,7 +3831,7 @@ export default function App() {
                   },
                   {
                     q: language === "fr" ? "Les produits sont-ils 100% naturels ?" : "Atike kple nududuwo nye dzɔdzɔmẽ tɔ 100% a?",
-                    a: language === "fr" ? "Absolument. Asime Togo travaille sous charte d'engagement éthique. Notre miel sauvage provient directement de Kpalimé, et notre Beurre de Karité est extrait de façon traditionnelle." : "Ɛ̃, míewɔa dɔ kple lɔ̃lɔ̃ kple nuteƒewɔwɔ. Míegba anyitsi le Kpalimé gbo, eye míewɔa ami le Tandjouaré to kɔnyinyi mɔ dzi."
+                    a: language === "fr" ? "Absolument. Miabé Asi travaille sous charte d'engagement éthique. Notre miel sauvage provient directement de Kpalimé, et notre Beurre de Karité est extrait de façon traditionnelle." : "Ɛ̃, míewɔa dɔ kple lɔ̃lɔ̃ kple nuteƒewɔwɔ. Míegba anyitsi le Kpalimé gbo, eye míewɔa ami le Tandjouaré to kɔnyinyi mɔ dzi."
                   },
                   {
                     q: language === "fr" ? "Peut-on passer commande depuis la Diaspora togolaise ?" : "Ame siwo le duta hã ate ŋu aɖo nua?",
@@ -3551,7 +3839,7 @@ export default function App() {
                   },
                   {
                     q: language === "fr" ? "Proposez-vous une boutique physique ?" : "Asi-ƒe xɔ aɖe li si me míate ŋu ayia?",
-                    a: language === "fr" ? "Asime opère exclusivement en ligne pour vous offrir les meilleurs tarifs possibles. Vous commandez en toute confiance et la livraison express s'effectue sous 2h à Lomé. De plus, vous pouvez vérifier vos articles avant de payer !" : "Míewɔa dɔ to kɔmputazi dzi ko be míana asixɔxɔ nyuitɔwo katã na mi. Míeɖonɛ na mi le Lomé le gaƒoƒo 2 me, eye ète ŋu kpɔa nudɔdɔwo vɔ kaba."
+                    a: language === "fr" ? "Miabé Asi opère exclusivement en ligne pour vous offrir les meilleurs tarifs possibles. Vous commandez en toute confiance et la livraison express s'effectue sous 2h à Lomé. De plus, vous pouvez vérifier vos articles avant de payer !" : "Míewɔa dɔ to kɔmputazi dzi ko be míana asixɔxɔ nyuitɔwo katã na mi. Míeɖonɛ na mi le Lomé le gaƒoƒo 2 me, eye ète ŋu kpɔa nudɔdɔwo vɔ kaba."
                   }
                 ].map((faq, idx) => {
                   const isOpen = activeFaq === idx;
@@ -3613,7 +3901,7 @@ export default function App() {
                 <p className="text-[10px] text-neutral-400 font-mono tracking-widest truncate max-w-xs mx-auto">
                   {isWhatsapp 
                     ? `whatsapp://send?phone=${getProductRedirectDetails(redirectingProduct).partnerPhone}`
-                    : "https://asime.tg/redirect/secure-checkout?id=" + redirectingProduct.id
+                    : "https://miabeasi.tg/redirect/secure-checkout?id=" + redirectingProduct.id
                   }
                 </p>
               </div>
@@ -3631,7 +3919,7 @@ export default function App() {
                   )}
                 </p>
                 <p className="text-[10px] text-[#d4af37] font-semibold">
-                  {language === "fr" ? "Merci de faire confiance à l'écosystème commercial de Asime ! ❤️🇹🇬" : "Akpe gã na wò le kakaɖedzi ɖe Asime Togo asitsamɔ dzi ! ❤️🇹🇬"}
+                  {language === "fr" ? "Merci de faire confiance à l'écosystème commercial de Miabé Asi ! ❤️🇹🇬" : "Akpe gã na wò le kakaɖedzi ɖe Miabé Asi asitsamɔ dzi ! ❤️🇹🇬"}
                 </p>
               </div>
 
@@ -3693,7 +3981,7 @@ export default function App() {
                 
                 {selectedBlog.estSponsorise && (
                   <span className="absolute bottom-3 left-3 bg-neutral-950 text-[#d4af37] text-[9px] font-black uppercase tracking-widest px-3 py-1 border border-[#d4af37]/40 shadow-lg">
-                    Sponsorisé par Asime Partner
+                    Sponsorisé par Miabé Asi Partner
                   </span>
                 )}
               </div>
@@ -3736,7 +4024,7 @@ export default function App() {
                     if (navigator.share) {
                       navigator.share({
                         title: shareTitle,
-                        text: `Découvrez cet excellent article de Asime Togo : "${shareTitle}"`,
+                        text: `Découvrez cet excellent article de Miabé Asi : "${shareTitle}"`,
                         url: shareUrl,
                       }).catch((err) => console.log("Share error", err));
                     } else {
@@ -4061,7 +4349,7 @@ export default function App() {
                     <button
                       onClick={() => {
                         const sId = selectedProduct.vendeurId || "assisted_merchant";
-                        const sName = selectedProduct.partenaire || "Boutique Asime Direct";
+                        const sName = selectedProduct.partenaire || "Boutique Miabé Asi Direct";
                         startConversationWithSeller(sId, sName, selectedProduct.nom);
                       }}
                       className="py-2 px-3 border border-[#0B4D26] text-[#0B4D26] hover:bg-[#0B4D26] hover:text-white transition-all duration-200 font-bold uppercase text-[9px] tracking-widest flex items-center justify-center gap-1 cursor-pointer bg-white"
@@ -4073,7 +4361,7 @@ export default function App() {
                     <button
                       onClick={() => {
                         setSelectedSellerId(selectedProduct.vendeurId || "assisted_merchant");
-                        setSelectedSellerName(selectedProduct.partenaire || "Boutique Asime Direct");
+                        setSelectedSellerName(selectedProduct.partenaire || "Boutique Miabé Asi Direct");
                         setIsSellerShopOpen(true);
                       }}
                       className="py-2 px-3 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 transition-all duration-200 font-bold uppercase text-[9px] tracking-widest flex items-center justify-center gap-1 cursor-pointer"
@@ -4159,7 +4447,7 @@ export default function App() {
                         </h3>
                       </div>
                       <span className="text-[9px] text-[#b8901c] font-black uppercase tracking-widest bg-[#d4af37]/10 px-2.5 py-0.5">
-                        Suggestions d'Asime
+                        Suggestions de Miabé Asi
                       </span>
                     </div>
 
@@ -4551,11 +4839,11 @@ export default function App() {
                   <button
                     onClick={async () => {
                       // Build the WhatsApp message confirming paid status
-                      let message = `*✨ PAIEMENT ENREGISTRÉ - COMMANDE ASIME TOGO ✨*\n\n`;
+                      let message = `*✨ PAIEMENT ENREGISTRÉ - COMMANDE MIABÉ ASI ✨*\n\n`;
                       message += `🆔 *Commande :* \`${paymentSession.orderId}\`\n`;
                       message += `🔒 *ID Paiement :* \`${paymentSession.transactionId}\`\n`;
                       message += `💳 *Moyen utilisé :* ${paymentSession.providerId.toUpperCase()}\n`;
-                      message += `🟢 *Statut :* PAYÉ ET VALIDÉ VIA ASIME PAY\n`;
+                      message += `🟢 *Statut :* PAYÉ ET VALIDÉ VIA MIABÉ ASI PAY\n`;
                       message += `🔗 *Suivi de commande :* ${window.location.origin}/?track=${paymentSession.orderId}\n\n`;
                       message += `👤 *Client :* ${checkoutName.trim()}\n`;
                       message += `📞 *Téléphone :* ${checkoutPhone.trim()}\n`;
@@ -4568,7 +4856,7 @@ export default function App() {
                       message += `\n*━━━━━━━━━━━━━━━━━━━━━*\n`;
                       message += `💰 *MONTANT REÇU :* *${formatFCFA(paymentSession.amount)}*\n`;
                       message += `*━━━━━━━━━━━━━━━━━━━━━*\n\n`;
-                      message += `Mon paiement est déjà validé sur le site d'Asime ! Veuillez lancer la livraison. Merci ! 🙏🇹🇬`;
+                      message += `Mon paiement est déjà validé sur le site de Miabé Asi ! Veuillez lancer la livraison. Merci ! 🙏🇹🇬`;
 
                       const encodedText = encodeURIComponent(message);
                       const merchantPhone = ASIME_SETTINGS.WHATSAPP_MERCHANT_NUMBER;
@@ -4651,7 +4939,7 @@ export default function App() {
                     <strong className="text-neutral-800 font-bold text-right">Mobile Money & Carte</strong>
                     
                     <span className="text-neutral-400 font-medium">Destinataire :</span>
-                    <strong className="text-neutral-800 text-right font-bold">Asime Togo Pay</strong>
+                    <strong className="text-neutral-800 text-right font-bold">Miabé Asi Pay</strong>
 
                     <span className="text-neutral-400 font-medium">{language === "fr" ? "Référence unique :" : "Dzesi pɛpɛɛpɛ :"}</span>
                     <strong className="text-neutral-800 font-mono text-right truncate">{paymentSession.transactionId}</strong>
@@ -4700,8 +4988,8 @@ export default function App() {
             <div className="flex items-center gap-2">
               {renderLogoNode("w-9 h-9")}
               <div>
-                <span className="font-sans font-bold tracking-[0.15em] text-white uppercase text-base leading-none block">ASIME</span>
-                <span className="text-[8px] text-[#FAA61A] tracking-wider uppercase font-semibold block mt-1">
+                <span className="font-sans font-black tracking-[0.05em] text-white text-base leading-none block">Miabé Asi</span>
+                <span className="text-[9px] text-[#FAA61A] tracking-wider font-semibold block mt-1">
                   {language === "fr" ? "Le local, notre fierté" : "Míaƒe anyigbadzinu, míaƒe dada"}
                 </span>
               </div>
@@ -4713,7 +5001,7 @@ export default function App() {
             </p>
             <div className="text-neutral-500 font-mono text-[9px] flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
-              <span>LOME, TOGO - Miawoezon (Asime)</span>
+              <span>LOME, TOGO - Miawoezon (Miabé Asi)</span>
             </div>
           </div>
 
@@ -4735,7 +5023,7 @@ export default function App() {
               </li>
               <li>
                 <button onClick={() => setActiveTab("blog")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
-                  {language === "fr" ? "Le Journal de Asime" : "Asime Nyadzɔdzɔwo"}
+                  {language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo"}
                 </button>
               </li>
               <li>
@@ -4766,8 +5054,8 @@ export default function App() {
             </h4>
             <p className="text-neutral-400 leading-relaxed text-[11px]">
               {language === "fr" 
-                ? "Asime travaille conjointement avec les coopératives locales de Kpalimé et de l'Est-Mono pour valoriser la culture togolaise à l'échelle internationale."
-                : "Asime kple Kpalimé kpakple Est-Mono dɔwɔla habɔbɔwo wɔa dɔ ɖekae be woado Togo-tɔwo ƒe dekɔnuwo ɖe gã le xexeame katã."}
+                ? "Miabé Asi travaille conjointement avec les coopératives locales de Kpalimé et de l'Est-Mono pour valoriser la culture togolaise à l'échelle internationale."
+                : "Miabé Asi kple Kpalimé kpakple Est-Mono dɔwɔla habɔbɔwo wɔa dɔ ɖekae be woado Togo-tɔwo ƒe dekɔnuwo ɖe gã le xexeame katã."}
             </p>
             <div className="flex gap-2">
               <span className="bg-neutral-900 border border-neutral-800 text-[#d4af37] px-2 py-1 text-[9px] font-bold rounded-sm tracking-wide">
@@ -4782,7 +5070,7 @@ export default function App() {
         </div>
 
         <div className="max-w-7xl mx-auto pt-8 mt-8 border-t border-neutral-800 text-center text-neutral-500 text-[10px] uppercase tracking-widest">
-          <p>© {new Date().getFullYear()} Asime. {t("footer_rights")} {language === "fr" ? "CONÇU POUR LE CONSOMMER LOCAL TOGOLAIS 🇹🇬" : "WÒ WƆE NA TOGO-TƆWO ƑE ADZƆNUWO 🇹🇬"}</p>
+          <p>© {new Date().getFullYear()} Miabé Asi. {t("footer_rights")} {language === "fr" ? "CONÇU POUR LE CONSOMMER LOCAL TOGOLAIS 🇹🇬" : "WÒ WƆE NA TOGO-TƆWO ƑE ADZƆNUWO 🇹🇬"}</p>
         </div>
       </footer>
 
@@ -4915,7 +5203,7 @@ export default function App() {
                 <div className="pt-2">
                   <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Modes de Livraison</h4>
                   <div className="space-y-1 text-[11px] font-sans text-stone-600">
-                    <p className="flex items-center gap-1.5">📦 • Envoi sécurisé par le réseau Asime</p>
+                    <p className="flex items-center gap-1.5">📦 • Envoi sécurisé par le réseau Miabé Asi</p>
                     <p className="flex items-center gap-1.5">🛵 • Livraison express à Lomé (24h)</p>
                     <p className="flex items-center gap-1.5">🌍 • Expédition diaspora Europe & Amérique</p>
                   </div>
@@ -5154,7 +5442,7 @@ export default function App() {
                       Copier le Lien
                     </button>
                     <a
-                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent("Découvrez Asime, la somptueuse vitrine du consommer local au Togo ! ✨🇹🇬 Retrouvez l'artisanat du terroir et de superbes cadeaux exclusifs ici: " + window.location.origin)}`}
+                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent("Découvrez Miabé Asi, la somptueuse vitrine du consommer local au Togo ! ✨🇹🇬 Retrouvez l'artisanat du terroir et de superbes cadeaux exclusifs ici: " + window.location.origin)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 rounded-none h-9 text-xs"
@@ -5196,7 +5484,7 @@ export default function App() {
               <div className="bg-[#0f5132]/5 border border-[#0f5132]/20 p-5 text-left text-xs space-y-3 rounded-none font-sans relative">
                 <span className="text-[10px] font-extrabold text-[#0f5132] uppercase tracking-widest block">✨ Installation Directe &amp; Logo Officiel</span>
                 <p className="text-neutral-700 text-[10.5px] leading-relaxed font-sans">
-                  Installez l'application Asime Togo sur votre écran d'accueil d'un simple clic pour profiter de la boutique comme une vraie application mobile avec notre logo exclusif !
+                  Installez l'application Miabé Asi sur votre écran d'accueil d'un simple clic pour profiter de la boutique comme une vraie application mobile avec notre logo exclusif !
                 </p>
                 <button
                   type="button"
@@ -5293,8 +5581,8 @@ export default function App() {
                 {
                   labelFr: "En Cours de Livraison",
                   labelEwe: "Le Mɔ Dzi",
-                  descFr: "Le coursier d'Asime Express a récupéré votre commande.",
-                  descEwe: "Asime Express dɔdɔla le mɔ dzi kple wò nudɔdɔ la."
+                  descFr: "Le coursier de Miabé Asi Express a récupéré votre commande.",
+                  descEwe: "Miabé Asi Express dɔdɔla le mɔ dzi kple wò nudɔdɔ la."
                 },
                 {
                   labelFr: "Colis Livré",
@@ -5828,7 +6116,7 @@ export default function App() {
               {/* Toggle Login/Sign-up Mode trigger */}
               <div className="mt-6 pt-4 border-t border-neutral-100 text-center">
                 <p className="text-xs text-neutral-500">
-                  {authMode === "login" ? "Nouveau sur Asime ?" : "Vous possédez déjà un compte ?"}
+                  {authMode === "login" ? "Nouveau sur Miabé Asi ?" : "Vous possédez déjà un compte ?"}
                 </p>
                 <button
                   type="button"
@@ -6014,10 +6302,10 @@ export default function App() {
               <div className="flex items-center gap-2">
                 {renderLogoNode("w-9 h-9")}
                 <div>
-                <h3 className="font-sans font-bold tracking-[0.15em] text-[#0F5132] uppercase text-sm leading-none">ASIME</h3>
-                <p className="text-[8px] text-[#D97706] tracking-[0.08em] leading-normal font-semibold uppercase mt-1 font-sans">{t("slogan")}</p>
+                  <h3 className="font-sans font-black tracking-[0.04em] text-[#0E5224] text-sm leading-none">Miabé Asi</h3>
+                  <p className="text-[8px] text-[#D97706] tracking-[0.08em] leading-normal font-semibold uppercase mt-1 font-sans">{t("slogan")}</p>
+                </div>
               </div>
-            </div>
             <button 
               onClick={() => setIsMobileMenuOpen(false)}
               className="p-1 px-1.5 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 border-0 bg-transparent cursor-pointer"
@@ -6031,7 +6319,7 @@ export default function App() {
             {[
               { label: language === "fr" ? "Accueil du site" : "Aƒeme dzesi", value: "accueil" as const, desc: language === "fr" ? "Découvrir nos sélections phares et histoire" : "Kpɔ míaƒe adzɔnu dzesiwo kple ŋutinya" },
               { label: language === "fr" ? "Catalogue de Produits" : "Adzɔnuwo kpeɖodzi", value: "catalogue" as const, desc: language === "fr" ? "Explorer l'ensemble de nos collections" : "Kpɔ míaƒe adzɔnu hame hamewo katã" },
-              { label: language === "fr" ? "Le Journal de Asime" : "Asime Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils de terroir et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
+              { label: language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils de terroir et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
               { label: language === "fr" ? "Nous Contacter" : "Mía Kadodowo", value: "contact" as const, desc: language === "fr" ? "Support client, WhatsApp et localisation physique" : "WhatsApp kple afisi míele le Lomé" }
             ].map((link) => (
               <button
@@ -6146,7 +6434,7 @@ export default function App() {
               <div className="flex items-start gap-2.5">
                 <span className="bg-[#0f5132] text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
                 <p className="text-neutral-700 leading-tight">
-                  Cliquez sur <strong>"Ajouter"</strong> dans le coin supérieur droit pour valider. Une icône Asime sera créée sur votre mobile !
+                  Cliquez sur <strong>"Ajouter"</strong> dans le coin supérieur droit pour valider. Une icône Miabé Asi sera créée sur votre mobile !
                 </p>
               </div>
             </div>
@@ -6185,7 +6473,7 @@ export default function App() {
                 Aide d'installation 💻
               </span>
               <h3 className="font-display font-extrabold uppercase text-neutral-950 text-base tracking-wider">
-                Comment installer Asime Togo?
+                Comment installer Miabé Asi?
               </h3>
               <p className="text-[11px] text-neutral-500 font-sans leading-normal">
                 Votre navigateur n'a pas déclenché de pop-up d'installation directe. Vous pouvez l'ajouter très simplement :
@@ -6202,7 +6490,7 @@ export default function App() {
               <div className="flex items-start gap-2.5">
                 <span className="bg-[#0f5132] text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
                 <p className="text-neutral-700 leading-tight">
-                  Dans les options de votre navigateur (Chrome, Edge, Firefox), ouvrez le <strong>Menu (trois points verticaux)</strong>, et sélectionnez <strong>"Installer Asime Togo"</strong> ou <strong>"Ajouter à l'écran d'accueil"</strong>.
+                  Dans les options de votre navigateur (Chrome, Edge, Firefox), ouvrez le <strong>Menu (trois points verticaux)</strong>, et sélectionnez <strong>"Installer Miabé Asi"</strong> ou <strong>"Ajouter à l'écran d'accueil"</strong>.
                 </p>
               </div>
             </div>

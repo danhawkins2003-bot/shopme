@@ -58,15 +58,24 @@ import {
   Bell,
   ShoppingBag,
   CreditCard,
-  CheckCircle2
+  CheckCircle2,
+  Camera,
+  Sparkles,
+  RotateCcw,
+  Upload
 } from "lucide-react";
 import { Product } from "./types";
 import AdminStats from "./components/AdminStats";
 import { InvoiceModal } from "./components/InvoiceModal";
 import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
+import { DEFAULT_HERO_CARDS, DEFAULT_GALLERY_CARDS, ShowcaseCard } from "./data/showcaseCards";
+import { fileToOptimizedDataUrl } from "./lib/imageUtils";
+import { ImageUploadModal } from "./components/ImageUploadModal";
+import officialLogoImg from "./assets/images/miabe_asi_official_logo_1787563252544.jpg";
 
 export default function AdminApp() {
   const [activeTab, setActiveTab] = useState<"catalog" | "banners" | "stats" | "settings" | "requests">("catalog");
+  const [bannerSubSection, setBannerSubSection] = useState<"carousel" | "vitrine" | "gallery">("vitrine");
   const [adminPromoSlides, setAdminPromoSlides] = useState<PromoSlide[]>(() => {
     try {
       const saved = localStorage.getItem("asime_promo_slides");
@@ -78,10 +87,85 @@ export default function AdminApp() {
   });
   const [promoSaveSuccess, setPromoSaveSuccess] = useState(false);
 
+  // Homepage Showcase Cards State (Hero 4 cards + Gallery 4 cards)
+  const [adminHeroCards, setAdminHeroCards] = useState<ShowcaseCard[]>(() => {
+    try {
+      const stored = localStorage.getItem("asime_showcase_cards");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed.heroCards) && parsed.heroCards.length > 0) return parsed.heroCards;
+      }
+    } catch (e) {}
+    return DEFAULT_HERO_CARDS;
+  });
+
+  const [adminGalleryCards, setAdminGalleryCards] = useState<ShowcaseCard[]>(() => {
+    try {
+      const stored = localStorage.getItem("asime_showcase_cards");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed.galleryCards) && parsed.galleryCards.length > 0) return parsed.galleryCards;
+      }
+    } catch (e) {}
+    return DEFAULT_GALLERY_CARDS;
+  });
+
+  // Modal for direct device photo upload in admin
+  const [activeAdminUploadModal, setActiveAdminUploadModal] = useState<{
+    id: string;
+    title: string;
+    subtitle?: string;
+    imageUrl: string;
+    defaultImageUrl: string;
+    categoryType: "banner" | "hero" | "gallery";
+    index?: number;
+    aspectRatio: "square" | "portrait" | "landscape" | "banner";
+  } | null>(null);
+
+  // Sync showcase from API on mount
+  useEffect(() => {
+    fetch("/api/showcase")
+      .then(res => res.json())
+      .then(data => {
+        if (data) {
+          if (Array.isArray(data.heroCards) && data.heroCards.length > 0) {
+            setAdminHeroCards(data.heroCards);
+          }
+          if (Array.isArray(data.galleryCards) && data.galleryCards.length > 0) {
+            setAdminGalleryCards(data.galleryCards);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveAdminShowcaseCards = async (newHero: ShowcaseCard[], newGallery: ShowcaseCard[]) => {
+    setAdminHeroCards(newHero);
+    setAdminGalleryCards(newGallery);
+    const payload = { heroCards: newHero, galleryCards: newGallery };
+    try {
+      localStorage.setItem("asime_showcase_cards", JSON.stringify(payload));
+      await fetch("/api/showcase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.error("Failed to save showcase cards", e);
+    }
+    setPromoSaveSuccess(true);
+    setTimeout(() => setPromoSaveSuccess(false), 3000);
+  };
+
   const saveAdminPromoSlides = (newSlides: PromoSlide[]) => {
     setAdminPromoSlides(newSlides);
     try {
       localStorage.setItem("asime_promo_slides", JSON.stringify(newSlides));
+      fetch("/api/banners", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newSlides)
+      }).catch(() => {});
     } catch (e) {
       console.error("Failed to save promo slides to localStorage", e);
     }
@@ -89,17 +173,40 @@ export default function AdminApp() {
     setTimeout(() => setPromoSaveSuccess(false), 3000);
   };
 
-  const handleSlideImageUpload = (index: number, file: File) => {
+  const handleSlideImageUpload = async (index: number, file: File) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (reader.result) {
-        const updated = [...adminPromoSlides];
-        updated[index] = { ...updated[index], imageUrl: reader.result as string };
-        saveAdminPromoSlides(updated);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await fileToOptimizedDataUrl(file, 1600, 1600, 0.88);
+      const updated = [...adminPromoSlides];
+      updated[index] = { ...updated[index], imageUrl: dataUrl };
+      saveAdminPromoSlides(updated);
+    } catch (e) {
+      console.error("Error optimizing slide image", e);
+    }
+  };
+
+  const handleHeroCardImageUpload = async (index: number, file: File) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToOptimizedDataUrl(file, 1200, 1200, 0.88);
+      const updatedHero = [...adminHeroCards];
+      updatedHero[index] = { ...updatedHero[index], imageUrl: dataUrl };
+      saveAdminShowcaseCards(updatedHero, adminGalleryCards);
+    } catch (e) {
+      console.error("Error optimizing hero card image", e);
+    }
+  };
+
+  const handleGalleryCardImageUpload = async (index: number, file: File) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToOptimizedDataUrl(file, 1200, 1200, 0.88);
+      const updatedGallery = [...adminGalleryCards];
+      updatedGallery[index] = { ...updatedGallery[index], imageUrl: dataUrl };
+      saveAdminShowcaseCards(adminHeroCards, updatedGallery);
+    } catch (e) {
+      console.error("Error optimizing gallery card image", e);
+    }
   };
 
   const handleAddNewSlide = () => {
@@ -557,6 +664,16 @@ export default function AdminApp() {
     }
   }, [isAdminAuthenticated]);
 
+  const [paymentGatewayStatus, setPaymentGatewayStatus] = useState<{
+    configured: boolean;
+    mode: string;
+    hasMasterKey: boolean;
+    hasPrivateKey: boolean;
+    hasToken: boolean;
+    maskedMasterKey?: string | null;
+    maskedToken?: string | null;
+  } | null>(null);
+
   useEffect(() => {
     fetchProducts();
     fetchPartners();
@@ -576,6 +693,12 @@ export default function AdminApp() {
         }
       })
       .catch(err => console.error("Error fetching settings:", err));
+
+    // Fetch payment gateway status
+    fetch("/api/payments/status")
+      .then(res => res.ok ? res.json() : null)
+      .then(data => setPaymentGatewayStatus(data))
+      .catch(err => console.error("Error fetching payment status:", err));
   }, []);
 
   const formatFCFA = (amount: number | null) => {
@@ -797,12 +920,14 @@ export default function AdminApp() {
     <div className="min-h-screen bg-[#FAF9F6] text-neutral-900 font-sans">
       
       {/* Top Banner Administration Header */}
-      <nav className="bg-neutral-950 text-white py-4 px-6 shadow-md border-b border-[#d4af37]/35">
+      <nav className="bg-neutral-950 text-white py-3 px-6 shadow-md border-b border-[#d4af37]/35">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl">🇹🇬</span>
-            <span className="font-display font-black text-sm uppercase tracking-widest text-[#d4af37]">Asime Togo</span>
-            <span className="bg-[#d4af37]/15 text-[#d4af37] border border-[#d4af37]/30 text-[9px] font-bold px-2 py-0.5 uppercase tracking-widest rounded-sm ml-2">Console Administration</span>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#d4af37]/50 bg-white p-0.5 shrink-0 shadow-xs">
+              <img src={officialLogoImg} alt="Miabé Asi Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+            </div>
+            <span className="font-display font-black text-sm uppercase tracking-widest text-[#d4af37]">Miabé Asi</span>
+            <span className="bg-[#d4af37]/15 text-[#d4af37] border border-[#d4af37]/30 text-[9px] font-bold px-2 py-0.5 uppercase tracking-widest rounded-sm ml-1">Console Administration</span>
           </div>
           <a 
             href="/" 
@@ -849,7 +974,7 @@ export default function AdminApp() {
                 S'authentifier
               </button>
             </form>
-            <p className="text-[10px] text-neutral-400 mt-6 uppercase tracking-wider">Indice : Utilisez "asime2026" pour vous connecter.</p>
+            <p className="text-[10px] text-neutral-400 mt-6 uppercase tracking-wider">Indice : Utilisez "miabeasi2026" ou "asime2026" pour vous connecter.</p>
           </div>
         ) : (
           <div className="space-y-8 animate-fade-in">
@@ -859,7 +984,7 @@ export default function AdminApp() {
               <div>
                 <div className="flex items-center gap-2">
                   <Unlock className="w-5 h-5 text-[#d4af37]" />
-                  <h2 className="font-display font-extrabold text-lg uppercase tracking-wider">Bienvenue Gérant Asime</h2>
+                  <h2 className="font-display font-extrabold text-lg uppercase tracking-wider">Bienvenue Gérant Miabé Asi</h2>
                 </div>
                 <p className="text-xs text-neutral-300 mt-1">Vous pouvez ajouter de nouveaux produits, modifier le catalogue national en temps réel et contrôler les stocks.</p>
               </div>
@@ -1620,168 +1745,480 @@ export default function AdminApp() {
               <div>
                 <div className="flex items-center gap-2">
                   <ImageIcon className="w-5 h-5 text-[#d4af37]" />
-                  <h3 className="font-display font-extrabold text-lg uppercase tracking-wider text-white">Gestion des Affiches & Images de l'Accueil</h3>
+                  <h3 className="font-display font-extrabold text-lg uppercase tracking-wider text-white">Gestion des Images & Vitrines de l'Accueil</h3>
                 </div>
                 <p className="text-xs text-neutral-300 mt-1 max-w-2xl leading-relaxed">
-                  Remplacez facilement les affiches promotionnelles affichées dans le carrousel principal de la page d'accueil. 
-                  Vous pouvez **télécharger directement une image** depuis votre appareil ou **coller une URL d'image**.
+                  Remplacez facilement n'importe quelle photo de la boutique **directement depuis votre appareil** (caméra de votre téléphone, galerie photos, ou fichiers de votre ordinateur) sans avoir besoin d'URL externe.
                 </p>
               </div>
+              {bannerSubSection === "carousel" && (
+                <button
+                  onClick={handleAddNewSlide}
+                  className="bg-[#d4af37] hover:bg-amber-400 text-neutral-955 font-bold text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm transition-colors flex items-center gap-2 cursor-pointer shrink-0 shadow-md"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Ajouter une Affiche Promo</span>
+                </button>
+              )}
+            </div>
+
+            {/* Sub-tabs Selector for sections */}
+            <div className="flex flex-wrap gap-2 p-1.5 bg-neutral-100 rounded-lg border border-neutral-200">
               <button
-                onClick={handleAddNewSlide}
-                className="bg-[#d4af37] hover:bg-amber-400 text-neutral-955 font-bold text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm transition-colors flex items-center gap-2 cursor-pointer shrink-0 shadow-md"
+                type="button"
+                onClick={() => setBannerSubSection("vitrine")}
+                className={`px-4 py-2.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  bannerSubSection === "vitrine"
+                    ? "bg-emerald-800 text-white shadow-xs"
+                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/60"
+                }`}
               >
-                <Plus className="w-4 h-4" />
-                <span>Ajouter une Affiche</span>
+                <span>🍯 Vitrine Terroirs (4 Cartes du Haut)</span>
+                <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{adminHeroCards.length}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBannerSubSection("gallery")}
+                className={`px-4 py-2.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  bannerSubSection === "gallery"
+                    ? "bg-emerald-800 text-white shadow-xs"
+                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/60"
+                }`}
+              >
+                <span>🏺 Galerie Savoir-faire (4 Cartes Lookbook)</span>
+                <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{adminGalleryCards.length}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBannerSubSection("carousel")}
+                className={`px-4 py-2.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  bannerSubSection === "carousel"
+                    ? "bg-emerald-800 text-white shadow-xs"
+                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/60"
+                }`}
+              >
+                <span>🌟 Bannières Carrousel Promo</span>
+                <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{adminPromoSlides.length}</span>
               </button>
             </div>
 
             {promoSaveSuccess && (
-              <div className="bg-emerald-50 text-emerald-800 border border-emerald-300 p-3 rounded text-xs font-bold flex items-center gap-2">
-                <span>✓</span>
-                <span>Affiches mises à jour et enregistrées avec succès ! La page d'accueil a été actualisée.</span>
+              <div className="bg-emerald-50 text-emerald-800 border border-emerald-300 p-3.5 rounded-lg text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Photos et informations enregistrées avec succès ! La vitrine de l'accueil est immédiatement synchronisée.</span>
               </div>
             )}
 
-            {/* Grid of Banner Slides */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {adminPromoSlides.map((slide, index) => (
-                <div 
-                  key={slide.id || index}
-                  className="bg-white border border-neutral-250 rounded-md p-4 shadow-xs flex flex-col justify-between space-y-4 hover:border-[#d4af37] transition-colors"
-                >
+            {/* SECTION 1: VITRINE TERROIRS (4 Cartes Haut de Page) */}
+            {bannerSubSection === "vitrine" && (
+              <div className="space-y-4">
+                <div className="bg-emerald-900/10 border border-emerald-700/20 p-3.5 rounded-lg flex items-center justify-between">
                   <div>
-                    {/* Slide Top Badge */}
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="bg-[#d4af37]/20 text-neutral-900 border border-[#d4af37]/40 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
-                        Affiche #{index + 1}
-                      </span>
-                      <span className="text-[10px] text-neutral-500 font-mono">
-                        ID: {slide.id}
-                      </span>
-                    </div>
-
-                    {/* Image Preview Box */}
-                    <div className="relative w-full h-48 bg-neutral-900 rounded border border-neutral-200 overflow-hidden mb-3 group">
-                      <img 
-                        src={slide.imageUrl} 
-                        alt={slide.titleFr || "Affiche Promo"} 
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute inset-0 bg-neutral-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center text-white text-xs font-bold">
-                        {slide.titleFr}
-                      </div>
-                    </div>
-
-                    {/* Image Change Controls */}
-                    <div className="space-y-2 mb-4 bg-stone-50 p-3 rounded border border-stone-200">
-                      <label className="block text-[10px] font-bold text-neutral-800 uppercase tracking-wider">
-                        Remplacer le visuel / l'image :
-                      </label>
-                      
-                      {/* Option 1: File Upload */}
-                      <label className="w-full bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-955 font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors cursor-pointer">
-                        <ImageIcon className="w-4 h-4 text-[#d4af37] group-hover:text-neutral-955" />
-                        <span>Télécharger une Image (Fichier)</span>
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            if (e.target.files?.[0]) {
-                              handleSlideImageUpload(index, e.target.files[0]);
-                            }
-                          }} 
-                        />
-                      </label>
-
-                      {/* Option 2: Image URL */}
-                      <div className="pt-1">
-                        <span className="text-[9px] text-neutral-500 block mb-1">Ou collez l'URL direct de l'image :</span>
-                        <input 
-                          type="url"
-                          value={slide.imageUrl}
-                          onChange={(e) => {
-                            const updated = [...adminPromoSlides];
-                            updated[index] = { ...updated[index], imageUrl: e.target.value };
-                            saveAdminPromoSlides(updated);
-                          }}
-                          placeholder="https://images.unsplash.com/..."
-                          className="w-full text-xs font-mono border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Text details for the Slide */}
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
-                          Titre de l'Affiche
-                        </label>
-                        <input 
-                          type="text"
-                          value={slide.titleFr || ""}
-                          onChange={(e) => {
-                            const updated = [...adminPromoSlides];
-                            updated[index] = { ...updated[index], titleFr: e.target.value, titleEe: e.target.value };
-                            saveAdminPromoSlides(updated);
-                          }}
-                          className="w-full text-xs font-bold border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
-                          Sous-Titre / Collection
-                        </label>
-                        <input 
-                          type="text"
-                          value={slide.subtitleFr || ""}
-                          onChange={(e) => {
-                            const updated = [...adminPromoSlides];
-                            updated[index] = { ...updated[index], subtitleFr: e.target.value, subtitleEe: e.target.value };
-                            saveAdminPromoSlides(updated);
-                          }}
-                          className="w-full text-xs border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
-                          Catégorie cible au clic
-                        </label>
-                        <select 
-                          value={slide.categoryTarget || "Tous"}
-                          onChange={(e) => {
-                            const updated = [...adminPromoSlides];
-                            updated[index] = { ...updated[index], categoryTarget: e.target.value };
-                            saveAdminPromoSlides(updated);
-                          }}
-                          className="w-full text-xs font-bold border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
-                        >
-                          <option value="Tous">Toutes les catégories</option>
-                          <option value="Made in Togo Premium">Made in Togo Premium</option>
-                          <option value="Paniers Frais & Épicerie">Paniers Frais & Épicerie</option>
-                          <option value="Cosmétique & Beauté Bio">Cosmétique & Beauté Bio</option>
-                          <option value="Mode & Artisanat Lux">Mode & Artisanat Lux</option>
-                          <option value="Plats & Gastronomie Locale">Plats & Gastronomie Locale</option>
-                        </select>
-                      </div>
-                    </div>
+                    <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">4 Cartes Vitrine Terroir de l'Accueil</h4>
+                    <p className="text-[11px] text-emerald-800">Ces cartes apparaissent à droite du grand titre d'accueil. Cliquez sur « Importer une photo » pour changer l'image depuis votre appareil.</p>
                   </div>
-
-                  {/* Delete Action */}
-                  <button 
-                    onClick={() => handleDeleteSlide(index)}
-                    className="w-full mt-4 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-1.5 transition-colors border border-red-200 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Supprimer cette affiche</span>
-                  </button>
                 </div>
-              ))}
-            </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {adminHeroCards.map((card, idx) => {
+                    const defaultImg = DEFAULT_HERO_CARDS[idx]?.imageUrl || card.imageUrl;
+                    return (
+                      <div key={card.id || idx} className="bg-white border border-neutral-250 rounded-xl p-4 shadow-xs flex flex-col justify-between space-y-3 hover:border-emerald-600 transition-colors">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
+                              Carte #{idx + 1}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 font-mono">ID: {card.id}</span>
+                          </div>
+
+                          {/* Image preview box */}
+                          <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 mb-3 group">
+                            <img 
+                              src={card.imageUrl || defaultImg} 
+                              alt={card.title} 
+                              onError={(e) => { (e.target as HTMLImageElement).src = defaultImg; }}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center text-white text-xs font-bold">
+                              {card.title}
+                            </div>
+                          </div>
+
+                          {/* Quick Photo Upload Button */}
+                          <div className="space-y-2 mb-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveAdminUploadModal({
+                                  id: card.id,
+                                  title: `Changer la photo : ${card.title}`,
+                                  subtitle: "Importez une photo depuis votre appareil (sans URL)",
+                                  imageUrl: card.imageUrl || defaultImg,
+                                  defaultImageUrl: defaultImg,
+                                  categoryType: "hero",
+                                  index: idx,
+                                  aspectRatio: "square"
+                                });
+                              }}
+                              className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95"
+                            >
+                              <Camera className="w-4 h-4 text-emerald-300" />
+                              <span>Changer la photo</span>
+                            </button>
+
+                            {/* Direct Native File Input Fallback */}
+                            <label className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-[11px] py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-neutral-250">
+                              <Upload className="w-3.5 h-3.5 text-neutral-600" />
+                              <span>Fichier rapide...</span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                className="hidden" 
+                                onChange={(e) => {
+                                  if (e.target.files?.[0]) {
+                                    handleHeroCardImageUpload(idx, e.target.files[0]);
+                                  }
+                                }} 
+                              />
+                            </label>
+
+                            {card.imageUrl !== defaultImg && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updatedHero = [...adminHeroCards];
+                                  updatedHero[idx] = { ...updatedHero[idx], imageUrl: defaultImg };
+                                  saveAdminShowcaseCards(updatedHero, adminGalleryCards);
+                                }}
+                                className="w-full text-center text-[10px] text-amber-700 hover:text-amber-900 font-semibold flex items-center justify-center gap-1 cursor-pointer pt-1"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Rétablir la photo d'origine</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Editable Details */}
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-0.5">Titre</label>
+                              <input 
+                                type="text"
+                                value={card.title}
+                                onChange={(e) => {
+                                  const updatedHero = [...adminHeroCards];
+                                  updatedHero[idx] = { ...updatedHero[idx], title: e.target.value };
+                                  saveAdminShowcaseCards(updatedHero, adminGalleryCards);
+                                }}
+                                className="w-full text-xs font-bold border border-neutral-300 p-1.5 rounded bg-white text-neutral-900 focus:outline-none focus:border-emerald-600"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-0.5">Description courte</label>
+                              <textarea
+                                rows={2}
+                                value={card.subtitle}
+                                onChange={(e) => {
+                                  const updatedHero = [...adminHeroCards];
+                                  updatedHero[idx] = { ...updatedHero[idx], subtitle: e.target.value };
+                                  saveAdminShowcaseCards(updatedHero, adminGalleryCards);
+                                }}
+                                className="w-full text-xs border border-neutral-300 p-1.5 rounded bg-white text-neutral-900 focus:outline-none focus:border-emerald-600 resize-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 2: GALERIE & SAVOIR-FAIRE (4 Cartes Lookbook) */}
+            {bannerSubSection === "gallery" && (
+              <div className="space-y-4">
+                <div className="bg-amber-900/10 border border-amber-700/20 p-3.5 rounded-lg flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide">4 Cartes Galerie & Savoir-Faire (Lookbook)</h4>
+                    <p className="text-[11px] text-amber-800">Ces cartes apparaissent dans la section « Galerie Locale & Savoir-faire » (Céramiques, Tissage, Miels, Soin Solidaire). Remplacez leurs visuels en un clic.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {adminGalleryCards.map((card, idx) => {
+                    const defaultImg = DEFAULT_GALLERY_CARDS[idx]?.imageUrl || card.imageUrl;
+                    return (
+                      <div key={card.id || idx} className="bg-white border border-neutral-250 rounded-xl p-4 shadow-xs flex flex-col justify-between space-y-3 hover:border-amber-600 transition-colors">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
+                              Lookbook #{idx + 1}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 font-mono">ID: {card.id}</span>
+                          </div>
+
+                          {/* Image preview box (Portrait format) */}
+                          <div className="relative aspect-3/4 w-full rounded-lg overflow-hidden bg-neutral-950 border border-neutral-200 mb-3 group">
+                            <img 
+                              src={card.imageUrl || defaultImg} 
+                              alt={card.title} 
+                              onError={(e) => { (e.target as HTMLImageElement).src = defaultImg; }}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute top-1.5 right-1.5 bg-black/70 backdrop-blur-xs text-[#d4af37] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">
+                              Portrait
+                            </div>
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center text-white text-xs font-bold">
+                              {card.title}
+                            </div>
+                          </div>
+
+                          {/* Quick Photo Upload Button */}
+                          <div className="space-y-2 mb-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveAdminUploadModal({
+                                  id: card.id,
+                                  title: `Changer la photo : ${card.title}`,
+                                  subtitle: "Importez une photo depuis votre appareil (sans URL)",
+                                  imageUrl: card.imageUrl || defaultImg,
+                                  defaultImageUrl: defaultImg,
+                                  categoryType: "gallery",
+                                  index: idx,
+                                  aspectRatio: "portrait"
+                                });
+                              }}
+                              className="w-full bg-neutral-900 hover:bg-[#d4af37] hover:text-neutral-950 text-white font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95"
+                            >
+                              <Camera className="w-4 h-4 text-emerald-300" />
+                              <span>Changer la photo</span>
+                            </button>
+
+                            {/* Direct Native File Input Fallback */}
+                            <label className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-[11px] py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-neutral-250">
+                              <Upload className="w-3.5 h-3.5 text-neutral-600" />
+                              <span>Fichier rapide...</span>
+                              <input 
+                                type="file" 
+                                accept="image/*" 
+                                className="hidden" 
+                                onChange={(e) => {
+                                  if (e.target.files?.[0]) {
+                                    handleGalleryCardImageUpload(idx, e.target.files[0]);
+                                  }
+                                }} 
+                              />
+                            </label>
+
+                            {card.imageUrl !== defaultImg && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updatedGallery = [...adminGalleryCards];
+                                  updatedGallery[idx] = { ...updatedGallery[idx], imageUrl: defaultImg };
+                                  saveAdminShowcaseCards(adminHeroCards, updatedGallery);
+                                }}
+                                className="w-full text-center text-[10px] text-amber-700 hover:text-amber-900 font-semibold flex items-center justify-center gap-1 cursor-pointer pt-1"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                <span>Rétablir la photo d'origine</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Editable Details */}
+                          <div className="space-y-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-0.5">Titre</label>
+                              <input 
+                                type="text"
+                                value={card.title}
+                                onChange={(e) => {
+                                  const updatedGallery = [...adminGalleryCards];
+                                  updatedGallery[idx] = { ...updatedGallery[idx], title: e.target.value };
+                                  saveAdminShowcaseCards(adminHeroCards, updatedGallery);
+                                }}
+                                className="w-full text-xs font-bold border border-neutral-300 p-1.5 rounded bg-white text-neutral-900 focus:outline-none focus:border-amber-600"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-0.5">Sous-titre / Collection</label>
+                              <input 
+                                type="text"
+                                value={card.collection || ""}
+                                onChange={(e) => {
+                                  const updatedGallery = [...adminGalleryCards];
+                                  updatedGallery[idx] = { ...updatedGallery[idx], collection: e.target.value };
+                                  saveAdminShowcaseCards(adminHeroCards, updatedGallery);
+                                }}
+                                className="w-full text-xs border border-neutral-300 p-1.5 rounded bg-white text-neutral-900 focus:outline-none focus:border-amber-600"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 3: CAROUSEL BANNER SLIDES */}
+            {bannerSubSection === "carousel" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {adminPromoSlides.map((slide, index) => (
+                  <div 
+                    key={slide.id || index}
+                    className="bg-white border border-neutral-250 rounded-md p-4 shadow-xs flex flex-col justify-between space-y-4 hover:border-[#d4af37] transition-colors"
+                  >
+                    <div>
+                      {/* Slide Top Badge */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="bg-[#d4af37]/20 text-neutral-900 border border-[#d4af37]/40 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
+                          Affiche #{index + 1}
+                        </span>
+                        <span className="text-[10px] text-neutral-500 font-mono">
+                          ID: {slide.id}
+                        </span>
+                      </div>
+
+                      {/* Image Preview Box (Format Paysage) */}
+                      <div className="relative w-full aspect-21/9 bg-neutral-950 rounded border border-neutral-200 overflow-hidden mb-3 group">
+                        <img 
+                          src={slide.imageUrl} 
+                          alt={slide.titleFr || "Affiche Promo"} 
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute top-1.5 right-1.5 bg-black/70 backdrop-blur-xs text-[#d4af37] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">
+                          21:9 Paysage
+                        </div>
+                        <div className="absolute inset-0 bg-neutral-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center text-white text-xs font-bold">
+                          {slide.titleFr}
+                        </div>
+                      </div>
+
+                      {/* Image Change Controls */}
+                      <div className="space-y-2 mb-4 bg-stone-50 p-3 rounded border border-stone-200">
+                        <label className="block text-[10px] font-bold text-neutral-800 uppercase tracking-wider">
+                          Remplacer la photo depuis votre appareil :
+                        </label>
+                        
+                        {/* Option 1: Direct Device Modal Picker */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAdminUploadModal({
+                              id: slide.id,
+                              title: `Changer l'affiche : ${slide.titleFr || 'Affiche'}`,
+                              subtitle: "Sélectionnez une photo depuis votre galerie, caméra ou fichiers",
+                              imageUrl: slide.imageUrl,
+                              defaultImageUrl: slide.imageUrl,
+                              categoryType: "banner",
+                              index: index,
+                              aspectRatio: "banner"
+                            });
+                          }}
+                          className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <Camera className="w-4 h-4 text-emerald-300" />
+                          <span>Parcourir photos / Prendre photo</span>
+                        </button>
+
+                        {/* Option 2: Direct Native File Input */}
+                        <label className="w-full bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-955 font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors cursor-pointer">
+                          <ImageIcon className="w-4 h-4 text-[#d4af37]" />
+                          <span>Importer un fichier image</span>
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={(e) => {
+                              if (e.target.files?.[0]) {
+                                handleSlideImageUpload(index, e.target.files[0]);
+                              }
+                            }} 
+                          />
+                        </label>
+                      </div>
+
+                      {/* Text details for the Slide */}
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                            Titre de l'Affiche
+                          </label>
+                          <input 
+                            type="text"
+                            value={slide.titleFr || ""}
+                            onChange={(e) => {
+                              const updated = [...adminPromoSlides];
+                              updated[index] = { ...updated[index], titleFr: e.target.value, titleEe: e.target.value };
+                              saveAdminPromoSlides(updated);
+                            }}
+                            className="w-full text-xs font-bold border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                            Sous-Titre / Collection
+                          </label>
+                          <input 
+                            type="text"
+                            value={slide.subtitleFr || ""}
+                            onChange={(e) => {
+                              const updated = [...adminPromoSlides];
+                              updated[index] = { ...updated[index], subtitleFr: e.target.value, subtitleEe: e.target.value };
+                              saveAdminPromoSlides(updated);
+                            }}
+                            className="w-full text-xs border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                            Catégorie cible au clic
+                          </label>
+                          <select 
+                            value={slide.categoryTarget || "Tous"}
+                            onChange={(e) => {
+                              const updated = [...adminPromoSlides];
+                              updated[index] = { ...updated[index], categoryTarget: e.target.value };
+                              saveAdminPromoSlides(updated);
+                            }}
+                            className="w-full text-xs font-bold border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                          >
+                            <option value="Tous">Toutes les catégories</option>
+                            <option value="Made in Togo Premium">Made in Togo Premium</option>
+                            <option value="Paniers Frais & Épicerie">Paniers Frais & Épicerie</option>
+                            <option value="Cosmétique & Beauté Bio">Cosmétique & Beauté Bio</option>
+                            <option value="Mode & Artisanat Lux">Mode & Artisanat Lux</option>
+                            <option value="Plats & Gastronomie Locale">Plats & Gastronomie Locale</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Delete Action */}
+                    <button 
+                      onClick={() => handleDeleteSlide(index)}
+                      className="w-full mt-4 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-1.5 transition-colors border border-red-200 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Supprimer cette affiche</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : activeTab === "stats" ? (
           <AdminStats />
@@ -1821,24 +2258,16 @@ export default function AdminApp() {
                       Identité Visuelle Officielle
                     </label>
                     <div className="flex items-center gap-4 p-4 border rounded-xl bg-emerald-50/50 border-emerald-200/80 shadow-2xs max-w-md">
-                      <div className="w-14 h-14 shrink-0 flex items-center justify-center p-1 rounded-lg bg-white border border-emerald-100 shadow-2xs overflow-hidden">
-                        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-                          <path d="M 43,15 L 57,15 L 81,81 L 66,81 L 50,38 L 34,81 L 19,81 Z" fill="#0D5E2F" />
-                          <g>
-                            <path d="M 27,73 C 40,49 57,39 77,46 C 60,59 44,74 27,73 Z" fill="white" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-                            <path d="M 27,73 C 41,63 59,51 77,46 C 60,57 44,72 27,73 Z" fill="#D97706" />
-                            <path d="M 27,73 C 40,51 57,41 77,46 C 59,51 41,63 27,73 Z" fill="#FAA61A" />
-                            <path d="M 27,73 C 41,63 59,51 77,46" stroke="white" strokeWidth="0.85" strokeLinecap="round" />
-                          </g>
-                        </svg>
+                      <div className="w-14 h-14 shrink-0 flex items-center justify-center p-1 rounded-lg bg-white border border-[#C88A24]/40 shadow-2xs overflow-hidden">
+                        <img src={officialLogoImg} alt="Logo Officiel Miabé Asi" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                       </div>
                       <div>
                         <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                          <span>Lettre A & Plume d'Or</span>
-                          <span className="bg-emerald-700 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Logo Unique</span>
+                          <span>Logo Officiel Miabé Asi</span>
+                          <span className="bg-emerald-700 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Actif</span>
                         </div>
                         <p className="text-[11px] text-emerald-800/90 mt-0.5 leading-snug">
-                          Seul logo officiel configuré et actif sur l'ensemble du site web et de l'application mobile.
+                          Logo officiel configuré et actif sur l'ensemble du site web et de l'application mobile.
                         </p>
                       </div>
                     </div>
@@ -1850,6 +2279,89 @@ export default function AdminApp() {
                       <span>Configuration enregistrée avec succès ! Le logo et le numéro WhatsApp ont été mis à jour globalement sur le serveur.</span>
                     </div>
                   )}
+
+                  {/* Section Passerelle de Paiement PayDunya */}
+                  <div className="border-t border-stone-200 pt-6 mt-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+                          <span>Passerelle de Paiement (PayDunya)</span>
+                          {paymentGatewayStatus?.configured ? (
+                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              ● Configuré ({paymentGatewayStatus.mode.toUpperCase()})
+                            </span>
+                          ) : (
+                            <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              ⚠️ En attente de clés (.env)
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-xs text-neutral-500 mt-1">
+                          Statut de connexion à la passerelle officielle de paiement Mobile Money & Carte bancaire.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/payments/status?t=" + Date.now());
+                            if (res.ok) {
+                              const data = await res.json();
+                              setPaymentGatewayStatus(data);
+                            }
+                          } catch (e) {}
+                        }}
+                        className="text-[11px] font-bold text-[#d4af37] hover:underline cursor-pointer"
+                      >
+                        Rafraîchir statut
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className={`p-3 rounded-lg border text-xs ${paymentGatewayStatus?.hasMasterKey ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-stone-50 border-stone-200 text-stone-600"}`}>
+                        <div className="font-bold flex items-center justify-between">
+                          <span>Clé Principale (Master Key)</span>
+                          <span>{paymentGatewayStatus?.hasMasterKey ? "✓ Détectée" : "✗ Manquante"}</span>
+                        </div>
+                        <p className="text-[10px] text-stone-500 mt-1 font-mono">
+                          {paymentGatewayStatus?.maskedMasterKey || "PAYDUNYA_MASTER_KEY"}
+                        </p>
+                      </div>
+
+                      <div className={`p-3 rounded-lg border text-xs ${paymentGatewayStatus?.hasPrivateKey ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-stone-50 border-stone-200 text-stone-600"}`}>
+                        <div className="font-bold flex items-center justify-between">
+                          <span>Clé Privée (Private Key)</span>
+                          <span>{paymentGatewayStatus?.hasPrivateKey ? "✓ Détectée" : "✗ Manquante"}</span>
+                        </div>
+                        <p className="text-[10px] text-stone-500 mt-1 font-mono">
+                          {paymentGatewayStatus?.hasPrivateKey ? "******** (Protégée)" : "PAYDUNYA_PRIVATE_KEY"}
+                        </p>
+                      </div>
+
+                      <div className={`p-3 rounded-lg border text-xs ${paymentGatewayStatus?.hasToken ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-stone-50 border-stone-200 text-stone-600"}`}>
+                        <div className="font-bold flex items-center justify-between">
+                          <span>Jeton / Token</span>
+                          <span>{paymentGatewayStatus?.hasToken ? "✓ Détecté" : "✗ Manquant"}</span>
+                        </div>
+                        <p className="text-[10px] text-stone-500 mt-1 font-mono">
+                          {paymentGatewayStatus?.maskedToken || "PAYDUNYA_TOKEN"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-[11px] text-stone-600 space-y-1.5">
+                      <p className="font-bold text-stone-800">💡 Format recommandé dans votre fichier <code className="bg-stone-200 px-1 py-0.5 rounded text-stone-900">.env</code> :</p>
+                      <pre className="bg-stone-900 text-stone-100 p-2.5 rounded text-[10px] font-mono overflow-x-auto">
+{`PAYDUNYA_MASTER_KEY=votre_cle_principale
+PAYDUNYA_PRIVATE_KEY=votre_cle_privee
+PAYDUNYA_TOKEN=votre_token_public
+PAYDUNYA_MODE=live`}
+                      </pre>
+                      <p className="text-[10px] text-stone-500">
+                        Le serveur recharge automatiquement ces variables lors de chaque transaction.
+                      </p>
+                    </div>
+                  </div>
 
                   <button
                     onClick={async () => {
@@ -1897,6 +2409,43 @@ export default function AdminApp() {
         order={selectedInvoiceOrder}
         merchantPhone={whatsappDisplaySetting}
       />
+
+      {/* --- ADMIN DIRECT IMAGE UPLOAD MODAL --- */}
+      {activeAdminUploadModal && (
+        <ImageUploadModal
+          isOpen={true}
+          onClose={() => setActiveAdminUploadModal(null)}
+          title={activeAdminUploadModal.title}
+          subtitle={activeAdminUploadModal.subtitle}
+          currentImageUrl={activeAdminUploadModal.imageUrl}
+          defaultImageUrl={activeAdminUploadModal.defaultImageUrl}
+          aspectRatio={activeAdminUploadModal.aspectRatio}
+          onSaveImage={async (newImageDataUrl) => {
+            if (activeAdminUploadModal.categoryType === "hero" && activeAdminUploadModal.index !== undefined) {
+              const updatedHero = [...adminHeroCards];
+              updatedHero[activeAdminUploadModal.index] = {
+                ...updatedHero[activeAdminUploadModal.index],
+                imageUrl: newImageDataUrl
+              };
+              await saveAdminShowcaseCards(updatedHero, adminGalleryCards);
+            } else if (activeAdminUploadModal.categoryType === "gallery" && activeAdminUploadModal.index !== undefined) {
+              const updatedGallery = [...adminGalleryCards];
+              updatedGallery[activeAdminUploadModal.index] = {
+                ...updatedGallery[activeAdminUploadModal.index],
+                imageUrl: newImageDataUrl
+              };
+              await saveAdminShowcaseCards(adminHeroCards, updatedGallery);
+            } else if (activeAdminUploadModal.categoryType === "banner" && activeAdminUploadModal.index !== undefined) {
+              const updatedSlides = [...adminPromoSlides];
+              updatedSlides[activeAdminUploadModal.index] = {
+                ...updatedSlides[activeAdminUploadModal.index],
+                imageUrl: newImageDataUrl
+              };
+              saveAdminPromoSlides(updatedSlides);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

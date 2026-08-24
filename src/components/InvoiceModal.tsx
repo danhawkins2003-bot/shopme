@@ -69,12 +69,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   };
 
   const handleShareWhatsApp = () => {
-    const text = `📄 *FACTURE ASIME TOGO #${order.id}*\n\n` +
+    const text = `📄 *FACTURE MIABÉ ASI #${order.id}*\n\n` +
       `👤 *Client :* ${order.shippingDetails?.name || "Client"}\n` +
       `💰 *Total :* ${formatFCFA(order.totalAmount)}\n` +
       `🟢 *Statut :* ${order.paymentStatus || "Payé"}\n` +
       `🔗 *Lien de suivi & Facture :* ${trackingUrl}\n\n` +
-      `Merci d'avoir commandé sur Asime Togo ! 🇹🇬`;
+      `Merci d'avoir commandé sur Miabé Asi — Le local, notre fierté ! 🇹🇬`;
     
     const url = `https://wa.me/${merchantPhone}?text=${encodeURIComponent(text)}`;
     window.open(url, "_blank");
@@ -129,12 +129,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-neutral-200">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-logo font-black text-2xl text-neutral-950 tracking-wider">
-                ASIME <span className="text-[#d4af37]">TOGO</span>
+              <span className="font-logo font-black text-2xl text-[#0E5224] tracking-wider">
+                MIABÉ <span className="text-[#C88A24]">ASI</span>
               </span>
             </div>
             <p className="text-[10px] text-neutral-500 uppercase tracking-widest font-semibold">
-              Marketplace Locale de Mode & Artisanat
+              Le local, notre fierté • Marketplace de Produits Togolais
             </p>
             <p className="text-[10px] text-neutral-500">Lomé, République Togolaise • Tél: (+228) {merchantPhone}</p>
           </div>
@@ -166,7 +166,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               CLIENT / DESTINATAIRE
             </h4>
             <p className="text-xs font-bold text-neutral-900">
-              {order.shippingDetails?.name || "Client Asime"}
+              {order.shippingDetails?.name || "Client Miabé Asi"}
             </p>
             <p className="text-xs text-neutral-700">
               📞 Téléphone : {order.shippingDetails?.phone || "N/A"}
@@ -181,13 +181,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               MÉTHODE DE PAIEMENT & LIVRAISON
             </h4>
             <p className="text-xs text-neutral-700">
-              💳 Mode : <strong className="text-neutral-900 uppercase">{order.paymentMethod || "Asime Pay / Mobile Money"}</strong>
+              💳 Mode : <strong className="text-neutral-900 uppercase">{order.paymentMethod || "Miabé Asi Pay / Mobile Money"}</strong>
             </p>
             <p className="text-xs text-neutral-700">
               🚚 Statut Commande : <strong className="text-neutral-900">{order.orderStatus || "En préparation"}</strong>
             </p>
             <p className="text-xs text-neutral-700">
-              🛍️ Service : Asime Express Togo
+              🛍️ Service : Miabé Asi Express Togo
             </p>
           </div>
         </div>
@@ -237,7 +237,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 pt-4 border-t border-neutral-200">
           <div className="text-left space-y-1 max-w-xs">
             <p className="text-[10px] text-neutral-500 leading-tight">
-              Garantie d'Authenticité Produit Local Togo. Pour toute assistance ou réclamation, contactez le support client Asime Togo au (+228) {merchantPhone}.
+              Garantie d'Authenticité Produit Local Togo. Pour toute assistance ou réclamation, contactez le support client Miabé Asi au (+228) {merchantPhone}.
             </p>
             <div className="pt-2 no-print">
               <a 
@@ -270,7 +270,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
         {/* Footer Guarantee */}
         <div className="text-center pt-4 border-t border-neutral-100 text-[10px] text-neutral-400 uppercase tracking-widest font-semibold flex items-center justify-center gap-2">
-          <span>🇹🇬 Asime Togo • Consommer Local &amp; Promouvoir nos Artisans</span>
+          <span>🇹🇬 Miabé Asi • Le local, notre fierté</span>
         </div>
       </div>
     </div>

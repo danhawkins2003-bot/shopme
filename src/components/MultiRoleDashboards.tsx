@@ -100,7 +100,7 @@ const WalletSection: React.FC<WalletSectionProps> = ({ wallet, formatFCFA }) => 
           <Coins className="w-4 h-4 text-[#b8901c]" />
           <h4 className="text-xs font-bold text-neutral-900 uppercase tracking-widest">Portefeuille Virtuel</h4>
         </div>
-        <span className="text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200/50 px-1.5 py-0.5 uppercase">Asime Gateway</span>
+        <span className="text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200/50 px-1.5 py-0.5 uppercase">Miabé Asi Gateway</span>
       </div>
 
       {/* Main Balance */}
@@ -122,7 +122,7 @@ const WalletSection: React.FC<WalletSectionProps> = ({ wallet, formatFCFA }) => 
           <strong className="text-emerald-700 font-mono text-xs">{formatFCFA(totalVentes)}</strong>
         </div>
         <div className="bg-amber-50/30 border border-amber-100/50 p-2">
-          <span className="text-neutral-400 block font-bold uppercase tracking-wide text-[8.5px]">Commissions d'Asime (-)</span>
+          <span className="text-neutral-400 block font-bold uppercase tracking-wide text-[8.5px]">Commissions Miabé Asi (-)</span>
           <strong className="text-amber-800 font-mono text-xs">{formatFCFA(totalCommissions)}</strong>
         </div>
         <div className="bg-rose-50/50 border border-rose-100 p-2">
@@ -559,7 +559,7 @@ export default function MultiRoleDashboards({
           {resetStep === "password" ? (
             <form onSubmit={handleResetPasswordSubmit} className="w-full space-y-4">
               <p className="text-[11px] text-neutral-500 leading-relaxed">
-                Par mesure de sécurité, veuillez saisir le mot de passe de votre compte client Asime pour configurer un nouveau code PIN.
+                Par mesure de sécurité, veuillez saisir le mot de passe de votre compte client Miabé Asi pour configurer un nouveau code PIN.
               </p>
               
               <div>
@@ -692,7 +692,7 @@ export default function MultiRoleDashboards({
           {hasPin ? "Déverrouiller l'Espace Vendeur" : "Sécurisez votre Espace Vendeur"}
         </h3>
         <p className="text-[9px] text-[#d4af37] font-extrabold uppercase tracking-widest mb-4">
-          Protection d'accès Asime Togo
+          Protection d'accès Miabé Asi
         </p>
 
         {!hasPin ? (
@@ -1058,7 +1058,7 @@ export default function MultiRoleDashboards({
           {affilieResetStep === "password" ? (
             <form onSubmit={handleResetPasswordSubmit} className="w-full space-y-4">
               <p className="text-[11px] text-neutral-500 leading-relaxed">
-                Par mesure de sécurité, veuillez saisir le mot de passe de votre compte client Asime pour configurer un nouveau code PIN.
+                Par mesure de sécurité, veuillez saisir le mot de passe de votre compte client Miabé Asi pour configurer un nouveau code PIN.
               </p>
               
               <div>
@@ -1191,7 +1191,7 @@ export default function MultiRoleDashboards({
           {hasPin ? "Déverrouiller l'Espace Affilié" : "Sécurisez votre Espace Affilié"}
         </h3>
         <p className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-widest mb-4">
-          Protection d'accès Asime Togo
+          Protection d'accès Miabé Asi
         </p>
 
         {!hasPin ? (
@@ -1483,7 +1483,7 @@ export default function MultiRoleDashboards({
   const [activeChatId, setActiveChatId] = useState<string | null>("msg_1");
   const [chatInputText, setChatInputText] = useState("");
   const [localPromotions, setLocalPromotions] = useState<any[]>([
-    { id: "promo_1", code: "ASIMEMADE", reduction: "10%", type: "Percentage", applyTo: "Tous les produits", status: "Active", usedCount: 14, expiry: "2026-08-31" },
+    { id: "promo_1", code: "MIABEASI10", reduction: "10%", type: "Percentage", applyTo: "Tous les produits", status: "Active", usedCount: 14, expiry: "2026-08-31" },
     { id: "promo_2", code: "LOME500", reduction: "500 FCFA", type: "Fixed", applyTo: "Savon Noir au Curcuma", status: "Active", usedCount: 8, expiry: "2026-07-31" },
     { id: "promo_3", code: "FESTIVAL20", reduction: "20%", type: "Percentage", applyTo: "Miel Sauvage", status: "Expirée", usedCount: 32, expiry: "2026-06-15" }
   ]);
@@ -1665,7 +1665,7 @@ export default function MultiRoleDashboards({
         prixBarre: newProdPriceBarre ? Number(newProdPriceBarre) : null,
         stock: Number(newProdStock || 0),
         categorie: newProdCategory,
-        partenaire: user?.businessName || user?.name || "Artisan d'Asime",
+        partenaire: user?.businessName || user?.name || "Artisan Miabé Asi",
         vendeurId: user?.id,
         images: newProdImages && newProdImages.length > 0 ? newProdImages : [newProdImageUrl || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80"],
         statut: "Disponible"
@@ -1860,10 +1860,10 @@ export default function MultiRoleDashboards({
       {
         id: "reg-buyer",
         category: "buyer",
-        question: "Comment s'inscrire en tant que membre / client d'Asime Togo ?",
+        question: "Comment s'inscrire en tant que membre / client de Miabé Asi ?",
         answer: (
           <div className="space-y-2">
-            <p>Tout visiteur d'Asime Togo peut s'inscrire ou s'identifier instantanément sur notre plateforme :</p>
+            <p>Tout visiteur de Miabé Asi peut s'inscrire ou s'identifier instantanément sur notre plateforme :</p>
             <ol className="list-decimal pl-4 space-y-1">
               <li>Cliquez sur l'icône de profil ou sur le bouton <strong>"Mon Espace"</strong> situé en haut à droite de l'écran principal.</li>
               <li>Saisissez vos informations personnelles : votre nom complet, votre numéro de téléphone (Mix by Yas ou Flooz de préférence) et votre quartier/ville de résidence au Togo.</li>
@@ -1876,14 +1876,14 @@ export default function MultiRoleDashboards({
       {
         id: "buy-process",
         category: "buyer",
-        question: "Comment passer une commande sur Asime Togo ?",
+        question: "Comment passer une commande sur Miabé Asi ?",
         answer: (
           <div className="space-y-2">
-            <p>Acheter sur Asime Togo soutient directement l'économie locale et les artisans du terroir. Voici comment procéder :</p>
+            <p>Acheter sur Miabé Asi soutient directement l'économie locale et les artisans du terroir. Voici comment procéder :</p>
             <ol className="list-decimal pl-4 space-y-1">
               <li><strong>Parcourez le catalogue :</strong> Utilisez nos catégories (Épices, Miel, Produits alimentaires, Jus naturels, etc.) ou la barre de recherche globale pour trouver des produits authentiques 100% Made in Togo.</li>
               <li><strong>Ajoutez au panier :</strong> Sur la fiche produit, sélectionnez la quantité de votre choix puis cliquez sur <strong>"Ajouter au panier"</strong>.</li>
-              <li><strong>Appliquez un coupon :</strong> Dans votre panier, si vous disposez d'un code de réduction (comme <code className="bg-neutral-100 px-1 py-0.5 rounded text-[#0b4d26] font-mono">ASIME2026</code> ou <code className="bg-neutral-100 px-1 py-0.5 rounded text-[#0b4d26] font-mono">TOGO15</code>), saisissez-le pour appliquer la remise immédiate.</li>
+              <li><strong>Appliquez un coupon :</strong> Dans votre panier, si vous disposez d'un code de réduction (comme <code className="bg-neutral-100 px-1 py-0.5 rounded text-[#0b4d26] font-mono">MIABEASI2026</code> ou <code className="bg-neutral-100 px-1 py-0.5 rounded text-[#0b4d26] font-mono">TOGO15</code>), saisissez-le pour appliquer la remise immédiate.</li>
               <li><strong>Coordonnées de livraison :</strong> Précisez votre adresse de livraison exacte (ville, quartier, rue ou indications géographiques).</li>
               <li><strong>Moyen de paiement :</strong> Choisissez entre le paiement par transfert mobile (Mix by Yas / Flooz) ou le règlement direct en espèces lors de la livraison à domicile ou en point relais.</li>
             </ol>
@@ -1896,12 +1896,12 @@ export default function MultiRoleDashboards({
         question: "Comment créer un compte Vendeur et lancer son Espace Vendeur ?",
         answer: (
           <div className="space-y-2">
-            <p>Asime Togo met à votre disposition un assistant d'inscription en 5 étapes simples pour ouvrir votre e-boutique en quelques minutes :</p>
+            <p>Miabé Asi met à votre disposition un assistant d'inscription en 5 étapes simples pour ouvrir votre e-boutique en quelques minutes :</p>
             <div className="space-y-2 text-neutral-700 bg-neutral-50 p-2.5 border border-neutral-100 text-[10.5px]">
               <p><strong>Étape 1 : Définition des Préférences :</strong> Vous configurez la langue par défaut de l'interface d'administration (Français), le pays d'implantation (Togo) et la devise principale de reversement (FCFA).</p>
               <p><strong>Étape 2 : Nom de votre Boutique :</strong> Donnez un nom unique à votre marque. Choisissez également votre mode de fonctionnement : 
                 <br />• <span className="font-bold text-[#0b4d26]">Mode Autonome :</span> Vous gérez vous-même vos articles, vos tarifs et vos mises à jour.
-                <br />• <span className="font-bold text-[#b8901c]">Mode Assisté :</span> Vous profitez de l'accompagnement complet et des conseils de l'équipe logistique d'Asime pour vous aider au quotidien.
+                <br />• <span className="font-bold text-[#b8901c]">Mode Assisté :</span> Vous profitez de l'accompagnement complet et des conseils de l'équipe logistique de Miabé Asi pour vous aider au quotidien.
               </p>
               <p><strong>Étape 3 : Fiche Produit Initiale :</strong> Publiez votre tout premier article. Remplissez son nom, son tarif en FCFA, sa catégorie et joignez une photo de présentation pour attirer vos premiers clients.</p>
               <p><strong>Étape 4 : Choix des Reversements :</strong> Configurez votre compte de facturation (Mix by Yas ou Flooz) et le numéro de téléphone associé pour recevoir vos reversements de ventes directement.</p>
@@ -1917,7 +1917,7 @@ export default function MultiRoleDashboards({
         answer: (
           <div className="space-y-2">
             <p>Une fois votre inscription finalisée, votre compte apparaît avec le statut <span className="bg-[#b8901c]/10 text-[#b8901c] px-1.5 py-0.5 rounded font-black">En attente d'activation</span>.</p>
-            <p><strong>Processus de validation d'Asime (sous 24h ouvrées) :</strong></p>
+            <p><strong>Processus de validation de Miabé Asi (sous 24h ouvrées) :</strong></p>
             <ul className="list-disc pl-4 space-y-1">
               <li><strong>Vérification du TxID :</strong> Nos administrateurs vérifient que le paiement de votre abonnement a bien été reçu sur le réseau de paiement sélectionné (Mix by Yas ou Flooz).</li>
               <li><strong>Contrôle de conformité Made in Togo :</strong> Nous analysons votre première fiche produit pour s'assurer qu'elle respecte notre charte de qualité locale.</li>
@@ -1929,15 +1929,15 @@ export default function MultiRoleDashboards({
       {
         id: "seller-billing",
         category: "seller",
-        question: "Quelles sont les formules d'abonnement vendeur d'Asime Togo ?",
+        question: "Quelles sont les formules d'abonnement vendeur de Miabé Asi ?",
         answer: (
           <div className="space-y-2">
-            <p>Asime Togo propose trois offres adaptées aux artisans locaux, coopératives et entreprises togolaises :</p>
+            <p>Miabé Asi propose trois offres adaptées aux artisans locaux, coopératives et entreprises togolaises :</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-1">
               <div className="border border-neutral-200 p-2 bg-neutral-50 rounded">
                 <p className="font-extrabold text-neutral-900 text-[11px]">Offre Débutant (Offre 1)</p>
                 <p className="font-bold text-[#b8901c] text-xs font-mono">1 000 FCFA / mois</p>
-                <p className="text-[10px] text-neutral-500 mt-1">Frais de commission d'Asime limités à 10%. Convient aux petits créateurs indépendants.</p>
+                <p className="text-[10px] text-neutral-500 mt-1">Frais de commission de Miabé Asi limités à 10%. Convient aux petits créateurs indépendants.</p>
               </div>
               <div className="border border-neutral-200 p-2 bg-neutral-50 rounded">
                 <p className="font-extrabold text-neutral-900 text-[11px]">Offre Croissance (Offre 2)</p>
@@ -1977,12 +1977,12 @@ export default function MultiRoleDashboards({
         question: "Comment se déroule la gestion des commandes et de la logistique ?",
         answer: (
           <div className="space-y-2">
-            <p>La logistique d'Asime Togo est conçue pour simplifier la vie de nos créateurs locaux :</p>
+            <p>La logistique de Miabé Asi est conçue pour simplifier la vie de nos créateurs locaux :</p>
             <ol className="list-decimal pl-4 space-y-1">
               <li><strong>Notification de commande :</strong> Dès qu'un client achète un produit de votre boutique, vous recevez une notification en temps réel.</li>
               <li><strong>Vérification :</strong> Allez dans l'onglet <strong>"Commandes"</strong> de votre Espace Vendeur pour voir les articles achetés, les informations du destinataire et son numéro.</li>
               <li><strong>Préparation :</strong> Conditionnez soigneusement vos articles dans un emballage adapté sous 24h ouvrées.</li>
-              <li><strong>Prise en charge d'Asime :</strong> Notre équipe logistique ou nos livreurs partenaires passent récupérer le colis à votre adresse ou point relais de collecte pour l'acheminer chez l'acheteur.</li>
+              <li><strong>Prise en charge de Miabé Asi :</strong> Notre équipe logistique ou nos livreurs partenaires passent récupérer le colis à votre adresse ou point relais de collecte pour l'acheminer chez l'acheteur.</li>
             </ol>
           </div>
         )
@@ -1990,10 +1990,10 @@ export default function MultiRoleDashboards({
       {
         id: "charte-togo",
         category: "logistics",
-        question: "Qu'est-ce que la Charte du Made in Togo d'Asime ?",
+        question: "Qu'est-ce que la Charte du Made in Togo de Miabé Asi ?",
         answer: (
           <div className="space-y-2">
-            <p>La <strong>Charte d'Exclusivité du Terroir Togolais</strong> garantit l'authenticité d'Asime Togo :</p>
+            <p>La <strong>Charte d'Exclusivité du Terroir Togolais</strong> garantit l'authenticité de Miabé Asi :</p>
             <ul className="list-disc pl-4 space-y-1">
               <li>Tous les articles répertoriés sur la plateforme doivent être produits, cultivés, transformés, cousus ou récoltés de manière légitime sur le territoire togolais.</li>
               <li>Les articles importés de l'étranger, les produits de revente internationale ou les contrefaçons sont strictement interdits sous peine de suspension immédiate de la boutique.</li>
@@ -2008,7 +2008,7 @@ export default function MultiRoleDashboards({
         question: "Comment fonctionne l'Espace Affiliation & Partage de liens ?",
         answer: (
           <div className="space-y-2">
-            <p>Le programme d'affiliation d'Asime Togo permet à tout ambassadeur du Made in Togo de monétiser son audience ou son réseau :</p>
+            <p>Le programme d'affiliation de Miabé Asi permet à tout ambassadeur du Made in Togo de monétiser son audience ou son réseau :</p>
             <ol className="list-decimal pl-4 space-y-1">
               <li>Rendez-vous dans votre <strong>Espace Affilié</strong> (onglet "Recommander").</li>
               <li>Copiez votre <strong>Lien d'Affiliation Global</strong> ou générez un lien spécifique pour l'un de nos produits phares.</li>
@@ -2024,7 +2024,7 @@ export default function MultiRoleDashboards({
         question: "Comment retirer ses fonds (gains de vente ou d'affiliation) ?",
         answer: (
           <div className="space-y-2">
-            <p>Vos revenus cumulés sont conservés en toute sécurité dans votre <strong>Portefeuille Électronique Local</strong> d'Asime Togo. Pour effectuer un retrait :</p>
+            <p>Vos revenus cumulés sont conservés en toute sécurité dans votre <strong>Portefeuille Électronique Local</strong> de Miabé Asi. Pour effectuer un retrait :</p>
             <ol className="list-decimal pl-4 space-y-1">
               <li>Allez dans l'onglet <strong>"Portefeuille"</strong> de votre Tableau de bord.</li>
               <li>Sélectionnez votre méthode de paiement préférée : <strong>Mix by Yas</strong> ou <strong>Flooz</strong>.</li>
@@ -2148,7 +2148,7 @@ export default function MultiRoleDashboards({
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1 font-mono text-[10px] text-neutral-700 font-bold">
             <p>📞 Service Client : <span className="text-[#0b4d26]">+228 90 00 00 00</span></p>
             <p>💬 WhatsApp Pro : <span className="text-[#0b4d26]">+228 99 11 22 33</span></p>
-            <p>✉️ Email : <span className="text-[#0b4d26]">support@asime.tg</span></p>
+            <p>✉️ Email : <span className="text-[#0b4d26]">support@miabeasi.tg</span></p>
           </div>
         </div>
       </div>
@@ -2207,7 +2207,7 @@ export default function MultiRoleDashboards({
   // Render special offers promo view
   const renderPromosView = () => {
     const coupons = [
-      { code: "ASIME2026", discount: "15% de réduction", desc: "Valable sur tout le catalogue local pour célébrer le savoir-faire togolais.", expiry: "31 Déc. 2026" },
+      { code: "MIABEASI2026", discount: "15% de réduction", desc: "Valable sur tout le catalogue local pour célébrer le savoir-faire togolais.", expiry: "31 Déc. 2026" },
       { code: "TOGO15", discount: "Livraison gratuite", desc: "Livraison 100% offerte à Lomé pour toute commande de plus de 10 000 FCFA.", expiry: "Toujours actif" },
       { code: "MIELETERROIR", discount: "500 FCFA offerts", desc: "Applicable exclusivement sur la catégorie 'Miel' et 'Épices'.", expiry: "En cours" }
     ];
@@ -2250,7 +2250,7 @@ export default function MultiRoleDashboards({
 
     return (
       <div className="space-y-4 text-left animate-fade-in font-sans">
-        <p className="text-[11px] text-neutral-500">Retrouvez ici vos articles locaux préférés d'Asime Togo pour les ajouter à votre panier à tout moment.</p>
+        <p className="text-[11px] text-neutral-500">Retrouvez ici vos articles locaux préférés de Miabé Asi pour les ajouter à votre panier à tout moment.</p>
         {favoriteItems.length === 0 ? (
           <div className="text-center py-10 bg-neutral-50 border border-neutral-200">
             <Gift className="w-8 h-8 text-neutral-300 mx-auto mb-2" />
@@ -2391,7 +2391,7 @@ export default function MultiRoleDashboards({
             <ChevronRight className="w-4 h-4 text-neutral-400 ml-auto" />
           </button>
 
-          {/* Row 6: Vendre sur Asime */}
+          {/* Row 6: Vendre sur Miabé Asi */}
           <button
             type="button"
             onClick={() => {
@@ -2402,7 +2402,7 @@ export default function MultiRoleDashboards({
           >
             <ShoppingBag className="w-5 h-5 text-neutral-800 shrink-0" />
             <span className="text-xs font-bold text-neutral-800 tracking-wide font-sans">
-              {user?.role === "vendeur" ? "Tableau de bord Vendeur" : "Vendre sur Asime"}
+              {user?.role === "vendeur" ? "Tableau de bord Vendeur" : "Vendre sur Miabé Asi"}
             </span>
             <ChevronRight className="w-4 h-4 text-neutral-400 ml-auto" />
           </button>
@@ -2453,7 +2453,7 @@ export default function MultiRoleDashboards({
 
         {/* Footer info matching footer height styling */}
         <div className="p-4 border-t border-neutral-100 bg-neutral-50 text-center select-none text-[10px] text-neutral-400 font-medium">
-          Asime Togo © {new Date().getFullYear()} – Le local, notre fierté
+          Miabé Asi © {new Date().getFullYear()} – Le local, notre fierté
         </div>
       </div>
     );
@@ -2501,13 +2501,13 @@ export default function MultiRoleDashboards({
               <span>Instruction de validation d'activation</span>
             </p>
             <p className="leading-relaxed">
-              Veuillez transférer les frais d'abonnement mensuels au numéro administratif d'Asime Togo:
+              Veuillez transférer les frais d'abonnement mensuels au numéro administratif de Miabé Asi:
             </p>
             <p className="font-mono font-bold text-neutral-950 bg-white p-2 border border-amber-200 inline-block">
               {user?.vendeurPaymentMethod === "Flooz" ? "Flooz : +228 99 12 34 56" : "TMoney : +228 90 12 34 56"}
             </p>
             <p className="leading-relaxed text-neutral-600 font-medium mt-1">
-              Dès réception du transfert, l'administrateur Asime validera manuellement votre transaction depuis son espace de gestion et activera votre boutique. Vous recevrez instantanément une notification SMS et un e-mail de confirmation.
+              Dès réception du transfert, l'administrateur Miabé Asi validera manuellement votre transaction depuis son espace de gestion et activera votre boutique. Vous recevrez instantanément une notification SMS et un e-mail de confirmation.
             </p>
           </div>
         </div>
@@ -2668,7 +2668,7 @@ export default function MultiRoleDashboards({
 
                       <div className="bg-[#f56a3f]/5 border border-[#f56a3f]/25 p-3.5 text-[10.5px] leading-relaxed text-neutral-600">
                         <p className="font-extrabold text-[#d24c22] mb-0.5">Note importante :</p>
-                        Asime Togo promeut l'économie locale et le savoir-faire togolais. Le pays de votre boutique est configuré par défaut sur le <strong>Togo</strong> pour optimiser le routage de livraison et garantir l'authenticité de nos produits du terroir.
+                        Miabé Asi promeut l'économie locale et le savoir-faire togolais. Le pays de votre boutique est configuré par défaut sur le <strong>Togo</strong> pour optimiser le routage de livraison et garantir l'authenticité de nos produits du terroir.
                       </div>
 
                       <button
@@ -2784,7 +2784,7 @@ export default function MultiRoleDashboards({
                             }`}
                           >
                             <p className="text-xs font-bold text-neutral-950 uppercase tracking-wider">Mode Assisté</p>
-                            <p className="text-[9.5px] text-neutral-500 leading-relaxed mt-1 font-sans">L'équipe logistique d'Asime prend en charge la livraison.</p>
+                            <p className="text-[9.5px] text-neutral-500 leading-relaxed mt-1 font-sans">L'équipe logistique de Miabé Asi prend en charge la livraison.</p>
                           </button>
                         </div>
                       </div>
@@ -2917,7 +2917,7 @@ export default function MultiRoleDashboards({
                       <div className="flex flex-col justify-center items-center bg-[#fdfaf5] p-4 border border-dashed border-amber-200/80">
                         <span className="text-[9.5px] font-black uppercase tracking-widest text-[#b8901c] mb-2.5 flex items-center gap-1">
                           <Eye className="w-3.5 h-3.5" />
-                          <span>Aperçu de la fiche produit (Style Asime)</span>
+                          <span>Aperçu de la fiche produit (Style Miabé Asi)</span>
                         </span>
 
                         <div className="w-[190px] bg-white border border-neutral-200/80 shadow-xs hover:shadow-md transition-all duration-300">
@@ -2985,7 +2985,7 @@ export default function MultiRoleDashboards({
                       <Wallet className="w-10 h-10 text-[#f56a3f] mx-auto mb-2" />
                       <h4 className="text-xs font-black text-neutral-950 uppercase tracking-wider">Facturation & Reversements</h4>
                       <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-sm mx-auto">
-                        Pour que les clients d'Asime puissent vous payer en toute sécurité, configurez votre moyen préféré de reversement automatique des fonds.
+                        Pour que les clients de Miabé Asi puissent vous payer en toute sécurité, configurez votre moyen préféré de reversement automatique des fonds.
                       </p>
                     </div>
 
@@ -3119,7 +3119,7 @@ export default function MultiRoleDashboards({
                   <div className="space-y-4 animate-fade-in font-sans">
                     <div className="text-center py-1">
                       <Coins className="w-10 h-10 text-[#f56a3f] mx-auto mb-2" />
-                      <h4 className="text-xs font-black text-neutral-950 uppercase tracking-wider">Abonnement & Activation d'Asime</h4>
+                      <h4 className="text-xs font-black text-neutral-950 uppercase tracking-wider">Abonnement & Activation de Miabé Asi</h4>
                       <p className="text-[11px] text-neutral-500 mt-1 leading-relaxed max-w-sm mx-auto">
                         Sélectionnez votre formule mensuelle pour finaliser votre ouverture de boutique.
                       </p>
@@ -3156,7 +3156,7 @@ export default function MultiRoleDashboards({
                     <div className="bg-emerald-50 border border-emerald-200/60 p-4 space-y-2.5 text-neutral-800">
                       <p className="font-bold text-[10.5px] text-emerald-800 flex items-center gap-1.5 uppercase tracking-wide">
                         <span className="w-1.5 h-1.5 bg-emerald-600 rounded-full animate-ping"></span>
-                        <span>Paiement Direct Automatisé via Asime Pay</span>
+                        <span>Paiement Direct Automatisé via Miabé Asi Pay</span>
                       </p>
                       <p className="text-[11px] leading-relaxed">
                         Le paiement des frais de votre première mensualité de l'abonnement <strong>({selectedSubscription === "Offre 3" ? "5 000" : selectedSubscription === "Offre 2" ? "3 000" : "1 000"} FCFA)</strong> sera traité de manière entièrement sécurisée et automatique.
@@ -3172,9 +3172,9 @@ export default function MultiRoleDashboards({
 
                     {/* CGU Terms of Sale checkbox */}
                     <div className="bg-white p-3 border border-neutral-200 max-h-36 overflow-y-auto text-[10.5px] text-neutral-600 space-y-2.5 leading-relaxed font-sans">
-                      <p className="font-extrabold text-neutral-950 text-[10px] uppercase tracking-wide mb-1 border-b border-neutral-100 pb-1">Conditions de Vente de la Marketplace Asime</p>
+                      <p className="font-extrabold text-neutral-950 text-[10px] uppercase tracking-wide mb-1 border-b border-neutral-100 pb-1">Conditions de Vente de la Marketplace Miabé Asi</p>
                       <p><strong>Charte du Made in Togo :</strong> En vous inscrivant comme vendeur, vous certifiez sur l'honneur que tous vos articles sont confectionnés, transformés, récoltés ou fabriqués au Togo. Les produits importés de l'étranger ou contrefaits sont strictement interdits.</p>
-                      <p><strong>Commission &amp; Paiement :</strong> Asime prélève une commission de 10% sur chaque commande pour assurer la coordination, le service client et la passerelle de paiement. Vos fonds de ventes vous sont reversés sous 24h ouvrées.</p>
+                      <p><strong>Commission &amp; Paiement :</strong> Miabé Asi prélève une commission de 10% sur chaque commande pour assurer la coordination, le service client et la passerelle de paiement. Vos fonds de ventes vous sont reversés sous 24h ouvrées.</p>
                     </div>
 
                     <div className="flex items-start gap-2 pt-1 select-none">
@@ -3186,7 +3186,7 @@ export default function MultiRoleDashboards({
                         className="mt-0.5 cursor-pointer h-4 w-4 border-neutral-300 rounded"
                       />
                       <label htmlFor="cgu_check" className="text-[11px] font-sans text-neutral-800 leading-snug cursor-pointer select-none">
-                        J’accepte la charte d'authenticité, les conditions générales d’Asime et confirme l'autorisation de prélèvement.
+                        J’accepte la charte d'authenticité, les conditions générales de Miabé Asi et confirme l'autorisation de prélèvement.
                       </label>
                     </div>
 
@@ -3208,7 +3208,7 @@ export default function MultiRoleDashboards({
                         }}
                         className="bg-neutral-950 hover:bg-[#f56a3f] text-white font-black uppercase tracking-wider py-2.5 text-[10px] transition-all rounded-none cursor-pointer text-center disabled:opacity-40"
                       >
-                        {isSubmittingReg ? "Création en cours..." : "Créer ma boutique Asime"}
+                        {isSubmittingReg ? "Création en cours..." : "Créer ma boutique Miabé Asi"}
                       </button>
                     </div>
                   </div>
@@ -3358,14 +3358,14 @@ export default function MultiRoleDashboards({
     if (user?.role !== "affilie") {
       return (
         <div className="flex flex-col h-full bg-[#FAF9F5] select-none w-full overflow-hidden">
-          {renderEscapeHeader("Devenir Affilié Local", "Programme de Recommandation Asime")}
+          {renderEscapeHeader("Devenir Affilié Local", "Programme de Recommandation Miabé Asi")}
           <div className="flex-grow overflow-y-auto p-4 md:p-10 max-w-xl mx-auto w-full flex items-center justify-center">
             <div className="bg-white border border-neutral-200 p-8 shadow-sm space-y-6 text-left rounded-2xl animate-fade-in">
               <div className="text-center">
                 <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-4">
                   <DollarSign className="w-8 h-8 text-emerald-600" />
                 </div>
-                <h4 className="text-base font-black text-neutral-950 uppercase tracking-wider">Programme d'Affiliation Local Asime</h4>
+                <h4 className="text-base font-black text-neutral-950 uppercase tracking-wider">Programme d'Affiliation Local Miabé Asi</h4>
                 <p className="text-xs text-neutral-500 leading-relaxed max-w-sm mx-auto mt-2 font-sans">
                   Recommandez les produits de nos artisans locaux, partagez votre lien d'affiliation unique et gagnez <strong className="text-neutral-950">3% de commission</strong> sur chaque vente validée !
                 </p>
@@ -3660,7 +3660,7 @@ export default function MultiRoleDashboards({
               <div className="bg-neutral-50 border border-neutral-200 p-5 space-y-4">
                 <div className="text-center">
                   <DollarSign className="w-12 h-12 text-[#d4af37] mx-auto mb-2" />
-                  <h4 className="text-sm font-black text-neutral-950 uppercase tracking-wider">Programme d'Affiliation Local Asime</h4>
+                  <h4 className="text-sm font-black text-neutral-950 uppercase tracking-wider">Programme d'Affiliation Local Miabé Asi</h4>
                   <p className="text-xs text-neutral-500 leading-relaxed max-w-sm mx-auto mt-2 font-sans">
                     Recommandez les produits de nos artisans locaux, partagez votre lien d'affiliation unique et gagnez <strong className="text-neutral-950">3% de commission</strong> sur chaque vente validée !
                   </p>

@@ -932,12 +932,12 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     return makeResponse(providers, 200, true);
   }
 
-  // --- PAYMENTS: INITIATE SESSION (Requires real API configuration) ---
+  // --- PAYMENTS: INITIATE SESSION (Real backend PayDunya integration) ---
   if (cleanRoute === "/api/payments/initiate" && method === "POST") {
     return makeResponse({
       success: false,
-      error: "Clés de paiement PayDunya non configurées. Veuillez renseigner PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY et PAYDUNYA_TOKEN dans votre fichier .env pour activer le paiement en direct."
-    }, 400, false);
+      error: "Impossible de joindre le serveur de paiement backend. Vérifiez que le serveur fonctionne et que les variables PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY et PAYDUNYA_TOKEN sont bien enregistrées dans votre fichier .env."
+    }, 503, false);
   }
 
   // --- EMULATED PAYMENTS: CONFIRM & SPLIT FUNDS ---
@@ -1434,7 +1434,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
           unread: false,
           messages: [
             { sender: "customer", text: "Salut, j'aimerais commander 3 pots de miel de Dapaong.", date: new Date(Date.now() - 86400000).toISOString() },
-            { sender: "seller", text: "Bonjour Koffi, avec plaisir ! Nous pouvons expédier via le réseau de colis Asime.", date: new Date(Date.now() - 80000000).toISOString() },
+            { sender: "seller", text: "Bonjour Koffi, avec plaisir ! Nous pouvons expédier via le réseau de colis Miabé Asi.", date: new Date(Date.now() - 80000000).toISOString() },
             { sender: "customer", text: "Pouvez-vous m'envoyer un colis par le réseau de bus ?", date: new Date(Date.now() - 72000000).toISOString() }
           ]
         }
@@ -1469,7 +1469,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     const threads = JSON.parse(localStorage.getItem("asime_emulated_messages") || "[]");
     const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
     const currentUser = users.find((u: any) => u.id === userId);
-    const currentUserName = currentUser ? currentUser.name : "Client Asime";
+    const currentUserName = currentUser ? currentUser.name : "Client Miabé Asi";
 
     let thread: any;
     if (threadId) {
@@ -1478,7 +1478,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       thread = threads.find((t: any) => t.customerId === userId && t.sellerId === sellerId);
       if (!thread) {
         const targetSeller = users.find((u: any) => u.id === sellerId);
-        const targetSellerName = sellerName || (targetSeller ? (targetSeller.businessName || targetSeller.name) : "Boutique Asime");
+        const targetSellerName = sellerName || (targetSeller ? (targetSeller.businessName || targetSeller.name) : "Boutique Miabé Asi");
         thread = {
           id: "thread_" + Date.now().toString() + Math.floor(Math.random() * 100),
           customerId: userId,
@@ -1486,7 +1486,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
           avatar: currentUserName.substring(0, 2).toUpperCase(),
           sellerId: sellerId,
           sellerName: targetSellerName,
-          product: productName || "Produit Asime",
+          product: productName || "Produit Miabé Asi",
           lastMessage: text,
           unread: true,
           messages: []
@@ -1975,6 +1975,134 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       totalProducts: products.length,
       totalRevenue
     }, 200, true);
+  }
+
+  if (cleanRoute === "/api/showcase") {
+    if (method === "GET") {
+      const defaultShowcase = {
+        heroCards: [
+          {
+            id: "miel_dore",
+            title: "Notre Miel Doré",
+            subtitle: "100% sauvage, récolté à Kpalimé du plateau forestier.",
+            imageUrl: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=600",
+            category: "Made in Togo Premium",
+            searchQuery: "Miel"
+          },
+          {
+            id: "soin_karite",
+            title: "Soin au Karité",
+            subtitle: "Pressé par notre coopérative de femmes solidaires.",
+            imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?auto=format&fit=crop&q=80&w=600",
+            category: "Made in Togo Premium",
+            searchQuery: "Karité"
+          },
+          {
+            id: "paniers_kovie",
+            title: "Paniers de Kovié",
+            subtitle: "Cueillette du matin, fraîcheur livrée sous 24h à Lomé.",
+            imageUrl: "https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&q=80&w=600",
+            category: "Paniers Frais & Épicerie",
+            searchQuery: ""
+          },
+          {
+            id: "hibiscus_epices",
+            title: "Hibiscus & Épices",
+            subtitle: "Pour vos infusions et bienfaits naturels au quotidien.",
+            imageUrl: "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?auto=format&fit=crop&q=80&w=600",
+            category: "Made in Togo Premium",
+            searchQuery: "Thé"
+          }
+        ],
+        galleryCards: [
+          {
+            id: "ceramiques_mandouri",
+            title: "Céramiques de Mandouri",
+            collection: "Terre Cuite & Argile",
+            tag: "Argile Sacrée",
+            subtitle: "Des œuvres façonnées en argile brute issues de gisements sacrés de l'extrême Nord du Togo.",
+            imageUrl: "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&q=80&w=800",
+            category: "Made in Togo Premium",
+            searchQuery: "Argile"
+          },
+          {
+            id: "tissage_aneho",
+            title: "Tissage d'Aného",
+            collection: "Raphia & Fibres Organiques",
+            tag: "100% Organique",
+            subtitle: "Tressage méticuleux des fibres végétales pour concevoir des sacs et paniers de prestige.",
+            imageUrl: "https://images.unsplash.com/photo-1590736704728-f4730bb30770?auto=format&fit=crop&q=80&w=800",
+            category: "Made in Togo Premium",
+            searchQuery: "Raphia"
+          },
+          {
+            id: "miels_kpalime",
+            title: "Miels de Kpalimé",
+            collection: "Nectar Sauvage & Café",
+            tag: "Nectar d'Altitude",
+            subtitle: "Récoltes biologiques au cœur des forêts denses du plateau du Togo.",
+            imageUrl: "https://images.unsplash.com/photo-1471193945509-9ad0617afabf?auto=format&fit=crop&q=80&w=800",
+            category: "Made in Togo Premium",
+            searchQuery: "Miel"
+          },
+          {
+            id: "soin_solidaire",
+            title: "Soin Solidaire",
+            collection: "Karité de Tandjouaré",
+            tag: "100% Brut",
+            subtitle: "L'excellence des huiles pressées à l'état pur par notre collective de femmes solidaires.",
+            imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&q=80&w=800",
+            category: "Made in Togo Premium",
+            searchQuery: "Karité"
+          }
+        ]
+      };
+      try {
+        const stored = localStorage.getItem("asime_showcase_cards");
+        if (stored) {
+          return makeResponse(JSON.parse(stored), 200, true);
+        }
+      } catch (e) {}
+      return makeResponse(defaultShowcase, 200, true);
+    }
+
+    if (method === "POST") {
+      try {
+        const body = init?.body ? JSON.parse(init.body as string) : {};
+        const stored = localStorage.getItem("asime_showcase_cards");
+        const current = stored ? JSON.parse(stored) : { heroCards: [], galleryCards: [] };
+        const updated = {
+          heroCards: Array.isArray(body.heroCards) ? body.heroCards : current.heroCards,
+          galleryCards: Array.isArray(body.galleryCards) ? body.galleryCards : current.galleryCards,
+        };
+        localStorage.setItem("asime_showcase_cards", JSON.stringify(updated));
+        return makeResponse({ success: true, showcase: updated }, 200, true);
+      } catch (err: any) {
+        return makeResponse({ success: false, error: err.message }, 500, false);
+      }
+    }
+  }
+
+  if (cleanRoute === "/api/banners") {
+    if (method === "GET") {
+      try {
+        const stored = localStorage.getItem("asime_promo_slides");
+        if (stored) {
+          return makeResponse(JSON.parse(stored), 200, true);
+        }
+      } catch (e) {}
+      return makeResponse(null, 200, true);
+    }
+    if (method === "POST") {
+      try {
+        const body = init?.body ? JSON.parse(init.body as string) : {};
+        if (Array.isArray(body.slides)) {
+          localStorage.setItem("asime_promo_slides", JSON.stringify(body.slides));
+          return makeResponse({ success: true, slides: body.slides }, 200, true);
+        }
+      } catch (e) {}
+      return makeResponse({ success: false }, 400, false);
+    }
   }
 
   if (cleanRoute === "/api/settings") {

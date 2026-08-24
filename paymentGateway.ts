@@ -2,27 +2,66 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
-function loadEnvFile() {
-  try {
-    const envPath = path.join(process.cwd(), ".env");
-    if (fs.existsSync(envPath)) {
-      const content = fs.readFileSync(envPath, "utf-8");
-      for (const line of content.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
-          const [key, ...vals] = trimmed.split("=");
-          const k = key.trim();
-          let v = vals.join("=").trim();
-          if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-            v = v.slice(1, -1);
+function loadEnvFile(): Record<string, string> {
+  const envMap: Record<string, string> = {};
+  const possiblePaths = [
+    path.join(process.cwd(), ".env"),
+    "./.env",
+    "../.env",
+    "/app/.env"
+  ];
+
+  for (const envPath of possiblePaths) {
+    try {
+      if (fs.existsSync(envPath)) {
+        let content = fs.readFileSync(envPath, "utf-8");
+        // Remove BOM if present
+        if (content.charCodeAt(0) === 0xFEFF) {
+          content = content.slice(1);
+        }
+        for (const line of content.split(/\r?\n/)) {
+          let trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) continue;
+          
+          // Remove optional "export " prefix
+          if (trimmed.startsWith("export ")) {
+            trimmed = trimmed.substring(7).trim();
           }
-          if (k && v && !process.env[k]) {
-            process.env[k] = v;
+
+          const eqIdx = trimmed.indexOf("=");
+          if (eqIdx > -1) {
+            const key = trimmed.slice(0, eqIdx).trim();
+            let val = trimmed.slice(eqIdx + 1).trim();
+
+            // Strip inline comments if not inside quotes
+            if (!val.startsWith('"') && !val.startsWith("'")) {
+              const hashIdx = val.indexOf("#");
+              if (hashIdx > -1) {
+                val = val.slice(0, hashIdx).trim();
+              }
+            }
+
+            // Strip surrounding single or double quotes
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1).trim();
+            }
+
+            if (key && val) {
+              envMap[key] = val;
+              envMap[key.toUpperCase()] = val;
+              envMap[key.toLowerCase()] = val;
+              process.env[key] = val;
+              process.env[key.toUpperCase()] = val;
+            }
           }
         }
       }
+    } catch (e) {
+      console.warn(`[PaymentGateway] Notice reading env at ${envPath}:`, e);
     }
-  } catch (e) {}
+  }
+
+  return envMap;
 }
 
 export interface PaymentCustomerDetails {
@@ -158,13 +197,57 @@ export class PayDunyaProvider implements IPaymentProvider {
   supportedMethods = ["mobile_money", "card"];
 
   private getApiKeys() {
-    loadEnvFile();
+    const envMap = loadEnvFile();
 
-    const masterKey = (process.env.PAYDUNYA_MASTER_KEY || process.env.PAYDUNYA_MASTER_TOKEN || process.env.PAYDUNYA_MASTER || process.env.PAYDUNYA_KEY_MASTER || "").trim();
-    const privateKey = (process.env.PAYDUNYA_PRIVATE_KEY || process.env.PAYDUNYA_SECRET_KEY || process.env.PAYDUNYA_PRIVATE || process.env.PAYDUNYA_SECRET || "").trim();
-    const token = (process.env.PAYDUNYA_TOKEN || process.env.PAYDUNYA_PUBLIC_KEY || process.env.PAYDUNYA_PUBLIC_TOKEN || process.env.PAYDUNYA_KEY || "").trim();
+    // Check all possible aliases in process.env and directly parsed envMap
+    const findKey = (...aliases: string[]): string => {
+      for (const a of aliases) {
+        if (process.env[a] && process.env[a]!.trim()) return process.env[a]!.trim();
+        if (process.env[a.toUpperCase()] && process.env[a.toUpperCase()]!.trim()) return process.env[a.toUpperCase()]!.trim();
+        if (process.env[a.toLowerCase()] && process.env[a.toLowerCase()]!.trim()) return process.env[a.toLowerCase()]!.trim();
+        if (envMap[a] && envMap[a].trim()) return envMap[a].trim();
+        if (envMap[a.toUpperCase()] && envMap[a.toUpperCase()].trim()) return envMap[a.toUpperCase()].trim();
+        if (envMap[a.toLowerCase()] && envMap[a.toLowerCase()].trim()) return envMap[a.toLowerCase()].trim();
+      }
+      return "";
+    };
+
+    const masterKey = findKey(
+      "PAYDUNYA_MASTER_KEY",
+      "PAYDUNYA_MASTER",
+      "PAYDUNYA_MASTER_TOKEN",
+      "PAYDUNYA_KEY_MASTER",
+      "PAYDUNYA_MASTERKEY",
+      "MASTER_KEY",
+      "MASTER_TOKEN"
+    );
+
+    const privateKey = findKey(
+      "PAYDUNYA_PRIVATE_KEY",
+      "PAYDUNYA_SECRET_KEY",
+      "PAYDUNYA_PRIVATE",
+      "PAYDUNYA_SECRET",
+      "PAYDUNYA_PRIVATEKEY",
+      "PAYDUNYA_SECRETKEY",
+      "PAYDUNYA_API_SECRET",
+      "PRIVATE_KEY",
+      "SECRET_KEY"
+    );
+
+    const token = findKey(
+      "PAYDUNYA_TOKEN",
+      "PAYDUNYA_PUBLIC_KEY",
+      "PAYDUNYA_PUBLIC_TOKEN",
+      "PAYDUNYA_KEY",
+      "PAYDUNYA_PUBLIC",
+      "PAYDUNYA_PUBLICKEY",
+      "PAYDUNYA_API_KEY",
+      "PAYDUNYA_API_TOKEN",
+      "PUBLIC_KEY",
+      "TOKEN"
+    );
     
-    let modeInput = (process.env.PAYDUNYA_MODE || "").toLowerCase().trim();
+    let modeInput = findKey("PAYDUNYA_MODE", "PAYDUNYA_ENV", "PAYDUNYA_ENVIRONMENT").toLowerCase();
     let mode = "test";
     if (modeInput === "production" || modeInput === "prod" || modeInput === "live" || (!modeInput && (privateKey || token))) {
       mode = "live";
@@ -216,7 +299,7 @@ export class PayDunyaProvider implements IPaymentProvider {
           order_id: orderId,
           customer_name: customer.name,
           customer_phone: customer.phone,
-          customer_email: customer.email || "support@asime228.com"
+          customer_email: customer.email || "support@miabeasi.com"
         },
         actions: {
           cancel_url: `${process.env.APP_URL || "http://localhost:3000"}/order-history?payment=cancel&orderId=${orderId}`,

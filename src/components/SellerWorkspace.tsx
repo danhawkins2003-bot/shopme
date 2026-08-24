@@ -131,7 +131,7 @@ export default function SellerWorkspace({
   // Shop Profile Customization States
   const [shopSlogan, setShopSlogan] = useState("Artisanat authentique & Trésors du Togo");
   const [shopAnnouncement, setShopAnnouncement] = useState("Bienvenue chez nous ! Toutes nos créations sont confectionnées à la main avec passion et amour dans notre atelier de Lomé. Livraison gratuite à partir de 20 000 FCFA.");
-  const [shopStory, setShopStory] = useState("Notre voyage a commencé dans un petit atelier familial. Aujourd'hui, nous collaborons avec des tisserands et artisans locaux pour vous apporter le meilleur du terroir togolais sur Asime.");
+  const [shopStory, setShopStory] = useState("Notre voyage a commencé dans un petit atelier familial. Aujourd'hui, nous collaborons avec des tisserands et artisans locaux pour vous apporter le meilleur du terroir togolais sur Miabé Asi.");
   const [shopBanner, setShopBanner] = useState("https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=1200&q=80");
   const [shopLogoText, setShopLogoText] = useState(user?.businessName ? user.businessName.substring(0, 2) : (user?.name ? user.name.substring(0, 2) : "AS"));
   const [shopName, setShopName] = useState(user?.businessName || user?.name || "Boutique d'Artisanat");
@@ -174,7 +174,7 @@ export default function SellerWorkspace({
       unread: false,
       messages: [
         { sender: "customer", text: "Salut, j'aimerais commander 3 pots de miel de Dapaong.", date: "Hier, 14:20" },
-        { sender: "seller", text: "Bonjour Koffi, avec plaisir ! Nous pouvons expédier via le réseau de colis Asime.", date: "Hier, 14:45" },
+        { sender: "seller", text: "Bonjour Koffi, avec plaisir ! Nous pouvons expédier via le réseau de colis Miabé Asi.", date: "Hier, 14:45" },
         { sender: "customer", text: "Pouvez-vous m'envoyer un colis par le réseau de bus ?", date: "Hier, 15:10" }
       ]
     },
@@ -242,7 +242,7 @@ export default function SellerWorkspace({
 
   // Local state for Promo Codes
   const [promos, setPromos] = useState<any[]>([
-    { id: "p1", code: "ASIME2026", type: "pourcentage", value: 10, expiry: "2026-12-31", active: true },
+    { id: "p1", code: "MIABEASI2026", type: "pourcentage", value: 10, expiry: "2026-12-31", active: true },
     { id: "p2", code: "TERROIR5", type: "fixe", value: 2500, expiry: "2026-08-15", active: true }
   ]);
   const [newPromoCode, setNewPromoCode] = useState("");
@@ -489,7 +489,7 @@ export default function SellerWorkspace({
                 <Store className="w-5 h-5" />
               </div>
               <div className="text-left">
-                <h2 className="text-sm font-black tracking-widest text-white uppercase font-sans">ASIME SHOP</h2>
+                <h2 className="text-sm font-black tracking-widest text-white uppercase font-sans">MIABÉ ASI SHOP</h2>
                 <span className="text-[9px] font-bold text-[#d4af37] uppercase tracking-wider font-sans">Studio Artisan</span>
               </div>
             </div>
@@ -597,7 +597,7 @@ export default function SellerWorkspace({
               }`}
             >
               <Megaphone className="w-4 h-4 shrink-0" />
-              <span>Publicité Asime Ads</span>
+              <span>Publicité Miabé Asi Ads</span>
             </button>
 
             <button
@@ -656,7 +656,7 @@ export default function SellerWorkspace({
             Mode Boutique : <strong className="text-[#d4af37]">{user?.vendeurMode || "AUTONOME"}</strong>
           </p>
           <p className="text-[8px] text-stone-600 mt-1">
-            Asime Shop Studio • Lomé, Togo
+            Miabé Asi Shop Studio • Lomé, Togo
           </p>
         </div>
       </aside>
@@ -954,7 +954,7 @@ export default function SellerWorkspace({
 
               </div>
 
-              {/* Quick Navigation Help Alert (Asime Advisor Checklist Style) */}
+              {/* Quick Navigation Help Alert (Miabé Asi Advisor Checklist Style) */}
               <div className="bg-[#0B4D26]/5 border border-[#0B4D26]/20 p-4 rounded-xl flex items-start gap-3">
                 <Store className="w-5 h-5 text-[#0B4D26] shrink-0 mt-0.5" />
                 <div>
@@ -1692,7 +1692,7 @@ export default function SellerWorkspace({
                           
                           {reviewReplies[review.id] ? (
                             <div className="text-left">
-                              <p className="text-xs font-sans font-bold text-neutral-800">Votre boutique Asime :</p>
+                              <p className="text-xs font-sans font-bold text-neutral-800">Votre boutique Miabé Asi :</p>
                               <p className="text-xs text-neutral-600 font-sans mt-1 leading-relaxed">{reviewReplies[review.id]}</p>
                             </div>
                           ) : (
@@ -1978,13 +1978,13 @@ export default function SellerWorkspace({
                       <div className="p-3 border-t border-stone-100 bg-stone-50 flex items-center gap-2 flex-wrap select-none">
                         <span className="text-[9px] font-black text-stone-400 uppercase tracking-widest block">Modèles rapides :</span>
                         <button
-                          onClick={() => setChatMessage("Bonjour ! Merci beaucoup d'avoir choisi Asime Togo. Votre commande est bien enregistrée et nous préparons vos produits artisanaux faits main avec le plus grand soin. À très bientôt !")}
+                          onClick={() => setChatMessage("Bonjour ! Merci beaucoup d'avoir choisi Miabé Asi. Votre commande est bien enregistrée et nous préparons vos produits artisanaux faits main avec le plus grand soin. À très bientôt !")}
                           className="bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] px-2.5 py-1 rounded-full cursor-pointer transition-colors"
                         >
                           ✉️ Merci & Accueil
                         </button>
                         <button
-                          onClick={() => setChatMessage("Bonjour ! Nous vous informons que votre colis Asime a été expédié aujourd'hui depuis notre atelier de Lomé. Vous recevrez une notification par SMS très bientôt. Merci pour votre confiance !")}
+                          onClick={() => setChatMessage("Bonjour ! Nous vous informons que votre colis Miabé Asi a été expédié aujourd'hui depuis notre atelier de Lomé. Vous recevrez une notification par SMS très bientôt. Merci pour votre confiance !")}
                           className="bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 text-[10px] px-2.5 py-1 rounded-full cursor-pointer transition-colors"
                         >
                           📦 Expédition
@@ -2132,10 +2132,10 @@ export default function SellerWorkspace({
                 <div>
                   <div className="flex items-center gap-2 text-[#0B4D26]">
                     <Megaphone className="w-5 h-5" />
-                    <h4 className="text-xs font-black uppercase tracking-wider">Asime Ads</h4>
+                    <h4 className="text-xs font-black uppercase tracking-wider">Miabé Asi Ads</h4>
                   </div>
                   <p className="text-xs text-stone-600 mt-1 leading-relaxed">
-                    Boostez la visibilité de vos fiches produits sur le catalogue Asime Togo. Payez uniquement lorsque des acheteurs cliquent sur vos annonces.
+                    Boostez la visibilité de vos fiches produits sur le catalogue Miabé Asi. Payez uniquement lorsque des acheteurs cliquent sur vos annonces.
                   </p>
                 </div>
                 
@@ -2193,7 +2193,7 @@ export default function SellerWorkspace({
                   </div>
 
                   <p className="text-[10px] text-neutral-400 font-medium leading-relaxed mt-4 pt-4 border-t border-stone-100">
-                    💡 Avec un budget de {formatFCFA(dailyBudget)}/jour, vos fiches publicitaires apparaîtront environ <strong className="text-stone-700">{Math.floor(dailyBudget * 0.12 * 5.4)} fois</strong> par jour en haut du catalogue d'Asime.
+                    💡 Avec un budget de {formatFCFA(dailyBudget)}/jour, vos fiches publicitaires apparaîtront environ <strong className="text-stone-700">{Math.floor(dailyBudget * 0.12 * 5.4)} fois</strong> par jour en haut du catalogue de Miabé Asi.
                   </p>
                 </div>
 
