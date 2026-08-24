@@ -51,7 +51,7 @@ for (const envFile of possibleEnvPaths) {
 import { GoogleGenAI } from "@google/genai";
 import { PaymentGateway } from "./paymentGateway";
 import { WalletManager } from "./walletHelper";
-import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions, getSupabaseClient, checkSupabaseHealth } from "./supabaseHelper";
+import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions, getSupabaseClient, checkSupabaseHealth, syncProductToSupabaseTable, deleteProductFromSupabaseTable, syncAllProductsToSupabaseTable, loadProductsFromSupabaseTable } from "./supabaseHelper";
 
 const app = express();
 const PORT = 3000;
@@ -637,6 +637,11 @@ function writeJSONFile<T>(filePath: string, data: T): boolean {
     saveToSupabaseStore(keyName, data).catch((err) => {
       console.error(`🔴 [Supabase Sync Error] Could not replicate "${keyName}":`, err.message || err);
     });
+
+    // Directly sync relational table if data is products
+    if ((keyName.includes("produit") || keyName.includes("product")) && Array.isArray(data)) {
+      syncAllProductsToSupabaseTable(data).catch(() => {});
+    }
   }
 
   return true;
@@ -1054,6 +1059,9 @@ app.delete("/api/products/:id", (req, res) => {
 
   const success = writeJSONFile(PRODUCTS_FILE, filtered);
   if (success) {
+    if (isSupabaseConfigured()) {
+      deleteProductFromSupabaseTable(id).catch(() => {});
+    }
     res.json({ success: true });
   } else {
     res.status(500).json({ success: false, error: "Impossible de supprimer le produit." });

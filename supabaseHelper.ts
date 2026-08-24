@@ -41,14 +41,168 @@ export function isSupabaseConfigured(): boolean {
 }
 
 /**
- * Save a document key-value pair to the `asime_store` table in Supabase.
- * Falls back silently on any error.
+ * Convert application product object to relational Supabase columns
+ */
+export function mapProductToSupabaseRow(p: any) {
+  return {
+    id: String(p.id || ("prod_" + Date.now())),
+    nom: String(p.nom || "").trim(),
+    description: String(p.description || "").trim(),
+    prix: Number(p.prix) || 0,
+    prix_barre: p.prixBarre ? Number(p.prixBarre) : (p.prix_barre ? Number(p.prix_barre) : null),
+    categorie: String(p.categorie || "Général").trim(),
+    stock: typeof p.stock !== "undefined" ? Number(p.stock) : 10,
+    phare: Boolean(p.phare),
+    images: Array.isArray(p.images) ? p.images : (p.image ? [p.image] : []),
+    partenaire: String(p.partenaire || "Boutique en Direct").trim(),
+    lien_affilie: String(p.lienAffilie || p.lien_affilie || "").trim()
+  };
+}
+
+/**
+ * Convert relational Supabase row to application product object
+ */
+export function mapSupabaseRowToProduct(row: any) {
+  return {
+    id: String(row.id),
+    nom: row.nom || "",
+    description: row.description || "",
+    prix: Number(row.prix) || 0,
+    prixBarre: row.prix_barre ? Number(row.prix_barre) : null,
+    categorie: row.categorie || "Général",
+    stock: typeof row.stock !== "undefined" ? Number(row.stock) : 0,
+    phare: Boolean(row.phare),
+    images: Array.isArray(row.images) ? row.images : (typeof row.images === "string" ? [row.images] : []),
+    partenaire: row.partenaire || "Boutique en Direct",
+    lienAffilie: row.lien_affilie || row.lienAffilie || ""
+  };
+}
+
+/**
+ * Sync single product to relational `public.products` table in Supabase
+ */
+export async function syncProductToSupabaseTable(product: any): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  const row = mapProductToSupabaseRow(product);
+
+  try {
+    const { error } = await client
+      .from("products")
+      .upsert(row, { onConflict: "id" });
+
+    if (error) {
+      console.warn(`⚠️ [Supabase Relational] Erreur d'enregistrement produit "${row.nom}":`, error.message);
+      return false;
+    }
+
+    console.log(`✨ [Supabase Relational] Produit synchronisé avec succès : ${row.nom} (ID: ${row.id})`);
+    return true;
+  } catch (err: any) {
+    console.warn(`⚠️ [Supabase Relational] Exception lors de la sauvegarde produit:`, err.message || err);
+    return false;
+  }
+}
+
+/**
+ * Delete product from relational `public.products` table in Supabase
+ */
+export async function deleteProductFromSupabaseTable(productId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  try {
+    const { error } = await client
+      .from("products")
+      .delete()
+      .eq("id", String(productId));
+
+    if (error) {
+      console.warn(`⚠️ [Supabase Relational] Erreur de suppression produit ${productId}:`, error.message);
+      return false;
+    }
+
+    console.log(`🗑️ [Supabase Relational] Produit supprimé avec succès : ${productId}`);
+    return true;
+  } catch (err: any) {
+    console.warn(`⚠️ [Supabase Relational] Exception lors de la suppression produit:`, err.message || err);
+    return false;
+  }
+}
+
+/**
+ * Sync all products in batch to relational `public.products` table in Supabase
+ */
+export async function syncAllProductsToSupabaseTable(products: any[]): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client || !Array.isArray(products) || products.length === 0) return false;
+
+  const rows = products.map(mapProductToSupabaseRow);
+
+  try {
+    const { error } = await client
+      .from("products")
+      .upsert(rows, { onConflict: "id" });
+
+    if (error) {
+      console.warn(`⚠️ [Supabase Relational] Erreur synchronisation de masse des produits:`, error.message);
+      return false;
+    }
+
+    console.log(`✨ [Supabase Relational] ${rows.length} produits synchronisés dans la table 'products' !`);
+    return true;
+  } catch (err: any) {
+    console.warn(`⚠️ [Supabase Relational] Exception lors de la synchronisation de masse:`, err.message || err);
+    return false;
+  }
+}
+
+/**
+ * Load products directly from relational `public.products` table in Supabase
+ */
+export async function loadProductsFromSupabaseTable(): Promise<any[] | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+
+  try {
+    const { data, error } = await client
+      .from("products")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.warn(`⚠️ [Supabase Relational] Table 'products' non accessible:`, error.message);
+      return null;
+    }
+
+    if (Array.isArray(data)) {
+      console.log(`📥 [Supabase Relational] ${data.length} produits chargés depuis la table 'products'`);
+      return data.map(mapSupabaseRowToProduct);
+    }
+
+    return null;
+  } catch (err: any) {
+    console.warn(`⚠️ [Supabase Relational] Exception lecture produits:`, err.message || err);
+    return null;
+  }
+}
+
+/**
+ * Save a document key-value pair to the `asime_store` table in Supabase (Backup storage).
  */
 export async function saveToSupabaseStore(key: string, value: any): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
 
   const cleanKey = key.replace(/\\/g, "/").split("/").pop() || key;
+
+  // Also sync relational products table if the key is products
+  if (cleanKey.toLowerCase().includes("produit") || cleanKey.toLowerCase().includes("product")) {
+    if (Array.isArray(value)) {
+      syncAllProductsToSupabaseTable(value).catch(() => {});
+    }
+  }
 
   try {
     let { error } = await client
@@ -59,7 +213,6 @@ export async function saveToSupabaseStore(key: string, value: any): Promise<bool
       );
 
     if (error && error.message?.includes("column \"value\"")) {
-      // Retry with "data" column if table schema was created with "data" column
       const retryRes = await client
         .from("asime_store")
         .upsert(
@@ -70,17 +223,13 @@ export async function saveToSupabaseStore(key: string, value: any): Promise<bool
     }
 
     if (error) {
-      if (error.code === "PGRST116" || error.message?.includes("relation") || error.message?.includes("does not exist")) {
-        printSetupInstructions();
-      }
-      console.error(`⚠️ [Supabase] Erreur d'enregistrement pour la clé "${cleanKey}":`, error.message);
+      console.warn(`⚠️ [Supabase Store] Info pour clé "${cleanKey}":`, error.message);
       return false;
     }
 
-    console.log(`✨ [Supabase] Synchronisation réussie pour : ${cleanKey}`);
     return true;
   } catch (err: any) {
-    console.error(`⚠️ [Supabase] Exception lors de la sauvegarde de "${cleanKey}":`, err.message || err);
+    console.warn(`⚠️ [Supabase Store] Exception pour "${cleanKey}":`, err.message || err);
     return false;
   }
 }
@@ -94,6 +243,14 @@ export async function loadFromSupabaseStore(key: string): Promise<any | null> {
 
   const cleanKey = key.replace(/\\/g, "/").split("/").pop() || key;
 
+  // If loading products, try relational table first
+  if (cleanKey.toLowerCase().includes("produit") || cleanKey.toLowerCase().includes("product")) {
+    const relationalProducts = await loadProductsFromSupabaseTable();
+    if (relationalProducts && relationalProducts.length > 0) {
+      return relationalProducts;
+    }
+  }
+
   try {
     const { data, error } = await client
       .from("asime_store")
@@ -102,24 +259,18 @@ export async function loadFromSupabaseStore(key: string): Promise<any | null> {
       .maybeSingle();
 
     if (error) {
-      if (error.message?.includes("relation") || error.message?.includes("does not exist")) {
-        printSetupInstructions();
-      }
-      console.error(`⚠️ [Supabase] Erreur de lecture pour la clé "${cleanKey}":`, error.message);
       return null;
     }
 
     if (data) {
       const storeVal = data.value !== undefined ? data.value : data.data;
       if (storeVal !== undefined && storeVal !== null) {
-        console.log(`📥 [Supabase] Données restaurées depuis le Cloud pour : ${cleanKey}`);
         return storeVal;
       }
     }
 
     return null;
   } catch (err: any) {
-    console.error(`⚠️ [Supabase] Exception lors du chargement de "${cleanKey}":`, err.message || err);
     return null;
   }
 }
@@ -140,31 +291,43 @@ export async function checkSupabaseHealth(): Promise<{ configured: boolean; conn
   }
 
   try {
-    const { data, error } = await client
+    const { error: relError } = await client
+      .from("products")
+      .select("id")
+      .limit(1);
+
+    if (!relError) {
+      return {
+        configured: true,
+        connected: true,
+        urlConfigured,
+        keyConfigured,
+        tableExists: true
+      };
+    }
+
+    const { error: kvError } = await client
       .from("asime_store")
       .select("key")
       .limit(1);
 
-    if (error) {
-      const tableMissing = error.message?.includes("relation") || error.message?.includes("does not exist") || error.code === "PGRST116";
+    if (!kvError) {
       return {
         configured: true,
-        connected: false,
+        connected: true,
         urlConfigured,
         keyConfigured,
-        tableExists: !tableMissing,
-        error: tableMissing
-          ? "Table 'asime_store' non trouvée. Veuillez exécuter le script SQL de création dans Supabase."
-          : error.message
+        tableExists: true
       };
     }
 
     return {
       configured: true,
-      connected: true,
+      connected: false,
       urlConfigured,
       keyConfigured,
-      tableExists: true
+      tableExists: false,
+      error: "Tables 'products' et 'asime_store' non trouvées. Exécutez le script SQL dans Supabase."
     };
   } catch (err: any) {
     return {
@@ -178,42 +341,9 @@ export async function checkSupabaseHealth(): Promise<{ configured: boolean; conn
 }
 
 let instructionsPrinted = false;
-
-/**
- * Print SQL schema instructions for the user to copy/paste into Supabase Dashboard SQL Editor
- */
 export function printSetupInstructions() {
   if (instructionsPrinted) return;
   instructionsPrinted = true;
-
-  console.log(`
-======================================================================
-⚡ [Supabase Setup] CONFIGURATION REQUISE POUR VOTRE BASE DE DONNÉES ⚡
-======================================================================
-Pour activer la persistance cloud Supabase, veuillez créer la table 
-'asime_store' dans l'éditeur SQL de votre tableau de bord Supabase :
-
-1. Allez sur https://supabase.com
-2. Accédez à votre projet -> Éditeur SQL (SQL Editor)
-3. Cliquez sur "New query" et exécutez le script SQL suivant :
-
------------------- COPIER LE CODE CI-DESSOUS ------------------
-
-CREATE TABLE IF NOT EXISTS asime_store (
-  key TEXT PRIMARY KEY,
-  value JSONB NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- Activez le contournement RLS ou désactivez-le pour cette table de stockage
-ALTER TABLE asime_store ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all service/anon access to store" ON asime_store
-  FOR ALL TO public USING (true) WITH CHECK (true);
-
------------------- FIN DU CODE ------------------
-
-4. Définissez les variables d'environnement 'SUPABASE_URL' et 
-   'SUPABASE_SERVICE_ROLE_KEY' (ou 'SUPABASE_ANON_KEY') dans vos paramètres d'application.
-======================================================================
-  `);
+  console.log("⚡ [Supabase] Pour synchroniser votre base de données, exécutez le script SQL dans votre console Supabase.");
 }
+
