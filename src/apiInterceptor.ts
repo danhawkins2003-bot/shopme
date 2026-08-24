@@ -1,5 +1,5 @@
-import defaultProducts from "../produits.json";
-import defaultBlogs from "../blogs.json";
+const defaultProducts: any[] = [];
+const defaultBlogs: any[] = [];
 
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
@@ -34,6 +34,7 @@ const safeLocalStorage = {
     }
   }
 };
+export {};
 const localStorage = safeLocalStorage;
 
 // Keep a reference to the native fetch, bound to window to prevent "Illegal invocation" errors in browsers
