@@ -8,6 +8,7 @@ export interface WalletTransaction {
   id: string; // Unique transaction reference
   type: "vente" | "commission" | "retrait" | "remboursement";
   amount: number;
+  currencyCode?: string; // "XOF" or "XAF"
   orderId?: string;
   withdrawalId?: string;
   date: string;
@@ -17,7 +18,8 @@ export interface WalletTransaction {
 
 export interface Wallet {
   userId: string;
-  balance: number; // Current available balance in FCFA
+  balance: number; // Current available balance
+  currencyCode?: string; // "XOF" or "XAF"
   type: "vendeur" | "affilie";
   history: WalletTransaction[];
 }
@@ -28,6 +30,7 @@ export interface WalletLog {
   userId: string;
   action: "CREDIT_SALE" | "CREDIT_COMMISSION" | "DEBIT_WITHDRAWAL" | "REFUND_WITHDRAWAL";
   amount: number;
+  currencyCode?: string;
   orderId?: string;
   txId: string;
   message: string;
@@ -82,17 +85,29 @@ export class WalletManager {
   }
 
   /**
-   * Automatically processes the payment split for an order.
-   * Client pays Asime. Asime retains 10% commission.
-   * Seller gets 90%.
-   * If there's an affiliate, affiliate gets 3% of total (300 FCFA on 10k), which is deducted from Asime's commission (7% goes to Asime).
+   * Automatically processes the payment split for an order according to definitive business rules:
+   * 1. VENDEUR:
+   *    - Le vendeur reçoit toujours 90 % du montant de la vente.
+   *    - Les 90 % du vendeur ne doivent jamais être diminués par une commission affilié.
+   * 2. MIABÉ ASI:
+   *    - Les 10 % restants constituent la part de Miabé Asi.
+   *    - Lorsqu'aucun affilié n'est à l'origine de la vente, Miabé Asi conserve les 10 % en totalité.
+   * 3. AFFILIÉ:
+   *    - Un affilié gagne une commission UNIQUEMENT lorsqu'un client achète réellement via son lien/code d'affiliation attribué à la vente.
+   *    - La commission affilié doit être prélevée uniquement sur les 10 % de la part Miabé Asi.
+   *    - Elle ne doit jamais être prélevée sur les 90 % du vendeur.
+   *    - Si aucune attribution affilié valide n'existe, aucune commission affilié ne doit être créée.
+   * 4. DEVISE:
+   *    - Conserver exactement la devise de la transaction (XOF pour TG/BJ/BF/CI/ML/SN, XAF pour CM).
    */
   public static processOrderSplit(
     orderId: string,
     totalAmount: number,
     items: { product: { nom: string; prix: number; partenaire: string }; quantity: number }[],
     sellerUserIdsAndNames: { id: string; name: string; businessName?: string }[],
-    affiliateUserId: string | null
+    affiliateUserId: string | null,
+    orderCurrency: string = "XOF",
+    customAffiliateCommission?: number
   ): { success: boolean; logs: string[] } {
     if (this.lock) {
       return { success: false, logs: ["Operation locked to prevent race conditions."] };
@@ -103,11 +118,17 @@ export class WalletManager {
     const resultLogs: string[] = [];
 
     try {
-      // 1. Calculate affiliate commission
+      // 1. Part Miabé Asi brute = 10%
+      const miabeAsiGrossShare = Math.floor(totalAmount * 0.10);
+
+      // 2. Commission Affilié : prélevée UNIQUEMENT sur les 10% de Miabé Asi (taux existant 3%)
       let affiliateCommission = 0;
       let affiliateTxId = "";
+
       if (affiliateUserId) {
-        affiliateCommission = Math.floor(totalAmount * 0.03); // 3% of total
+        affiliateCommission = customAffiliateCommission !== undefined && customAffiliateCommission >= 0
+          ? customAffiliateCommission
+          : Math.floor(totalAmount * 0.03); // Taux existant de 3%
         
         // Prevent double credit
         const doubleCommissionCheck = Object.values(data.wallets[affiliateUserId]?.history || []).some(
@@ -119,19 +140,21 @@ export class WalletManager {
         } else {
           // Get/Create affiliate wallet
           if (!data.wallets[affiliateUserId]) {
-            data.wallets[affiliateUserId] = { userId: affiliateUserId, balance: 0, type: "affilie", history: [] };
+            data.wallets[affiliateUserId] = { userId: affiliateUserId, balance: 0, currencyCode: orderCurrency, type: "affilie", history: [] };
           }
           const affWallet = data.wallets[affiliateUserId];
           affWallet.balance += affiliateCommission;
+          affWallet.currencyCode = orderCurrency;
 
           affiliateTxId = "TX-COMM-" + crypto.randomBytes(4).toString("hex").toUpperCase();
           const affTx: WalletTransaction = {
             id: affiliateTxId,
             type: "commission",
             amount: affiliateCommission,
+            currencyCode: orderCurrency,
             orderId,
             date: new Date().toISOString(),
-            description: `Commission d'affiliation de 3% pour la commande #${orderId}`,
+            description: `Commission d'affiliation de 3% (${affiliateCommission} ${orderCurrency}) pour la commande #${orderId} (prélevée sur la part Miabé Asi)`,
             status: "completed"
           };
           affWallet.history.unshift(affTx);
@@ -143,15 +166,22 @@ export class WalletManager {
             userId: affiliateUserId,
             action: "CREDIT_COMMISSION",
             amount: affiliateCommission,
+            currencyCode: orderCurrency,
             orderId,
             txId: affiliateTxId,
-            message: `Crédit commission d'affilié de ${affiliateCommission} FCFA pour la commande ${orderId}`
+            message: `Crédit commission d'affilié de 3% (${affiliateCommission} ${orderCurrency}) prélevée sur la part Miabé Asi pour la commande ${orderId}`
           });
-          resultLogs.push(`Affiliate ${affiliateUserId} wallet credited with ${affiliateCommission} FCFA.`);
+          resultLogs.push(`Affiliate ${affiliateUserId} wallet credited with ${affiliateCommission} ${orderCurrency} (prélevée sur les 10% Miabé Asi).`);
         }
+      } else {
+        resultLogs.push(`Aucune attribution affilié pour la commande ${orderId} : Miabé Asi conserve 100% de sa part de 10% (${miabeAsiGrossShare} ${orderCurrency}).`);
       }
 
-      // 2. Process seller parts (90% per seller item)
+      // Solde restant pour Miabé Asi
+      const miabeAsiNetShare = miabeAsiGrossShare - affiliateCommission;
+      resultLogs.push(`Répartition Miabé Asi : Brute = ${miabeAsiGrossShare} ${orderCurrency}, Affilié = ${affiliateCommission} ${orderCurrency}, Net Miabé Asi = ${miabeAsiNetShare} ${orderCurrency}`);
+
+      // 3. Part Vendeur (90% systématique, JAMAIS impacté par l'affilié)
       for (const item of items) {
         const itemTotal = item.product.prix * item.quantity;
         const sellerEarnings = Math.floor(itemTotal * 0.90);
@@ -176,19 +206,21 @@ export class WalletManager {
           }
 
           if (!data.wallets[sellerId]) {
-            data.wallets[sellerId] = { userId: sellerId, balance: 0, type: "vendeur", history: [] };
+            data.wallets[sellerId] = { userId: sellerId, balance: 0, currencyCode: orderCurrency, type: "vendeur", history: [] };
           }
           const sellerWallet = data.wallets[sellerId];
           sellerWallet.balance += sellerEarnings;
+          sellerWallet.currencyCode = orderCurrency;
 
           const sellerTxId = "TX-SALE-" + crypto.randomBytes(4).toString("hex").toUpperCase();
           const sellerTx: WalletTransaction = {
             id: sellerTxId,
             type: "vente",
             amount: sellerEarnings,
+            currencyCode: orderCurrency,
             orderId,
             date: new Date().toISOString(),
-            description: `Vente produit : "${item.product.nom}" (x${item.quantity}) - Part vendeur 90%`,
+            description: `Vente produit : "${item.product.nom}" (x${item.quantity}) - Part vendeur 90% intégrale`,
             status: "completed"
           };
           sellerWallet.history.unshift(sellerTx);
@@ -200,11 +232,12 @@ export class WalletManager {
             userId: sellerId,
             action: "CREDIT_SALE",
             amount: sellerEarnings,
+            currencyCode: orderCurrency,
             orderId,
             txId: sellerTxId,
-            message: `Crédit vente de ${sellerEarnings} FCFA pour "${item.product.nom}" (x${item.quantity}) sur commande ${orderId}`
+            message: `Crédit vente de ${sellerEarnings} ${orderCurrency} pour "${item.product.nom}" (x${item.quantity}) sur commande ${orderId} - Part vendeur 90% intégrale`
           });
-          resultLogs.push(`Seller ${sellerId} wallet credited with ${sellerEarnings} FCFA for product ${item.product.nom}.`);
+          resultLogs.push(`Seller ${sellerId} wallet credited with ${sellerEarnings} ${orderCurrency} for product ${item.product.nom} (90% garanti).`);
         } else {
           resultLogs.push(`No registered seller user found matching partner name "${partnerName}". Splitted funds retained by system.`);
         }

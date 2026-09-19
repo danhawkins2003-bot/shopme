@@ -55,7 +55,22 @@ import { AIAssistantWidget } from "./components/AIAssistantWidget";
 import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
 import { DEFAULT_HERO_CARDS, DEFAULT_GALLERY_CARDS, ShowcaseCard } from "./data/showcaseCards";
 import { useLanguage } from "./lib/i18n";
+import { CountrySelector } from "./components/CountrySelector";
+import { useCountry } from "./context/CountryContext";
+import {
+  SUPPORTED_COUNTRIES,
+  getCountryByCode,
+  isSupportedCountry,
+  DEFAULT_COUNTRY_CODE,
+  formatPrice,
+  getCitiesForCountry,
+  getAllSupportedCities,
+  resolveProductCountry
+} from "./data/westAfricanCountries";
 import officialLogoImg from "./assets/images/miabe_asi_official_logo_1787563252544.jpg";
+import { SellerLandingPage } from "./components/SellerLandingPage";
+import { PublicShopView } from "./components/PublicShopView";
+import { NotificationsPage, playNotificationChime } from "./components/NotificationsPage";
 
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
@@ -317,6 +332,7 @@ const ANNOUNCEMENT_MESSAGES = [
 
 export default function App() {
   const { language, setLanguage, t } = useLanguage();
+  const { countryCode: currentCountryCode, setCountryCode } = useCountry();
   const [activeLogoId, setActiveLogoId] = useState(() => {
     return safeLocalStorage.getItem("asime-active-logo-id") || "monogram";
   });
@@ -352,7 +368,9 @@ export default function App() {
   }, []);
 
   // Navigation & Tab State
-  const [activeTab, setActiveTab] = useState<"accueil" | "catalogue" | "blog" | "contact">("accueil");
+  const [activeTab, setActiveTab] = useState<"accueil" | "catalogue" | "blog" | "contact" | "vendre" | "notifications">("accueil");
+  const [activeShopSlug, setActiveShopSlug] = useState<string | null>(null);
+  const [unreadNotifCount, setUnreadNotifCount] = useState<number>(0);
   
   // PWA Install States & Interactive prompt handlers
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -600,6 +618,9 @@ export default function App() {
   const [onlyInStock, setOnlyInStock] = useState<boolean>(false);
   const [onlyPromo, setOnlyPromo] = useState<boolean>(false);
   const [selectedPartnerFilter, setSelectedPartnerFilter] = useState<string>("Tous");
+  const [selectedCountryFilter, setSelectedCountryFilter] = useState<string>("Tous");
+  const [selectedCityFilter, setSelectedCityFilter] = useState<string>("Toutes");
+  const [availabilityFilter, setAvailabilityFilter] = useState<"all" | "in_stock" | "out_of_stock">("all");
 
   // Dynamic Order Tracking Modal States
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
@@ -638,19 +659,27 @@ export default function App() {
     }
   };
 
-  // Order Tracking URL query param parser effect
+  // URL query param parser effect (Tracking & Public Shop links)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const trackId = params.get("track") || params.get("suivi");
     if (trackId) {
       fetchTrackingDetails(trackId);
-      
-      // discretely clean URL query parameters
       try {
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
       } catch (err) {
         console.warn("Could not sweep URL query string state", err);
+      }
+    }
+
+    const boutiqueParam = params.get("boutique") || params.get("shop");
+    if (boutiqueParam) {
+      setActiveShopSlug(boutiqueParam);
+    } else if (window.location.pathname.startsWith("/boutique/")) {
+      const slugFromPath = window.location.pathname.replace("/boutique/", "").split("/")[0]?.trim();
+      if (slugFromPath) {
+        setActiveShopSlug(slugFromPath);
       }
     }
   }, []);
@@ -786,8 +815,37 @@ export default function App() {
   // Checkout coordinates form state
   const [checkoutName, setCheckoutName] = useState("");
   const [checkoutPhone, setCheckoutPhone] = useState("");
+  const [checkoutCountryCode, setCheckoutCountryCode] = useState<string>(() => {
+    return (currentCountryCode && isSupportedCountry(currentCountryCode))
+      ? currentCountryCode.toUpperCase()
+      : DEFAULT_COUNTRY_CODE;
+  });
+  const [checkoutCity, setCheckoutCity] = useState("");
   const [checkoutQuartier, setCheckoutQuartier] = useState("");
   const [checkoutPayment, setCheckoutPayment] = useState("EnLigne");
+
+  // Country & Currency derived from selected checkout country
+  const checkoutCountry = getCountryByCode(checkoutCountryCode);
+  const checkoutCurrencyCode = checkoutCountry.currencyCode;
+  const checkoutPhoneCode = checkoutCountry.phoneCode;
+
+  // Format cart and checkout prices with country-specific currency (XOF for TG, BJ, BF, CI, ML, SN; XAF for CM)
+  const formatCartPrice = (amount: number | null) => {
+    return formatPrice(amount, checkoutCountry.currencyCode);
+  };
+
+  const cleanCheckoutPhone = checkoutPhone.trim();
+  const checkoutPhoneWithCode = cleanCheckoutPhone.startsWith("+")
+    ? cleanCheckoutPhone
+    : `${checkoutCountry.phoneCode} ${cleanCheckoutPhone}`.trim();
+
+  const handleCheckoutCountryChange = (newCode: string) => {
+    if (isSupportedCountry(newCode)) {
+      const upper = newCode.toUpperCase();
+      setCheckoutCountryCode(upper);
+      setCountryCode(upper);
+    }
+  };
   
   // Payment Gateway states
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -831,6 +889,9 @@ export default function App() {
     email: string;
     phone: string;
     quartier: string;
+    city?: string;
+    countryCode?: string;
+    currencyCode?: string;
     favorites: string[];
     createdAt: string;
     role?: string;
@@ -838,6 +899,7 @@ export default function App() {
     vendeurStatus?: string;
     businessName?: string;
     vendeurMode?: string;
+    notifications?: any[];
     vendeurStats?: {
       produitsVendus: number;
       revenusGeneres: number;
@@ -845,6 +907,48 @@ export default function App() {
   }
   const [user, setUser] = useState<CustomerUser | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem("asime-user-token"));
+
+  // Active country and currency for user profile or selected country (XOF for TG, BJ, BF, CI, ML, SN; XAF for CM)
+  const activeCountryCode = (user?.countryCode && isSupportedCountry(user.countryCode))
+    ? user.countryCode.toUpperCase()
+    : (currentCountryCode && isSupportedCountry(currentCountryCode) ? currentCountryCode.toUpperCase() : DEFAULT_COUNTRY_CODE);
+  const activeCountry = getCountryByCode(activeCountryCode);
+  const activeCurrencyCode = activeCountry.currencyCode;
+
+  // Sync unread notification count across the application
+  useEffect(() => {
+    const checkUnread = () => {
+      try {
+        let count = 0;
+        if (user && Array.isArray(user.notifications)) {
+          count += user.notifications.filter((n: any) => !n.read).length;
+        }
+        const globalNotifs: any[] = JSON.parse(localStorage.getItem("asime_global_notifications") || "[]");
+        if (Array.isArray(globalNotifs)) {
+          count += globalNotifs.filter((n: any) => !n.read).length;
+        }
+        setUnreadNotifCount(count);
+      } catch (e) {}
+    };
+    checkUnread();
+
+    const handleUpdate = (e: any) => {
+      checkUnread();
+      if (activeTab !== "notifications") {
+        playNotificationChime();
+        if (e?.detail?.title) {
+          showToast(`🔔 ${e.detail.title} : ${e.detail.text || ""}`);
+        }
+      }
+    };
+
+    window.addEventListener("asime-order-status-update", handleUpdate);
+    window.addEventListener("storage", checkUnread);
+    return () => {
+      window.removeEventListener("asime-order-status-update", handleUpdate);
+      window.removeEventListener("storage", checkUnread);
+    };
+  }, [user, activeTab]);
 
   // --- CUSTOMER-TO-SELLER MESSAGING & SHOP STATES ---
   const [isSellerShopOpen, setIsSellerShopOpen] = useState(false);
@@ -1008,15 +1112,21 @@ export default function App() {
 
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authRole, setAuthRole] = useState<"client" | "vendeur">("client");
   
   // Auth Form Fields State
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authName, setAuthName] = useState("");
+  const [authBoutiqueName, setAuthBoutiqueName] = useState("");
+  const [authCountryCode, setAuthCountryCode] = useState<string>("TG");
   const [authPhone, setAuthPhone] = useState("");
+  const [authCity, setAuthCity] = useState("");
   const [authQuartier, setAuthQuartier] = useState("");
   const [authError, setAuthError] = useState("");
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+
+  const selectedAuthCountry = getCountryByCode(authCountryCode);
 
   // Client Dashboard/Profile Drawer State
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -1025,15 +1135,24 @@ export default function App() {
   const [editPhone, setEditPhone] = useState("");
   const [editQuartier, setEditQuartier] = useState("");
 
+  const [logoImgError, setLogoImgError] = useState(false);
+
   const renderLogoNode = (sizeClass = "w-9 h-9") => {
     return (
-      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-xl p-0.5 border border-[#C88A24]/30 shadow-2xs overflow-hidden`}>
-        <img 
-          src={officialLogoImg} 
-          alt="Miabé Asi Logo Officiel" 
-          className="w-full h-full object-contain"
-          referrerPolicy="no-referrer"
-        />
+      <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-[#C88A24]/40 shadow-xs overflow-hidden`}>
+        {!logoImgError ? (
+          <img 
+            src={officialLogoImg || "/official-logo.png"} 
+            alt="Miabé Asi Logo Officiel" 
+            className="w-full h-full object-contain"
+            referrerPolicy="no-referrer"
+            onError={() => setLogoImgError(true)}
+          />
+        ) : (
+          <div className="w-full h-full bg-neutral-950 text-[#d4af37] rounded flex items-center justify-center font-display font-black text-xs border border-[#d4af37]/40">
+            MA
+          </div>
+        )}
       </div>
     );
   };
@@ -1041,15 +1160,39 @@ export default function App() {
   // Sync / Prefill checkout details when user changes
   useEffect(() => {
     if (user) {
-      setCheckoutName(user.name);
+      setCheckoutName(user.name || "");
       if (user.phone) setCheckoutPhone(user.phone);
-      if (user.quartier) setCheckoutQuartier(user.quartier);
+      const userCity = user.city || user.quartier || "";
+      setCheckoutCity(userCity);
+      setCheckoutQuartier(user.quartier || user.city || "");
+      if (user.countryCode && isSupportedCountry(user.countryCode)) {
+        setCheckoutCountryCode(user.countryCode.toUpperCase());
+      }
     } else {
       setCheckoutName("");
       setCheckoutPhone("");
+      setCheckoutCity("");
       setCheckoutQuartier("");
+      if (currentCountryCode && isSupportedCountry(currentCountryCode)) {
+        setCheckoutCountryCode(currentCountryCode.toUpperCase());
+      }
     }
-  }, [user]);
+  }, [user, currentCountryCode]);
+
+  // Synchronize user country & address when cart drawer opens
+  useEffect(() => {
+    if (isCartOpen && user) {
+      if (user.countryCode && isSupportedCountry(user.countryCode)) {
+        setCheckoutCountryCode(user.countryCode.toUpperCase());
+      }
+      if (user.name && !checkoutName) setCheckoutName(user.name);
+      if (user.phone && !checkoutPhone) setCheckoutPhone(user.phone);
+      if ((user.city || user.quartier) && !checkoutCity && !checkoutQuartier) {
+        setCheckoutCity((user.city || user.quartier) || "");
+        setCheckoutQuartier((user.quartier || user.city) || "");
+      }
+    }
+  }, [isCartOpen, user]);
 
   // Affiliate Parrainage Tracker for 30 days
   useEffect(() => {
@@ -1106,10 +1249,13 @@ export default function App() {
           const data = await res.json();
           if (data.success && data.user) {
             setUser(data.user);
+            if (data.user.countryCode && isSupportedCountry(data.user.countryCode)) {
+              setCountryCode(data.user.countryCode);
+            }
             // Autofill checkout fields!
             if (data.user.name) setCheckoutName(data.user.name);
             if (data.user.phone) setCheckoutPhone(data.user.phone);
-            if (data.user.quartier) setCheckoutQuartier(data.user.quartier);
+            if (data.user.city || data.user.quartier) setCheckoutQuartier(data.user.city || data.user.quartier);
           } else {
             logoutCustomer();
           }
@@ -1170,9 +1316,38 @@ export default function App() {
       return;
     }
 
+    if (authMode === "register") {
+      if (!authName.trim()) {
+        setAuthError("Veuillez renseigner votre nom complet.");
+        setIsAuthSubmitting(false);
+        return;
+      }
+      if (!isSupportedCountry(authCountryCode)) {
+        setAuthError("Le pays sélectionné n'est pas autorisé par PayDunya.");
+        setIsAuthSubmitting(false);
+        return;
+      }
+    }
+
+    const currentCountry = getCountryByCode(authCountryCode);
+    const cleanPhone = authPhone.trim()
+      ? (authPhone.trim().startsWith("+") ? authPhone.trim() : `${currentCountry.phoneCode} ${authPhone.trim()}`.trim())
+      : "";
+
     const payload = authMode === "login" 
       ? { email: authEmail, password: authPassword }
-      : { name: authName, email: authEmail, password: authPassword, phone: authPhone, quartier: authQuartier };
+      : { 
+          name: authName.trim(), 
+          email: authEmail.trim(), 
+          password: authPassword, 
+          phone: cleanPhone, 
+          quartier: (authCity || authQuartier).trim(),
+          city: (authCity || authQuartier).trim(),
+          countryCode: currentCountry.code,
+          currencyCode: currentCountry.currencyCode,
+          role: authRole,
+          boutiqueName: authRole === "vendeur" ? authBoutiqueName.trim() : undefined
+        };
 
     const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
 
@@ -1201,14 +1376,20 @@ export default function App() {
           localStorage.setItem("asime-user-token", data.token);
           setToken(data.token);
           setUser(data.user);
+          if (data.user.countryCode && isSupportedCountry(data.user.countryCode)) {
+            setCountryCode(data.user.countryCode);
+          }
           setIsAuthOpen(false);
           
           // Reset form fields
           setAuthEmail("");
           setAuthPassword("");
           setAuthName("");
+          setAuthBoutiqueName("");
           setAuthPhone("");
           setAuthQuartier("");
+          setAuthCity("");
+          setAuthCountryCode("TG");
 
           // Confetti!
           try {
@@ -1385,7 +1566,7 @@ export default function App() {
                 const card = document.createElement('div');
                 card.className = "bg-white border border-neutral-200 overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow duration-300";
                 
-                const prixBarreStr = p.prixBarre ? \`<span class="line-through text-neutral-400 mr-2 text-xs">\${p.prixBarre.toLocaleString()}   FCFA</span>\` : '';
+                const prixBarreStr = p.prixBarre ? \`<span class="line-through text-neutral-400 mr-2 text-xs">\${p.prixBarre.toLocaleString()} ${activeCurrencyCode}</span>\` : '';
                 const mainImg = p.images && p.images.length > 0 ? p.images[0] : 'https://images.unsplash.com/photo-1542291026-7eec264c27ff';
                 const premiumBadge = p.partenaire && p.partenaire !== "Boutique en Direct" 
                     ? \`<span class="bg-amber-100 text-[#b8901c] text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-sm">Exclusivité Club</span>\`
@@ -1403,7 +1584,7 @@ export default function App() {
                         </div>
                         <div class="mt-4 border-t border-neutral-100 pt-3 flex flex-col gap-2">
                             <div class="flex items-baseline justify-between">
-                                <span class="font-bold text-neutral-950 text-sm">\${p.prix.toLocaleString()} FCFA</span>
+                                <span class="font-bold text-neutral-950 text-sm">\${p.prix.toLocaleString()} ${activeCurrencyCode}</span>
                                 \${prixBarreStr}
                             </div>
                             <div class="flex justify-between items-center mt-1">
@@ -1522,6 +1703,26 @@ export default function App() {
       // Clear stale local settings flags if needed
       safeLocalStorage.removeItem("asime_emulated_partners");
       safeLocalStorage.removeItem("asime_emulated_blogs");
+
+      // Sync any local offline/emulated products to the server so mobile devices can access them
+      try {
+        const localProdsStr = safeLocalStorage.getItem("asime_emulated_products");
+        if (localProdsStr) {
+          const localProds = JSON.parse(localProdsStr);
+          if (Array.isArray(localProds) && localProds.length > 0) {
+            const userProducts = localProds.filter((p: any) => p && p.id && !String(p.id).startsWith("prod_pop_"));
+            if (userProducts.length > 0) {
+              fetch("/api/products/sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ products: userProducts })
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (syncErr) {
+        console.warn("Product background sync skipped", syncErr);
+      }
     } catch (e) {
       console.error("Error in syncLocalDataWithServer:", e);
     }
@@ -1547,6 +1748,30 @@ export default function App() {
         console.error("Failed to parse cart items", e);
       }
     }
+
+    // Dynamic real-time sync across mobile and desktop (silent, non-intrusive)
+    let lastFetchTime = Date.now();
+    const handleDeviceActive = () => {
+      // Throttle: only check for updates if user was away for at least 45 seconds
+      if (document.visibilityState === "visible" && Date.now() - lastFetchTime > 45000) {
+        lastFetchTime = Date.now();
+        fetchProducts(true);
+      }
+    };
+    // Periodic background sync every 60 seconds (silent without flickering or spinners)
+    const syncInterval = setInterval(() => {
+      lastFetchTime = Date.now();
+      fetchProducts(true);
+    }, 60000);
+
+    document.addEventListener("visibilitychange", handleDeviceActive);
+    window.addEventListener("focus", handleDeviceActive);
+
+    return () => {
+      clearInterval(syncInterval);
+      document.removeEventListener("visibilitychange", handleDeviceActive);
+      window.removeEventListener("focus", handleDeviceActive);
+    };
   }, []);
 
   // Save cart to LocalStorage when changed
@@ -1590,59 +1815,147 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [redirectingProduct, redirectCount]);
 
-  const fetchProducts = async () => {
-    setLoadingProducts(true);
+  const fetchProducts = async (isBackground = false) => {
+    // Only trigger visible loader spinner on initial load when there are no products yet
+    if (!isBackground && products.length === 0) {
+      setLoadingProducts(true);
+    }
     try {
-      const res = await fetch("/api/products?t=" + Date.now());
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          setProducts(data);
-          safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(data));
-          if (data.length > 0) {
+      const res = await fetch("/api/products?t=" + Date.now(), {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          "Accept": "application/json"
+        }
+      });
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      if (res.ok && (contentType.includes("application/json") || contentType.includes("json"))) {
+        const text = await res.text();
+        if (text && text.trim().startsWith("[")) {
+          const data = JSON.parse(text);
+          if (Array.isArray(data) && data.length > 0) {
+            setProducts(prev => {
+              // If background sync and product IDs, prices and stocks are identical, keep existing reference
+              if (isBackground && prev.length === data.length) {
+                const isIdentical = prev.every((p, i) => 
+                  p.id === data[i]?.id && 
+                  p.stock === data[i]?.stock && 
+                  p.prix === data[i]?.prix && 
+                  p.nom === data[i]?.nom
+                );
+                if (isIdentical) return prev;
+              }
+              return data;
+            });
+            safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(data));
             const maxP = Math.max(...data.map((p: any) => Number(p.prix) || 0), 150000);
             setPriceRange(prev => Math.max(prev, maxP));
+            return;
           }
         }
       }
+
+      // If server returned non-JSON, try static fallback
+      const staticRes = await fetch("/produits.json?t=" + Date.now(), { cache: "no-store" });
+      const staticCt = (staticRes.headers.get("content-type") || "").toLowerCase();
+      if (staticRes.ok && (staticCt.includes("application/json") || staticCt.includes("json"))) {
+        const staticText = await staticRes.text();
+        if (staticText && staticText.trim().startsWith("[")) {
+          const staticData = JSON.parse(staticText);
+          if (Array.isArray(staticData) && staticData.length > 0) {
+            setProducts(prev => {
+              if (isBackground && prev.length === staticData.length) {
+                const isIdentical = prev.every((p, i) => 
+                  p.id === staticData[i]?.id && 
+                  p.stock === staticData[i]?.stock && 
+                  p.prix === staticData[i]?.prix
+                );
+                if (isIdentical) return prev;
+              }
+              return staticData;
+            });
+            safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(staticData));
+            const maxP = Math.max(...staticData.map((p: any) => Number(p.prix) || 0), 150000);
+            setPriceRange(prev => Math.max(prev, maxP));
+            return;
+          }
+        }
+      }
+
+      // Fallback to local storage if available
+      const cached = safeLocalStorage.getItem("asime_emulated_products");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setProducts(prev => (prev.length > 0 ? prev : parsed));
+          const maxP = Math.max(...parsed.map((p: any) => Number(p.prix) || 0), 150000);
+          setPriceRange(prev => Math.max(prev, maxP));
+        }
+      }
     } catch (e) {
-      console.error("Error fetching products", e);
+      console.warn("Could not fetch products from server, attempting offline storage:", e);
+      try {
+        const cached = safeLocalStorage.getItem("asime_emulated_products");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setProducts(prev => (prev.length > 0 ? prev : parsed));
+          }
+        }
+      } catch (err) {}
     } finally {
-      setLoadingProducts(false);
+      if (!isBackground) {
+        setLoadingProducts(false);
+      }
     }
   };
 
   const fetchPartners = async () => {
     try {
-      const res = await fetch("/api/partners?t=" + Date.now());
-      if (res.ok) {
-        const data = await res.json();
-        setPartners(data);
+      const res = await fetch("/api/partners?t=" + Date.now(), {
+        headers: { "Accept": "application/json" }
+      });
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      if (res.ok && (contentType.includes("application/json") || contentType.includes("json"))) {
+        const text = await res.text();
+        if (text && (text.trim().startsWith("[") || text.trim().startsWith("{"))) {
+          const data = JSON.parse(text);
+          setPartners(data);
+        }
       }
     } catch (e) {
-      console.error("Error fetching partners list in storefront", e);
+      console.warn("Notice fetching partners list in storefront:", e);
     }
   };
 
   const fetchBlogs = async () => {
     setLoadingBlogs(true);
     try {
-      const res = await fetch("/api/blogs?t=" + Date.now());
-      if (res.ok) {
-        const data = await res.json();
-        setBlogs(data);
+      const res = await fetch("/api/blogs?t=" + Date.now(), {
+        headers: { "Accept": "application/json" }
+      });
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      if (res.ok && (contentType.includes("application/json") || contentType.includes("json"))) {
+        const text = await res.text();
+        if (text && (text.trim().startsWith("[") || text.trim().startsWith("{"))) {
+          const data = JSON.parse(text);
+          setBlogs(data);
+        }
       }
     } catch (e) {
-      console.error("Error fetching blogs", e);
+      console.warn("Notice fetching blogs:", e);
     } finally {
       setLoadingBlogs(false);
     }
   };
 
-  // Helper to format currency in FCFA
-  const formatFCFA = (amount: number | null) => {
-    if (amount === null || isNaN(amount)) return "";
-    return new Intl.NumberFormat("fr-FR").format(amount) + " FCFA";
+  // Price formatting system: formats prices with user's country currency (XOF for TG, BJ, BF, CI, ML, SN; XAF for CM)
+  const formatUserPrice = (amount: number | null | undefined) => {
+    return formatPrice(amount, activeCurrencyCode);
+  };
+  const formatFCFA = (amount: number | null | undefined) => {
+    return formatPrice(amount, activeCurrencyCode);
   };
 
   // Cart Management
@@ -1711,8 +2024,9 @@ export default function App() {
   const handleCheckoutWhatsAppState = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
-    if (!checkoutName.trim() || !checkoutPhone.trim() || !checkoutQuartier.trim()) {
-      alert("Veuillez remplir toutes les informations de livraison.");
+    const resolvedCity = (checkoutCity || checkoutQuartier).trim();
+    if (!checkoutName.trim() || !checkoutPhone.trim() || !resolvedCity) {
+      alert("Veuillez remplir toutes les informations de livraison (nom, téléphone, pays, ville).");
       return;
     }
 
@@ -1745,10 +2059,17 @@ export default function App() {
           quantity: item.quantity
         })),
         totalAmount: getCartTotal(),
+        currencyCode: checkoutCountry.currencyCode,
+        destinationCountryCode: checkoutCountry.code,
+        destinationCity: resolvedCity,
         shippingDetails: {
           name: checkoutName.trim(),
           phone: checkoutPhone.trim(),
-          quartier: checkoutQuartier.trim(),
+          countryCode: checkoutCountry.code,
+          city: resolvedCity,
+          quartier: (checkoutQuartier || checkoutCity).trim(),
+          currencyCode: checkoutCountry.currencyCode,
+          phoneWithCountryCode: checkoutPhoneWithCode,
           notes: `Commande sécurisée payée par ${checkoutPayment} via Miabé Asi Gateway.`
         },
         paymentMethod: checkoutPayment,
@@ -1795,21 +2116,22 @@ export default function App() {
       let message = `*✨ NOUVELLE COMMANDE MIABÉ ASI (Paiement à la livraison) ✨*\n\n`;
       message += `🆔 *Commande :* \`${orderId}\`\n`;
       message += `👤 *Client :* ${checkoutName.trim()}\n`;
-      message += `📞 *Téléphone :* ${checkoutPhone.trim()}\n`;
-      message += `📍 *Quartier :* ${checkoutQuartier.trim()}\n`;
+      message += `📞 *Téléphone :* ${checkoutPhoneWithCode}\n`;
+      message += `🌍 *Pays :* ${checkoutCountry.name} (${checkoutCountry.code})\n`;
+      message += `📍 *Ville / Quartier :* ${resolvedCity}\n`;
       message += `💳 *Paiement :* Espèces à la livraison (COD)\n`;
       message += `🔗 *Suivi de commande :* ${window.location.origin}/?track=${orderId}\n\n`;
       message += `*🛒 Articles commandés :*\n`;
       
       cart.forEach((item, index) => {
         const lineCost = item.product.prix * item.quantity;
-        message += `${index + 1}. *${item.product.nom}* (x${item.quantity}) - ${formatFCFA(lineCost)}\n`;
+        message += `${index + 1}. *${item.product.nom}* (x${item.quantity}) - ${formatCartPrice(lineCost)}\n`;
       });
 
       message += `\n*━━━━━━━━━━━━━━━━━━━━━*\n`;
-      message += `💰 *TOTAL À PAYER :* *${formatFCFA(getCartTotal())}*\n`;
+      message += `💰 *TOTAL À PAYER :* *${formatCartPrice(getCartTotal())}*\n`;
       message += `*━━━━━━━━━━━━━━━━━━━━━*\n\n`;
-      message += `Veuillez confirmer ma livraison s'il vous plaît. Merci ! 🙏🇹🇬`;
+      message += `Veuillez confirmer ma livraison s'il vous plaît. Merci ! 🙏${checkoutCountry.flagEmoji}`;
 
       const encodedText = encodeURIComponent(message);
       const merchantPhone = ASIME_SETTINGS.WHATSAPP_MERCHANT_NUMBER;
@@ -1839,7 +2161,9 @@ export default function App() {
           orderId,
           providerId,
           name: checkoutName.trim(),
-          phone: checkoutPhone.trim()
+          phone: checkoutPhoneWithCode,
+          countryCode: checkoutCountry.code,
+          currencyCode: checkoutCountry.currencyCode
         })
       });
 
@@ -1881,16 +2205,104 @@ export default function App() {
     }, 1200);
   };
 
+  const defaultCategoriesList = [
+    "Électronique",
+    "Mode",
+    "Maison",
+    "Beauté & soins",
+    "Alimentation",
+    "Agriculture",
+    "Services",
+    "Artisanat & Terroir",
+    "Vêtements & Mode",
+    "Chaussures Premium",
+    "Montres & Accessoires",
+    "Plats & Gastronomie",
+    "Importations Trends",
+    "Paniers Frais & Épicerie",
+    "Print-on-Demand Localisé",
+    "Ustensiles de cuisine",
+    "Meubles & Décoration",
+    "Audio & Radio",
+    "Gadgets électroniques",
+    "Télévision",
+    "Mode & beauté",
+    "Bébé & Enfant",
+    "Sports & Accessoires",
+    "Univers femme",
+    "Univers homme",
+    "Général"
+  ];
+
+  const categoriesList = React.useMemo(() => {
+    const fromProducts = products.map(p => p.categorie).filter(Boolean);
+    const set = new Set(["Toutes", ...defaultCategoriesList, ...fromProducts]);
+    return Array.from(set);
+  }, [products]);
+
+  // Dynamic available cities based on selected country
+  const availableCities = React.useMemo(() => {
+    let cities: string[] = [];
+    if (selectedCountryFilter === "Tous") {
+      cities = getAllSupportedCities();
+    } else {
+      cities = getCitiesForCountry(selectedCountryFilter);
+    }
+    // Also include any custom cities saved on products for the active country filter
+    products.forEach(p => {
+      const pCountry = resolveProductCountry(p);
+      if (selectedCountryFilter === "Tous" || pCountry.code.toUpperCase() === selectedCountryFilter.toUpperCase()) {
+        if (p.city && !cities.includes(p.city)) {
+          cities.push(p.city);
+        }
+      }
+    });
+    return cities.sort((a, b) => a.localeCompare(b, "fr"));
+  }, [products, selectedCountryFilter]);
+
   // Filters logic
   const filteredProducts = products.filter(prod => {
-    const matchesSearch = prod.nom.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          prod.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.trim().toLowerCase();
+    const prodCountry = resolveProductCountry(prod);
+
+    // 4. Search independent of vendor country
+    const matchesSearch = !query || 
+      prod.nom.toLowerCase().includes(query) || 
+      prod.description.toLowerCase().includes(query) ||
+      (prod.categorie && prod.categorie.toLowerCase().includes(query)) ||
+      (prod.partenaire && prod.partenaire.toLowerCase().includes(query)) ||
+      (prod.city && prod.city.toLowerCase().includes(query)) ||
+      (prod.quartier && prod.quartier.toLowerCase().includes(query)) ||
+      prodCountry.name.toLowerCase().includes(query) ||
+      prodCountry.code.toLowerCase() === query;
+
+    // 5. Category filter
     const matchesCategory = selectedCategory === "Toutes" || prod.categorie === selectedCategory;
+
+    // 5. Price filter (budget max)
     const matchesPrice = prod.prix <= priceRange;
-    const matchesStock = !onlyInStock || prod.stock > 0;
+
+    // 5. Availability filter (maintaining onlyInStock compatibility)
+    const matchesStock = 
+      (availabilityFilter === "all" && (!onlyInStock || prod.stock > 0)) ||
+      (availabilityFilter === "in_stock" && prod.stock > 0) ||
+      (availabilityFilter === "out_of_stock" && prod.stock === 0);
+
+    // 5. Vendor country filter
+    const matchesCountry = selectedCountryFilter === "Tous" || prodCountry.code.toUpperCase() === selectedCountryFilter.toUpperCase();
+
+    // 5. City filter
+    const matchesCity = selectedCityFilter === "Toutes" || !selectedCityFilter || (
+      (prod.city && prod.city.toLowerCase().includes(selectedCityFilter.toLowerCase())) ||
+      (prod.quartier && prod.quartier.toLowerCase().includes(selectedCityFilter.toLowerCase())) ||
+      prod.description.toLowerCase().includes(selectedCityFilter.toLowerCase())
+    );
+
+    // Promo & partner filters
     const matchesPromo = !onlyPromo || (prod.prixBarre && prod.prixBarre > prod.prix);
     const matchesPartner = selectedPartnerFilter === "Tous" || prod.partenaire === selectedPartnerFilter;
-    return matchesSearch && matchesCategory && matchesPrice && matchesStock && matchesPromo && matchesPartner;
+
+    return matchesSearch && matchesCategory && matchesPrice && matchesStock && matchesCountry && matchesCity && matchesPromo && matchesPartner;
   }).sort((a, b) => {
     if (sortBy === "asc") return a.prix - b.prix;
     if (sortBy === "desc") return b.prix - a.prix;
@@ -1921,134 +2333,21 @@ export default function App() {
     return 0; // default order based on index/id
   });
 
-  const defaultCategoriesList = [
-    "Made in Togo Premium",
-    "Vêtements & Mode",
-    "Chaussures Premium",
-    "Montres & Accessoires",
-    "Plats & Gastronomie",
-    "Importations Trends",
-    "Paniers Frais & Épicerie",
-    "Print-on-Demand Localisé",
-    "Ustensiles de cuisine",
-    "Meubles & Décoration",
-    "Électronique",
-    "Audio & Radio",
-    "Gadgets électroniques",
-    "Télévision",
-    "Mode & beauté",
-    "Bébé & Enfant",
-    "Sports & Accessoires",
-    "Univers femme",
-    "Univers homme",
-    "Général"
-  ];
-
-  const categoriesList = React.useMemo(() => {
-    const fromProducts = products.map(p => p.categorie).filter(Boolean);
-    const set = new Set(["Toutes", ...defaultCategoriesList, ...fromProducts]);
-    return Array.from(set);
+  const homeFeaturedProducts = React.useMemo(() => {
+    if (!products || products.length === 0) return [];
+    return [...products].sort((a, b) => {
+      const aCustom = !String(a.id || "").startsWith("prod_pop_");
+      const bCustom = !String(b.id || "").startsWith("prod_pop_");
+      if (aCustom && !bCustom) return -1;
+      if (!aCustom && bCustom) return 1;
+      if (a.phare && !b.phare) return -1;
+      if (!a.phare && b.phare) return 1;
+      return 0;
+    });
   }, [products]);
 
   return (
     <div className="min-h-screen flex flex-col pb-16 md:pb-0 font-sans bg-[#FAF9F6] text-neutral-900 selection:bg-gold-500 selection:text-white">
-      {/* Dynamic Gold Animated Announcement Bar */}
-      <div 
-        className="bg-neutral-950 text-white text-[11px] sm:text-xs tracking-wider border-b border-gold-500/25 relative overflow-hidden group select-none transition-colors"
-        onMouseEnter={() => setIsAnnouncementPaused(true)}
-        onMouseLeave={() => setIsAnnouncementPaused(false)}
-      >
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between min-h-[34px] sm:min-h-[36px]">
-          {/* Left prev button (visible on hover on desktop) */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setAnnouncementIndex((prev) => (prev - 1 + ANNOUNCEMENT_MESSAGES.length) % ANNOUNCEMENT_MESSAGES.length);
-            }}
-            className="text-[#d4af37]/70 hover:text-[#d4af37] p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 hidden sm:block shrink-0 cursor-pointer"
-            title="Précédent"
-            aria-label="Message précédent"
-          >
-            <ChevronLeft className="w-3.5 h-3.5" />
-          </button>
-
-          {/* Center animated text ticker */}
-          <div 
-            className="flex-1 flex items-center justify-center overflow-hidden cursor-pointer px-1"
-            onClick={() => {
-              setActiveTab("catalogue");
-              window.scrollTo({ top: 350, behavior: "smooth" });
-            }}
-            title="Cliquer pour voir le catalogue"
-          >
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={announcementIndex + "_" + language}
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                transition={{ duration: 0.35, ease: "easeInOut" }}
-                className="flex items-center justify-center gap-1.5 sm:gap-2 text-center"
-              >
-                {(() => {
-                  const currentItem = ANNOUNCEMENT_MESSAGES[announcementIndex];
-                  const IconComp = currentItem.icon;
-                  return (
-                    <>
-                      <span className="p-0.5 rounded-full bg-[#d4af37]/15 border border-[#d4af37]/40 text-[#d4af37] shrink-0 flex items-center justify-center">
-                        <IconComp className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-pulse" />
-                      </span>
-                      <span className="font-extrabold text-[#d4af37] uppercase tracking-wider whitespace-nowrap">
-                        {language === "fr" ? currentItem.frPrefix : currentItem.eePrefix}
-                      </span>
-                      <span className="font-black text-amber-200 uppercase tracking-tight whitespace-nowrap">
-                        {language === "fr" ? currentItem.frHighlight : currentItem.eeHighlight}
-                      </span>
-                      <span className="text-neutral-300 font-medium hidden md:inline truncate max-w-md">
-                        — {language === "fr" ? currentItem.frText : currentItem.eeText}
-                      </span>
-                      <span className="hidden lg:inline-block bg-[#d4af37]/20 text-[#d4af37] border border-[#d4af37]/35 px-1.5 py-0.5 rounded-xs text-[8px] font-black tracking-widest uppercase">
-                        {currentItem.badge}
-                      </span>
-                    </>
-                  );
-                })()}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          {/* Right next button + Indicators */}
-          <div className="flex items-center gap-1 shrink-0">
-            <div className="hidden sm:flex items-center gap-1 mr-1">
-              {ANNOUNCEMENT_MESSAGES.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setAnnouncementIndex(i);
-                  }}
-                  className={`transition-all duration-300 rounded-full cursor-pointer ${
-                    announcementIndex === i ? "w-3.5 h-1 bg-[#d4af37]" : "w-1 h-1 bg-neutral-600 hover:bg-neutral-400"
-                  }`}
-                  aria-label={`Aller au message ${i + 1}`}
-                />
-              ))}
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setAnnouncementIndex((prev) => (prev + 1) % ANNOUNCEMENT_MESSAGES.length);
-              }}
-              className="text-[#d4af37]/70 hover:text-[#d4af37] p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 hidden sm:block cursor-pointer"
-              title="Suivant"
-              aria-label="Message suivant"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Modern Luxury Navigation Header */}
       <header className="sticky top-0 z-40 bg-[#FAF8F5] backdrop-blur-md shadow-xs border-b border-[#EAE3D2]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-3 sm:gap-4">
@@ -2126,6 +2425,24 @@ export default function App() {
               <span className="text-[10px] sm:text-xs font-black tracking-wider uppercase text-[#0F5132]">
                 {language === "fr" ? "EWE" : "FR"}
               </span>
+            </button>
+
+            {/* Notification Button linking directly to dedicated Notifications Page */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("notifications");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className={`relative p-2 sm:p-2.5 rounded-full transition-all cursor-pointer border shrink-0 ${
+                activeTab === "notifications"
+                  ? "bg-neutral-950 text-[#d4af37] border-[#d4af37] shadow-sm"
+                  : "bg-[#F0EAE0] border-[#E1D6C5] hover:bg-[#EBE2D3] text-neutral-800"
+              }`}
+              title="Centre de Notifications & Mises à jour de commandes"
+              id="header-notifications-btn"
+            >
+              <Bell className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${activeTab === "notifications" ? "text-[#d4af37]" : "text-neutral-700"}`} />
             </button>
 
             {/* Account / Connexion Pill Button */}
@@ -2274,14 +2591,29 @@ export default function App() {
 
       {/* MAIN CONTENT SPACE OVERVIEW */}
       <motion.main 
-        key={language}
+        key={activeShopSlug || language}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.45, ease: "easeInOut" }}
         className="flex-grow"
       >
-        {activeTab === "accueil" && (
+        {activeShopSlug ? (
+          <PublicShopView
+            slug={activeShopSlug}
+            onBackToCatalog={() => {
+              setActiveShopSlug(null);
+              try {
+                window.history.replaceState({}, document.title, window.location.pathname.startsWith("/boutique") ? "/" : window.location.pathname);
+              } catch (e) {}
+            }}
+            onProductClick={(p) => setSelectedProduct(p)}
+            onAddToCart={(p) => addToCart(p, 1)}
+            formatFCFA={formatFCFA}
+          />
+        ) : (
+          <>
+            {activeTab === "accueil" && (
           <div className="w-full overflow-hidden">
             {/* Stunning Custom Welcoming Banner: Minimalist, Premium Animated Miawoezon */}
             <div className="bg-gradient-to-b from-neutral-950 to-neutral-900 text-white text-center py-10 px-4 relative overflow-hidden flex flex-col items-center justify-center border-b border-[#d4af37]/30 shadow-sm">
@@ -2712,7 +3044,7 @@ export default function App() {
                     className="flex gap-3.5 sm:gap-5 overflow-x-auto pb-3 pt-1 snap-x snap-mandatory scroll-smooth"
                     style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
                   >
-                    {(products.some(p => p.phare) ? products.filter(p => p.phare) : products.slice(0, 10)).map(product => {
+                    {(homeFeaturedProducts.slice(0, 15)).map(product => {
                       return (
                         <div 
                           key={product.id} 
@@ -2822,6 +3154,80 @@ export default function App() {
                     })}
                   </div>
                 )}
+              </div>
+            </section>
+
+            {/* Section Nouveautés & Tous les Produits - Optimisé Mobile & Multi-écrans */}
+            <section className="py-6 sm:py-10 px-4 max-w-7xl mx-auto">
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-5 border-b border-stone-200 pb-3">
+                <div>
+                  <span className="text-[10px] font-black text-[#b8901c] uppercase tracking-widest block mb-0.5">
+                    🇹🇬 E-Shop Togolais & Vendeurs Partenaires
+                  </span>
+                  <h2 className="font-display font-black text-lg sm:text-2xl text-neutral-950 uppercase tracking-wider">
+                    {language === "fr" ? "Tous les Produits Disponibles" : "Adzɔnuwo katã"} ({products.length})
+                  </h2>
+                </div>
+                <button 
+                  onClick={() => { setSelectedCategory("Toutes"); setActiveTab("catalogue"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                  className="text-xs font-bold text-[#b8901c] hover:text-neutral-950 uppercase tracking-wider flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+                >
+                  <span>{language === "fr" ? "Voir tout le catalogue complet" : "Kpɔ Fiasã blibo"}</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                {homeFeaturedProducts.slice(0, 15).map(product => (
+                  <div 
+                    key={`home-grid-${product.id}`}
+                    className="bg-white border border-stone-200 hover:border-[#d4af37] shadow-2xs hover:shadow-sm rounded-none overflow-hidden flex flex-col justify-between group transition-all"
+                  >
+                    <div 
+                      className="relative aspect-square overflow-hidden bg-neutral-100 cursor-pointer"
+                      onClick={() => { setSelectedProduct(product); setCurrentGalleryIndex(0); }}
+                    >
+                      <img 
+                        src={product.images[0] || "https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=300"} 
+                        alt={product.nom} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                      />
+                      <div className="absolute top-1.5 left-1.5 bg-neutral-950/85 text-white px-1.5 py-0.5 text-[7px] sm:text-[8px] font-bold uppercase tracking-widest">
+                        {product.categorie}
+                      </div>
+                      {product.prixBarre && (
+                        <div className="absolute top-1.5 right-1.5 bg-red-600 text-white px-1.5 py-0.5 text-[7px] sm:text-[8px] font-black uppercase">
+                          Promo
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-2 sm:p-2.5 flex-1 flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-sans font-bold text-xs text-neutral-900 line-clamp-1 group-hover:text-[#b8901c] transition-colors">
+                          {product.nom}
+                        </h3>
+                        <p className="text-neutral-500 text-[10px] line-clamp-1 mt-0.5 font-sans">
+                          {product.description}
+                        </p>
+                      </div>
+
+                      <div className="mt-2 pt-2 border-t border-stone-100">
+                        <div className="text-xs font-black text-neutral-950 mb-1.5">
+                          {formatFCFA(product.prix)}
+                        </div>
+                        <button
+                          onClick={() => addToCart(product, 1)}
+                          className="w-full py-1 text-[9px] font-bold uppercase tracking-wider bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <ShoppingCart className="w-3 h-3" />
+                          <span>+ Panier</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
 
@@ -3218,17 +3624,112 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Multi-Country, City & Availability Filters Block */}
+              <div className="pt-4 border-t border-neutral-150 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* 1. Country filter */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-600 flex items-center gap-1">
+                    <Globe className="w-3 h-3 text-[#b8901c]" />
+                    <span>Pays du Vendeur</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedCountryFilter}
+                      onChange={(e) => {
+                        setSelectedCountryFilter(e.target.value);
+                        setSelectedCityFilter("Toutes");
+                      }}
+                      className="w-full appearance-none font-bold text-xs uppercase tracking-wider border border-neutral-300 rounded-sm bg-stone-50 pl-2.5 pr-8 py-2 focus:outline-none focus:ring-1 focus:ring-[#d4af37] cursor-pointer"
+                    >
+                      <option value="Tous">🌍 Tous les 7 pays</option>
+                      {SUPPORTED_COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flagEmoji} {c.name} ({c.code})
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 2. City filter */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-600 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-[#b8901c]" />
+                    <span>Ville</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedCityFilter}
+                      onChange={(e) => setSelectedCityFilter(e.target.value)}
+                      className="w-full appearance-none font-bold text-xs uppercase tracking-wider border border-neutral-300 rounded-sm bg-stone-50 pl-2.5 pr-8 py-2 focus:outline-none focus:ring-1 focus:ring-[#d4af37] cursor-pointer"
+                    >
+                      <option value="Toutes">📍 Toutes les villes</option>
+                      {availableCities.map((city) => (
+                        <option key={city} value={city}>{city}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 3. Availability filter */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-600 flex items-center gap-1">
+                    <Check className="w-3 h-3 text-[#b8901c]" />
+                    <span>Disponibilité</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={availabilityFilter}
+                      onChange={(e) => {
+                        const val = e.target.value as "all" | "in_stock" | "out_of_stock";
+                        setAvailabilityFilter(val);
+                        setOnlyInStock(val === "in_stock");
+                      }}
+                      className="w-full appearance-none font-bold text-xs uppercase tracking-wider border border-neutral-300 rounded-sm bg-stone-50 pl-2.5 pr-8 py-2 focus:outline-none focus:ring-1 focus:ring-[#d4af37] cursor-pointer"
+                    >
+                      <option value="all">Toutes disponibilités</option>
+                      <option value="in_stock">En stock uniquement</option>
+                      <option value="out_of_stock">En rupture / Sur commande</option>
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* 4. Partner filter */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-600 flex items-center gap-1">
+                    <Store className="w-3 h-3 text-[#b8901c]" />
+                    <span>Partenaire / Vendeur</span>
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={selectedPartnerFilter}
+                      onChange={(e) => setSelectedPartnerFilter(e.target.value)}
+                      className="w-full appearance-none font-bold text-xs uppercase tracking-wider border border-neutral-300 rounded-sm bg-stone-50 pl-2.5 pr-8 py-2 focus:outline-none focus:ring-1 focus:ring-[#d4af37] cursor-pointer"
+                    >
+                      <option value="Tous">{language === "fr" ? "Tous les partenaires" : "Dɔwɔlawo katã"}</option>
+                      {Array.from(new Set(products.map(p => p.partenaire).filter(Boolean))).map((partnerName: any) => (
+                        <option key={partnerName} value={partnerName}>{partnerName}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
               {/* Price Budget Slider Filter Block */}
               <div className="pt-4 border-t border-neutral-150 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-xs font-bold text-neutral-705 uppercase tracking-wider">
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-700 uppercase tracking-wider">
                   <Filter className="w-3.5 h-3.5 text-[#b8901c]" />
                   <span>Budget Maximum :</span>
                   <span className="text-neutral-950 font-black font-mono ml-1 px-2.5 py-0.5 bg-neutral-100 border border-neutral-300/30 rounded-sm">
-                    {formatFCFA(priceRange)}
+                    {formatPrice(priceRange, activeCurrencyCode)}
                   </span>
                 </div>
                 <div className="flex-grow max-w-lg flex items-center gap-3">
-                  <span className="text-[10px] text-neutral-400 font-bold uppercase">Min (1 000 FCFA)</span>
+                  <span className="text-[10px] text-neutral-400 font-bold uppercase">Min ({formatPrice(1000, activeCurrencyCode)})</span>
                   <input 
                     type="range"
                     min="1000"
@@ -3238,32 +3739,21 @@ export default function App() {
                     onChange={(e) => setPriceRange(Number(e.target.value))}
                     className="flex-grow h-1.5 bg-neutral-200 accent-[#b8901c] rounded-lg appearance-none cursor-pointer"
                   />
-                  <span className="text-[10px] text-neutral-400 font-bold uppercase">Max (150K+)</span>
+                  <span className="text-[10px] text-neutral-400 font-bold uppercase">Max ({formatPrice(150000, activeCurrencyCode)})</span>
                 </div>
                 {priceRange < 150000 && (
                   <button
                     onClick={() => setPriceRange(150000)}
-                    className="text-[10px] font-black text-[#b8901c] hover:text-neutral-950 uppercase tracking-widest bg-amber-500/10 hover:bg-[#d4af37]/25 px-2.5 py-1 border border-[#d4af37]/20 transition-all rounded-sm"
+                    className="text-[10px] font-black text-[#b8901c] hover:text-neutral-950 uppercase tracking-widest bg-amber-500/10 hover:bg-[#d4af37]/25 px-2.5 py-1 border border-[#d4af37]/20 transition-all rounded-sm cursor-pointer"
                   >
                     Réinitialiser le budget
                   </button>
                 )}
               </div>
 
-              {/* Advanced Filters Block */}
+              {/* Quick toggles & Reset summary */}
               <div className="pt-4 border-t border-neutral-150 flex flex-col sm:flex-row flex-wrap items-center gap-4 justify-between">
-                <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
-                  {/* Stock Filter Checkbox */}
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-neutral-700 uppercase tracking-wider">
-                    <input 
-                      type="checkbox"
-                      checked={onlyInStock}
-                      onChange={(e) => setOnlyInStock(e.target.checked)}
-                      className="w-4 h-4 rounded-sm accent-[#b8901c] border-neutral-300 focus:ring-[#d4af37]"
-                    />
-                    <span>{language === "fr" ? "En stock uniquement" : "Eya le dɔ me pɛ"}</span>
-                  </label>
-
+                <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
                   {/* Promo Filter Checkbox */}
                   <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-neutral-700 uppercase tracking-wider">
                     <input 
@@ -3274,27 +3764,56 @@ export default function App() {
                     />
                     <span>{language === "fr" ? "En promotion uniquement" : "Asiɖeɖe tɔxɛwo pɛ"}</span>
                   </label>
+
+                  {/* Active country badge */}
+                  {selectedCountryFilter !== "Tous" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#d4af37]/15 text-neutral-900 border border-[#d4af37]/40 text-[10px] font-bold rounded-full">
+                      <Globe className="w-3 h-3 text-[#b8901c]" />
+                      <span>{selectedCountryFilter}</span>
+                      <button 
+                        onClick={() => { setSelectedCountryFilter("Tous"); setSelectedCityFilter("Toutes"); }} 
+                        className="ml-1 text-neutral-500 hover:text-black font-extrabold cursor-pointer"
+                        title="Retirer ce filtre"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+
+                  {/* Active city badge */}
+                  {selectedCityFilter !== "Toutes" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#d4af37]/15 text-neutral-900 border border-[#d4af37]/40 text-[10px] font-bold rounded-full">
+                      <MapPin className="w-3 h-3 text-[#b8901c]" />
+                      <span>{selectedCityFilter}</span>
+                      <button 
+                        onClick={() => setSelectedCityFilter("Toutes")} 
+                        className="ml-1 text-neutral-500 hover:text-black font-extrabold cursor-pointer"
+                        title="Retirer ce filtre"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
                 </div>
 
-                {/* Partner selector filter */}
-                <div className="w-full sm:w-auto flex items-center gap-2">
-                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-neutral-500">
-                    {language === "fr" ? "Par Partenaire :" : "Kple dɔwɔla :"}
-                  </span>
-                  <div className="relative">
-                    <select
-                      value={selectedPartnerFilter}
-                      onChange={(e) => setSelectedPartnerFilter(e.target.value)}
-                      className="appearance-none font-bold text-[11px] uppercase tracking-wider border border-neutral-300 rounded-sm bg-stone-50 px-3 py-1.5 pr-8 focus:outline-none focus:ring-1 focus:ring-[#d4af37] cursor-pointer"
-                    >
-                      <option value="Tous">{language === "fr" ? "Tous les partenaires" : "Dɔwɔlawo katã"}</option>
-                      {Array.from(new Set(products.map(p => p.partenaire).filter(Boolean))).map((partnerName: any) => (
-                        <option key={partnerName} value={partnerName}>{partnerName}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
-                  </div>
-                </div>
+                {(selectedCountryFilter !== "Tous" || selectedCityFilter !== "Toutes" || selectedCategory !== "Toutes" || priceRange < 150000 || searchQuery || onlyPromo || selectedPartnerFilter !== "Tous" || availabilityFilter !== "all") && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setSelectedCategory("Toutes");
+                      setSelectedCountryFilter("Tous");
+                      setSelectedCityFilter("Toutes");
+                      setPriceRange(150000);
+                      setOnlyInStock(false);
+                      setOnlyPromo(false);
+                      setSelectedPartnerFilter("Tous");
+                      setAvailabilityFilter("all");
+                    }}
+                    className="text-[10px] font-bold uppercase tracking-widest text-red-600 hover:text-red-800 underline transition-colors cursor-pointer"
+                  >
+                    Effacer tous les filtres
+                  </button>
+                )}
               </div>
             </div>
 
@@ -3398,6 +3917,21 @@ export default function App() {
                               Promo
                             </div>
                           )}
+                          {/* Seller Country Badge if different from active country */}
+                          {(() => {
+                            const prodCountry = resolveProductCountry(product);
+                            const isOtherCountry = prodCountry.code.toUpperCase() !== activeCountryCode.toUpperCase();
+                            if (!isOtherCountry) return null;
+                            return (
+                              <div
+                                className={`absolute ${product.prixBarre ? 'top-8' : 'top-2.5'} right-2.5 bg-[#d4af37] text-neutral-950 border border-amber-300 font-extrabold px-1.5 py-0.5 text-[7.5px] sm:text-[8px] rounded-sm uppercase tracking-wider flex items-center gap-1 shadow-md z-10`}
+                                title={`Vendeur expédiant depuis ${prodCountry.name}`}
+                              >
+                                <span>{prodCountry.flagEmoji}</span>
+                                <span>{prodCountry.name}</span>
+                              </div>
+                            );
+                          })()}
                           <div className="absolute bottom-1.5 left-1.5 bg-white/90 backdrop-blur-sm px-1.5 py-0.5 text-[8px] sm:text-[9px] font-semibold text-neutral-700 uppercase">
                             Stock: {product.stock}
                           </div>
@@ -3419,6 +3953,17 @@ export default function App() {
                         <div className="p-2.5 xs:p-3 sm:p-4 flex-grow flex flex-col justify-between">
                           <div>
                             <h3 className="font-display font-semibold text-neutral-950 text-xs xs:text-sm group-hover:text-[#b8901c] transition-colors line-clamp-1 mb-0.5 sm:mb-1">{product.nom}</h3>
+                            {(() => {
+                              const prodCountry = resolveProductCountry(product);
+                              const isOtherCountry = prodCountry.code.toUpperCase() !== activeCountryCode.toUpperCase();
+                              if (!isOtherCountry) return null;
+                              return (
+                                <div className="flex items-center gap-1 text-[9.5px] font-bold text-amber-800 bg-amber-50 border border-amber-200/70 px-1.5 py-0.5 rounded-sm w-fit mb-1.5">
+                                  <Globe className="w-2.5 h-2.5 text-[#b8901c] shrink-0" />
+                                  <span className="truncate">Vendeur : {prodCountry.flagEmoji} {prodCountry.name} {product.city ? `(${product.city})` : ""}</span>
+                                </div>
+                              );
+                            })()}
                             <p className="text-neutral-500 text-[10px] xs:text-xs line-clamp-1 sm:line-clamp-2 leading-relaxed mb-2 sm:mb-3">{product.description}</p>
                           </div>
 
@@ -3822,8 +4367,8 @@ export default function App() {
               <div className="max-w-2xl mx-auto space-y-3">
                 {[
                   {
-                    q: language === "fr" ? "Comment s'effectue la livraison à Lomé ?" : "Aleke woɖoa nudɔdɔwo na ame le Lomé?",
-                    a: language === "fr" ? "Nous livrons directement à domicile ou au bureau dans tous les quartiers de Lomé sous 2 à 4 heures. Dès 15.000 FCFA d'achat, la livraison vous est offerte !" : "Míeɖoa nudɔdɔwo tẽe va aƒeme alo dɔwɔƒe le Lomé du me fiawo katã me le gaƒoƒo 2 va ɖo 4 me. Ne èƒle nũ va ɖo 15.000 FCFA la, míeɖonɛ na wò femaxee!"
+                    q: language === "fr" ? "Comment s'effectue la livraison ?" : "Aleke woɖoa nudɔdɔwo na ame?",
+                    a: language === "fr" ? "Nous livrons directement à domicile ou au bureau sous 2 à 4 heures. Les modalités et détails de remise sont convenus directement lors de la confirmation de votre commande." : "Míeɖoa nudɔdɔwo tẽe va aƒeme alo dɔwɔƒe le gaƒoƒo 2 va ɖo 4 me. Míewɔa ɖoɖo nyuie tso nudɔɖo ŋu ne èɖo nua vɔ."
                   },
                   {
                     q: language === "fr" ? "Quels sont les moyens de paiement acceptés ?" : "Axe-mɔ kawoe míelɔ̃na?",
@@ -3870,7 +4415,82 @@ export default function App() {
           </div>
         )}
 
+        {/* TAB 5: VENDRE SUR MIABÉ ASI (ESPACE ARTISANS & VENDEURS) */}
+        {activeTab === "vendre" && (
+          <SellerLandingPage
+            onOpenLogin={() => {
+              setAuthMode("login");
+              setAuthError("");
+              setIsAuthOpen(true);
+            }}
+            onOpenRegisterSeller={() => {
+              setAuthMode("register");
+              setAuthRole("vendeur");
+              setAuthError("");
+              setIsAuthOpen(true);
+            }}
+            onNavigateToCatalog={() => {
+              setActiveTab("catalogue");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            onNavigateToContact={() => {
+              setActiveTab("contact");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            user={user}
+            onOpenSellerDashboard={() => {
+              setIsProfileOpen(true);
+              setSellerDashboardActive(true);
+              setInitialDashboardView("vendeur");
+            }}
+            formatFCFA={formatFCFA}
+            onDirectRegisterSeller={async (formData) => {
+              try {
+                const res = await fetch("/api/auth/register", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(formData)
+                });
+                const data = await res.json();
+                if (data.success && data.token && data.user) {
+                  localStorage.setItem("asime-user-token", data.token);
+                  setToken(data.token);
+                  setUser(data.user);
+                  showToast(`Bienvenue sur Miabé Asi, ${data.user.name} ! Votre boutique est prête.`);
+                  return true;
+                }
+                return false;
+              } catch (e) {
+                console.error("Seller direct register error:", e);
+                return false;
+              }
+            }}
+          />
+        )}
 
+        {/* TAB 6: NOTIFICATIONS & SUIVI DE COMMANDES (PAGE DÉDIÉE) */}
+        {activeTab === "notifications" && (
+          <NotificationsPage
+            user={user}
+            token={token}
+            showToast={showToast}
+            onTrackOrder={(orderId) => fetchTrackingDetails(orderId)}
+            onOpenInvoice={(order) => {
+              setSelectedInvoiceOrder(order);
+              setIsInvoiceModalOpen(true);
+            }}
+            onNavigateToCatalog={() => {
+              setActiveTab("catalogue");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            onNavigateToHome={() => {
+              setActiveTab("accueil");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+          />
+        )}
+          </>
+        )}
 
       </motion.main>
 
@@ -4144,6 +4764,19 @@ export default function App() {
                       </span>
                     </div>
                   )}
+
+                  {/* Seller Origin if from another country */}
+                  {(() => {
+                    const prodCountry = resolveProductCountry(selectedProduct);
+                    const isOtherCountry = prodCountry.code.toUpperCase() !== activeCountryCode.toUpperCase();
+                    if (!isOtherCountry) return null;
+                    return (
+                      <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2 rounded-sm text-xs font-bold mb-4">
+                        <Globe className="w-4 h-4 text-[#b8901c] shrink-0" />
+                        <span>Vendeur expédiant depuis {prodCountry.flagEmoji} <strong>{prodCountry.name}</strong> {selectedProduct.city ? `(${selectedProduct.city})` : ""}</span>
+                      </div>
+                    );
+                  })()}
 
                   <p className="text-neutral-600 text-xs leading-relaxed mb-4">{selectedProduct.description}</p>
                   
@@ -4612,7 +5245,7 @@ export default function App() {
                     </div>
                     <div className="flex-grow">
                       <h4 className="font-bold text-neutral-900 text-xs line-clamp-1">{item.product.nom}</h4>
-                      <p className="text-[#b8901c] font-bold text-xs mt-0.5">{formatFCFA(item.product.prix)}</p>
+                      <p className="text-[#b8901c] font-bold text-xs mt-0.5">{formatCartPrice(item.product.prix)}</p>
                       
                       {/* Quantity buttons */}
                       <div className="flex items-center gap-2.5 mt-2">
@@ -4648,39 +5281,14 @@ export default function App() {
               <div className="p-4 border-t border-neutral-200 bg-neutral-50 space-y-4">
                 <div className="flex items-center justify-between font-bold text-sm text-neutral-950 pb-2 border-b border-neutral-150">
                   <span className="uppercase tracking-wide text-xs">Total de la Commande :</span>
-                  <span className="text-[#b8901c] font-extrabold text-base">{formatFCFA(getCartTotal())}</span>
+                  <span className="text-[#b8901c] font-extrabold text-base">{formatCartPrice(getCartTotal())}</span>
                 </div>
-
-                {/* Free Delivery threshold indicator */}
-                {(() => {
-                  const total = getCartTotal();
-                  const threshold = 15000;
-                  const progressPercent = Math.min((total / threshold) * 100, 100);
-                  const remaining = threshold - total;
-                  
-                  return (
-                    <div className="bg-[#d4af37]/5 border border-[#d4af37]/20 p-3 rounded-none">
-                      <div className="flex items-center justify-between text-[9px] uppercase tracking-wider font-extrabold mb-1.5">
-                        {total >= threshold ? (
-                          <span className="text-[#b8901c] flex items-center gap-1">🎉 LIVRAISON OFFERTE À LOMÉ MÊME ! 🚚</span>
-                        ) : (
-                          <span className="text-neutral-600">Plus que <b className="text-neutral-950 font-mono font-black">{formatFCFA(remaining)}</b> pour la livraison offerte</span>
-                        )}
-                        <span className="text-neutral-500 font-mono font-black">{Math.round(progressPercent)}%</span>
-                      </div>
-                      <div className="w-full bg-neutral-200 h-1.5 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-[#d4af37] h-full transition-all duration-500 ease-out" 
-                          style={{ width: `${progressPercent}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })()}
 
                 <form onSubmit={handleCheckoutWhatsAppState} className="space-y-3">
                   <div>
-                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1">Nom & Prénom <span className="text-red-500">*</span></label>
+                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1">
+                      {language === "fr" ? "Nom & Prénom" : "Ŋkɔ kple tɔgbiŋkɔ"} <span className="text-red-500">*</span>
+                    </label>
                     <input 
                       type="text" 
                       required
@@ -4691,29 +5299,62 @@ export default function App() {
                     />
                   </div>
 
+                  {/* Pays de livraison PayDunya */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest">
+                        {language === "fr" ? "Pays de livraison" : "Dukɔ"} <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[9px] font-mono font-bold text-[#b8901c]">
+                        Devise : {checkoutCountry.currencyCode}
+                      </span>
+                    </div>
+                    <select
+                      value={checkoutCountryCode}
+                      onChange={(e) => handleCheckoutCountryChange(e.target.value)}
+                      className="w-full border border-neutral-300 rounded-sm px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-gold-500 outline-none bg-white cursor-pointer font-medium"
+                    >
+                      {SUPPORTED_COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flagEmoji} {c.name} ({c.phoneCode}) — {c.currencyCode}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1">Téléphone <span className="text-red-500">*</span></label>
-                      <input 
-                        type="tel" 
-                        required
-                        placeholder="Ex: 90050510"
-                        value={checkoutPhone}
-                        onChange={(e) => setCheckoutPhone(e.target.value)}
-                        className="w-full border border-neutral-300 rounded-sm px-2.5 py-1 text-xs focus:ring-1 focus:ring-gold-500 outline-none bg-white"
-                      />
+                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1">
+                        {language === "fr" ? "Téléphone" : "Kaƒomɔ"} <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex">
+                        <span className="inline-flex items-center px-2 text-[11px] bg-neutral-100 border border-r-0 border-neutral-300 text-neutral-700 font-mono font-bold select-none shrink-0">
+                          {checkoutCountry.phoneCode}
+                        </span>
+                        <input 
+                          type="tel" 
+                          required
+                          placeholder={checkoutCountry.code === "TG" ? "90050510" : "Numéro"}
+                          value={checkoutPhone}
+                          onChange={(e) => setCheckoutPhone(e.target.value)}
+                          className="w-full border border-neutral-300 rounded-none rounded-r-sm px-2 py-1 text-xs focus:ring-1 focus:ring-gold-500 outline-none bg-white font-mono"
+                        />
+                      </div>
                     </div>
                     <div>
                       <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 flex items-center gap-0.5">
                         <MapPin className="w-3 h-3 text-[#d4af37]" />
-                        <span>Quartier (Lomé) <span className="text-red-500">*</span></span>
+                        <span>{language === "fr" ? "Ville / Quartier" : "Dugã / Du"} <span className="text-red-500">*</span></span>
                       </label>
                       <input 
                         type="text" 
                         required
-                        placeholder="Ex: Agoè, Adidogomé"
-                        value={checkoutQuartier}
-                        onChange={(e) => setCheckoutQuartier(e.target.value)}
+                        placeholder={checkoutCountry.code === "TG" ? "Ex: Agoè, Lomé" : `Ex: Ville (${checkoutCountry.name})`}
+                        value={checkoutCity || checkoutQuartier}
+                        onChange={(e) => {
+                          setCheckoutCity(e.target.value);
+                          setCheckoutQuartier(e.target.value);
+                        }}
                         className="w-full border border-neutral-300 rounded-sm px-2.5 py-1 text-xs focus:ring-1 focus:ring-gold-500 outline-none bg-white"
                       />
                     </div>
@@ -4770,7 +5411,7 @@ export default function App() {
                       <>
                         <Phone className="w-4 h-4 cursor-pointer" />
                         <span>
-                          {language === "fr" ? "Valider sur WhatsApp (Livraison) 🇹🇬" : "Wɔe na WhatsApp (Livraison) 🇹🇬"}
+                          {language === "fr" ? `Valider sur WhatsApp (Livraison) ${checkoutCountry.flagEmoji}` : `Wɔe na WhatsApp (Livraison) ${checkoutCountry.flagEmoji}`}
                         </span>
                       </>
                     ) : (
@@ -4825,7 +5466,7 @@ export default function App() {
                 <div className="space-y-1.5">
                   <h4 className="text-sm font-black text-neutral-900 uppercase tracking-wider">Paiement Validé avec Succès !</h4>
                   <p className="text-xs text-neutral-500 max-w-xs mx-auto">
-                    Votre paiement de <strong className="text-neutral-900">{formatFCFA(paymentSession.amount)}</strong> a été vérifié par notre système.
+                    Votre paiement de <strong className="text-neutral-900">{formatCartPrice(paymentSession.amount)}</strong> a été vérifié par notre système.
                   </p>
                 </div>
 
@@ -4839,6 +5480,7 @@ export default function App() {
                   <button
                     onClick={async () => {
                       // Build the WhatsApp message confirming paid status
+                      const resolvedCity = (checkoutCity || checkoutQuartier).trim();
                       let message = `*✨ PAIEMENT ENREGISTRÉ - COMMANDE MIABÉ ASI ✨*\n\n`;
                       message += `🆔 *Commande :* \`${paymentSession.orderId}\`\n`;
                       message += `🔒 *ID Paiement :* \`${paymentSession.transactionId}\`\n`;
@@ -4846,17 +5488,18 @@ export default function App() {
                       message += `🟢 *Statut :* PAYÉ ET VALIDÉ VIA MIABÉ ASI PAY\n`;
                       message += `🔗 *Suivi de commande :* ${window.location.origin}/?track=${paymentSession.orderId}\n\n`;
                       message += `👤 *Client :* ${checkoutName.trim()}\n`;
-                      message += `📞 *Téléphone :* ${checkoutPhone.trim()}\n`;
-                      message += `📍 *Quartier :* ${checkoutQuartier.trim()}\n\n`;
+                      message += `📞 *Téléphone :* ${checkoutPhoneWithCode}\n`;
+                      message += `🌍 *Pays :* ${checkoutCountry.name} (${checkoutCountry.code})\n`;
+                      message += `📍 *Ville / Quartier :* ${resolvedCity}\n\n`;
                       message += `*🛒 Articles :*\n`;
                       cart.forEach((item, index) => {
                         const lineCost = item.product.prix * item.quantity;
-                        message += `${index + 1}. *${item.product.nom}* (x${item.quantity}) - ${formatFCFA(lineCost)}\n`;
+                        message += `${index + 1}. *${item.product.nom}* (x${item.quantity}) - ${formatCartPrice(lineCost)}\n`;
                       });
                       message += `\n*━━━━━━━━━━━━━━━━━━━━━*\n`;
-                      message += `💰 *MONTANT REÇU :* *${formatFCFA(paymentSession.amount)}*\n`;
+                      message += `💰 *MONTANT REÇU :* *${formatCartPrice(paymentSession.amount)}*\n`;
                       message += `*━━━━━━━━━━━━━━━━━━━━━*\n\n`;
-                      message += `Mon paiement est déjà validé sur le site de Miabé Asi ! Veuillez lancer la livraison. Merci ! 🙏🇹🇬`;
+                      message += `Mon paiement est déjà validé sur le site de Miabé Asi ! Veuillez lancer la livraison. Merci ! 🙏${checkoutCountry.flagEmoji}`;
 
                       const encodedText = encodeURIComponent(message);
                       const merchantPhone = ASIME_SETTINGS.WHATSAPP_MERCHANT_NUMBER;
@@ -4881,17 +5524,23 @@ export default function App() {
                   <button
                     onClick={() => {
                       // Construct order object for InvoiceModal
+                      const resolvedCity = (checkoutCity || checkoutQuartier).trim();
                       const invoiceOrder = {
                         id: paymentSession.orderId,
                         createdAt: Date.now(),
                         totalAmount: paymentSession.amount,
+                        currencyCode: checkoutCountry.currencyCode,
                         paymentStatus: "Payé",
                         orderStatus: "En préparation",
                         paymentMethod: paymentSession.providerId.toUpperCase(),
                         shippingDetails: {
                           name: checkoutName,
                           phone: checkoutPhone,
-                          quartier: checkoutQuartier
+                          countryCode: checkoutCountry.code,
+                          city: resolvedCity,
+                          currencyCode: checkoutCountry.currencyCode,
+                          phoneWithCountryCode: checkoutPhoneWithCode,
+                          quartier: (checkoutQuartier || checkoutCity).trim()
                         },
                         items: cart.map(item => ({
                           product: {
@@ -4932,7 +5581,7 @@ export default function App() {
                 <div className="bg-stone-50 border border-stone-200 p-4 space-y-2.5 rounded-none text-xs">
                   <div className="flex justify-between items-center border-b border-stone-200/60 pb-2">
                     <span className="text-neutral-500 font-bold">MONTANT TOTAL</span>
-                    <strong className="text-sm font-mono font-black text-neutral-950">{formatFCFA(paymentSession.amount)}</strong>
+                    <strong className="text-sm font-mono font-black text-neutral-950">{formatCartPrice(paymentSession.amount)}</strong>
                   </div>
                   <div className="grid grid-cols-2 gap-y-1 text-[10px]">
                     <span className="text-neutral-400 font-medium">Mode de paiement :</span>
@@ -5012,22 +5661,27 @@ export default function App() {
             </h4>
             <ul className="space-y-2 text-neutral-400">
               <li>
-                <button onClick={() => setActiveTab("accueil")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
+                <button onClick={() => { setActiveTab("accueil"); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
                   {language === "fr" ? "Accueil du site" : "Aƒeme gɔmedzedze"}
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab("catalogue")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
+                <button onClick={() => { setActiveTab("catalogue"); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
                   {language === "fr" ? "Catalogue Produits" : "Adzɔnuwo ƒe Fiasã"}
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab("blog")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
+                <button onClick={() => { setActiveTab("notifications"); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans flex items-center gap-1.5">
+                  <span>{language === "fr" ? "Notifications & Suivi" : "Dzesiwo & Kpɔkplɔ"}</span>
+                </button>
+              </li>
+              <li>
+                <button onClick={() => { setActiveTab("blog"); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
                   {language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo"}
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab("contact")} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
+                <button onClick={() => { setActiveTab("contact"); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="hover:text-white transition-colors bg-transparent border-0 p-0 text-left cursor-pointer font-sans">
                   {language === "fr" ? "Nous Contacter" : "Ŋlɔ nya na mí"}
                 </button>
               </li>
@@ -5677,27 +6331,37 @@ export default function App() {
                     
                     {/* Items detail list */}
                     <div className="max-h-[100px] overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-stone-200">
-                      {order.items && order.items.map((item: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between text-xs text-neutral-700">
-                          <span className="truncate max-w-[70%]">
-                            <strong className="text-neutral-900">{item.product.nom}</strong> x{item.quantity}
-                          </span>
-                          <span className="font-mono font-bold text-neutral-900">{formatFCFA(item.product.prix * item.quantity)}</span>
-                        </div>
-                      ))}
+                      {order.items && order.items.map((item: any, i: number) => {
+                        const orderCurrency = order.currencyCode || order.shippingDetails?.currencyCode;
+                        const formattedItemPrice = orderCurrency 
+                          ? `${new Intl.NumberFormat("fr-FR").format(item.product.prix * item.quantity)} ${orderCurrency}`
+                          : formatFCFA(item.product.prix * item.quantity);
+                        return (
+                          <div key={i} className="flex items-center justify-between text-xs text-neutral-700">
+                            <span className="truncate max-w-[70%]">
+                              <strong className="text-neutral-900">{item.product.nom}</strong> x{item.quantity}
+                            </span>
+                            <span className="font-mono font-bold text-neutral-900">{formattedItemPrice}</span>
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Shipping Address */}
                     <div className="pt-2 border-t border-stone-200 text-left space-y-1 text-[11px] text-neutral-600">
                       <p>👤 <strong>Client :</strong> {order.shippingDetails?.name}</p>
-                      <p>📞 <strong>Téléphone :</strong> {order.shippingDetails?.phone}</p>
-                      <p>📍 <strong>Quartier :</strong> {order.shippingDetails?.quartier}</p>
+                      <p>📞 <strong>Téléphone :</strong> {order.shippingDetails?.phoneWithCountryCode || order.shippingDetails?.phone}</p>
+                      <p>📍 <strong>Livraison :</strong> {order.shippingDetails?.city || order.shippingDetails?.quartier}{order.shippingDetails?.countryCode ? ` (${order.shippingDetails.countryCode})` : ""}</p>
                     </div>
 
                     {/* Grand Total */}
                     <div className="pt-2 border-t border-stone-200 flex justify-between items-center text-xs font-sans font-black">
                       <span className="uppercase tracking-widest text-[10px] text-stone-500">{language === "fr" ? "TOTAL À PAYER" : "Fetu katã"}</span>
-                      <span className="text-[#b8901c] font-black text-sm">{formatFCFA(order.totalAmount)}</span>
+                      <span className="text-[#b8901c] font-black text-sm">
+                        {order.currencyCode 
+                          ? `${new Intl.NumberFormat("fr-FR").format(order.totalAmount)} ${order.currencyCode}`
+                          : formatFCFA(order.totalAmount)}
+                      </span>
                     </div>
                   </div>
 
@@ -5825,6 +6489,19 @@ export default function App() {
                   <div className="mt-3 flex text-left bg-neutral-100 px-2.5 py-1 text-[9px] font-bold text-neutral-700 uppercase rounded-none border border-neutral-200">
                     Disponibilité : &nbsp;<span className={quickViewProduct.stock > 0 ? "text-emerald-700 font-extrabold" : "text-red-500 font-extrabold"}>{quickViewProduct.stock > 0 ? `En Stock (${quickViewProduct.stock})` : "Rupture"}</span>
                   </div>
+
+                  {/* Vendor country badge if different from active country */}
+                  {(() => {
+                    const prodCountry = resolveProductCountry(quickViewProduct);
+                    const isOtherCountry = prodCountry.code.toUpperCase() !== activeCountryCode.toUpperCase();
+                    if (!isOtherCountry) return null;
+                    return (
+                      <div className="mt-2 flex items-center gap-1.5 text-left bg-amber-50 px-2.5 py-1 text-[9.5px] font-bold text-amber-900 uppercase border border-amber-200">
+                        <Globe className="w-3 h-3 text-[#b8901c] shrink-0" />
+                        <span>Vendeur : {prodCountry.flagEmoji} {prodCountry.name} {quickViewProduct.city ? `(${quickViewProduct.city})` : ""}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Core buttons actions */}
@@ -5997,48 +6674,131 @@ export default function App() {
 
 
       {/* ========================================================= */}
-      {/* --- CUSTOMER AUTH MODAL (CONNEXION & INSCRIPTION) --- */}
+      {/* --- CUSTOMER & ARTISAN AUTH MODAL (CONNEXION & INSCRIPTION) --- */}
       {/* ========================================================= */}
       {isAuthOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/75 backdrop-blur-xs animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-xs animate-fade-in">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 15 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="bg-white max-w-md w-full rounded-sm overflow-hidden shadow-2xl relative border border-[#d4af37]/35"
+            className="bg-white max-w-md w-full rounded-sm overflow-hidden shadow-2xl relative border border-[#d4af37]/35 max-h-[90vh] flex flex-col"
           >
             {/* Close Button */}
             <button 
               onClick={() => setIsAuthOpen(false)}
-              className="absolute top-3.5 right-3.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 p-1.5 rounded-full z-10 transition-colors cursor-pointer"
+              className="absolute top-3.5 right-3.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-850 p-1.5 rounded-full z-10 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="p-6 text-center">
-              <div className="w-12 h-12 bg-neutral-950 text-[#d4af37] border border-[#d4af37]/35 rounded-full flex items-center justify-center font-display font-black text-xl mx-auto mb-3">
-                S
+            <div className="p-6 overflow-y-auto text-center">
+              {/* Brand Emblem */}
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <div className="w-10 h-10 bg-neutral-950 text-[#d4af37] border border-[#d4af37]/35 rounded-xl flex items-center justify-center font-display font-black text-lg shadow-sm">
+                  M
+                </div>
               </div>
-              <h3 className="font-display font-black uppercase text-base text-neutral-900 tracking-wider">
-                {authMode === "login" ? "Connexion Espace Client" : "Créer un Compte Client"}
+              <h3 className="font-display font-black uppercase text-base text-neutral-950 tracking-wider">
+                Miabé Asi
               </h3>
-              <p className="text-[10px] text-neutral-500 uppercase font-semibold tracking-widest mt-1 mb-6">
-                {authMode === "login" ? "Accédez à vos avantages exclusifs" : "Profitez d'un suivi de commande ultra-rapide"}
+              <p className="text-[10px] text-[#b8901c] uppercase font-bold tracking-widest mt-0.5 mb-4">
+                Le marché d'excellence du terroir togolais
               </p>
 
+              {/* Mode Switcher Tabs */}
+              <div className="grid grid-cols-2 p-1 bg-stone-100 rounded-sm mb-5 border border-stone-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setAuthError("");
+                  }}
+                  className={`py-2 text-[11px] font-bold uppercase tracking-wider rounded-xs transition-all cursor-pointer ${
+                    authMode === "login"
+                      ? "bg-neutral-950 text-[#d4af37] shadow-xs"
+                      : "text-neutral-600 hover:text-neutral-950"
+                  }`}
+                >
+                  Se Connecter
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("register");
+                    setAuthError("");
+                  }}
+                  className={`py-2 text-[11px] font-bold uppercase tracking-wider rounded-xs transition-all cursor-pointer ${
+                    authMode === "register"
+                      ? "bg-neutral-950 text-[#d4af37] shadow-xs"
+                      : "text-neutral-600 hover:text-neutral-950"
+                  }`}
+                >
+                  Créer un Compte
+                </button>
+              </div>
+
               {authError && (
-                <div className="p-3 mb-4 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold text-center rounded-none">
+                <div className="p-3 mb-4 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold text-center rounded-sm">
                   ⚠️ {authError}
                 </div>
               )}
 
-              <form onSubmit={handleAuthSubmit} className="space-y-4">
+              {/* Registration Role Switcher */}
+              {authMode === "register" && (
+                <div className="mb-4 text-left">
+                  <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1.5">
+                    Type de Compte <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAuthRole("client")}
+                      className={`p-2.5 rounded-sm border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
+                        authRole === "client"
+                          ? "border-[#d4af37] bg-amber-50/50 text-neutral-950 ring-1 ring-[#d4af37]"
+                          : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-[#b8901c]" />
+                        <span className="text-[11px] font-bold uppercase tracking-wider">Client</span>
+                      </div>
+                      <span className="text-[9px] text-neutral-500 leading-tight font-sans">
+                        Acheter &amp; suivre mes commandes
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAuthRole("vendeur")}
+                      className={`p-2.5 rounded-sm border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
+                        authRole === "vendeur"
+                          ? "border-[#d4af37] bg-amber-50/50 text-neutral-950 ring-1 ring-[#d4af37]"
+                          : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Store className="w-3.5 h-3.5 text-[#b8901c]" />
+                        <span className="text-[11px] font-bold uppercase tracking-wider">Artisan / Vendeur</span>
+                      </div>
+                      <span className="text-[9px] text-neutral-500 leading-tight font-sans">
+                        Vendre mes produits du terroir
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleAuthSubmit} className="space-y-3.5 text-left">
                 {authMode === "register" && (
                   <div>
-                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">Nom complet <span className="text-red-500">*</span></label>
+                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
+                      {authRole === "vendeur" ? "Nom & Prénoms du Gérant" : "Nom complet"} <span className="text-red-500">*</span>
+                    </label>
                     <input 
                       type="text"
                       required
-                      placeholder="Koffi Mensah"
+                      placeholder="Ex: Koffi Mensah"
                       value={authName}
                       onChange={(e) => setAuthName(e.target.value)}
                       className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900"
@@ -6046,12 +6806,55 @@ export default function App() {
                   </div>
                 )}
 
+                {authMode === "register" && authRole === "vendeur" && (
+                  <div>
+                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
+                      Nom de la Boutique / Atelier <span className="text-red-500">*</span>
+                    </label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="Ex: Terroir & Saveurs du Togo"
+                      value={authBoutiqueName}
+                      onChange={(e) => setAuthBoutiqueName(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900"
+                    />
+                  </div>
+                )}
+
+                {authMode === "register" && (
+                  <div>
+                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
+                      Pays <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select 
+                        required
+                        value={authCountryCode}
+                        onChange={(e) => setAuthCountryCode(e.target.value)}
+                        className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900 appearance-none font-medium cursor-pointer pr-8"
+                      >
+                        {SUPPORTED_COUNTRIES.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.flagEmoji} {c.name} ({c.phoneCode}) — {c.currencyCode}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-neutral-500">
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">Adresse Email <span className="text-red-500">*</span></label>
+                  <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
+                    Adresse Email <span className="text-red-500">*</span>
+                  </label>
                   <input 
                     type="email"
                     required
-                    placeholder="koffi@gmail.com"
+                    placeholder="votre-email@gmail.com"
                     value={authEmail}
                     onChange={(e) => setAuthEmail(e.target.value)}
                     className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900"
@@ -6059,7 +6862,9 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">Mot de passe <span className="text-red-500">*</span></label>
+                  <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
+                    Mot de passe <span className="text-red-500">*</span>
+                  </label>
                   <input 
                     type="password"
                     required
@@ -6071,24 +6876,37 @@ export default function App() {
                 </div>
 
                 {authMode === "register" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">WhatsApp (+228) <span className="text-[#b8901c]">(Optionnel)</span></label>
-                      <input 
-                        type="tel"
-                        placeholder="90123456"
-                        value={authPhone}
-                        onChange={(e) => setAuthPhone(e.target.value)}
-                        className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900 font-mono"
-                      />
+                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
+                        Téléphone / WhatsApp ({selectedAuthCountry.phoneCode}) <span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex">
+                        <span className="inline-flex items-center px-2.5 text-xs bg-neutral-100 border border-r-0 border-neutral-300 text-neutral-700 font-mono select-none font-medium">
+                          {selectedAuthCountry.phoneCode}
+                        </span>
+                        <input 
+                          type="tel"
+                          required
+                          placeholder="90 00 00 00"
+                          value={authPhone}
+                          onChange={(e) => setAuthPhone(e.target.value)}
+                          className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900 font-mono"
+                        />
+                      </div>
                     </div>
                     <div>
-                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">Quartier (Lomé/Ville) <span className="text-[#b8901c]">(Optionnel)</span></label>
+                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
+                        {authRole === "vendeur" ? "Ville / Région" : "Ville / Quartier"} <span className="text-[#b8901c]">(Optionnel)</span>
+                      </label>
                       <input 
                         type="text"
-                        placeholder="Adidogomé"
-                        value={authQuartier}
-                        onChange={(e) => setAuthQuartier(e.target.value)}
+                        placeholder={selectedAuthCountry.code === "TG" ? "Ex: Adidogomé / Kara" : `Ex: Ville (${selectedAuthCountry.name})`}
+                        value={authCity}
+                        onChange={(e) => {
+                          setAuthCity(e.target.value);
+                          setAuthQuartier(e.target.value);
+                        }}
                         className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900"
                       />
                     </div>
@@ -6098,38 +6916,31 @@ export default function App() {
                 <button
                   type="submit"
                   disabled={isAuthSubmitting}
-                  className="w-full bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 py-2.5 font-bold uppercase tracking-widest text-[11px] transition-colors flex items-center justify-center gap-2 cursor-pointer mt-4"
+                  className="w-full bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 py-3 font-bold uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer mt-3 shadow-md"
                 >
                   {isAuthSubmitting ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   ) : (
                     <>
                       {authMode === "login" ? <Unlock className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                      <span>{authMode === "login" ? "Se connecter" : "Créer mon compte"}</span>
+                      <span>{authMode === "login" ? "Accéder à mon Espace" : (authRole === "vendeur" ? "Inscrire ma Boutique" : "Créer mon Compte")}</span>
                     </>
                   )}
                 </button>
-
-
               </form>
 
-              {/* Toggle Login/Sign-up Mode trigger */}
-              <div className="mt-6 pt-4 border-t border-neutral-100 text-center">
-                <p className="text-xs text-neutral-500">
-                  {authMode === "login" ? "Nouveau sur Miabé Asi ?" : "Vous possédez déjà un compte ?"}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode(authMode === "login" ? "register" : "login");
-                    setAuthError("");
-                  }}
-                  className="mt-1 text-xs font-bold text-[#b8901c] hover:text-neutral-950 uppercase tracking-widest transition-colors decoration-none cursor-pointer"
-                >
-                  {authMode === "login" ? "S'inscrire GRATUITEMENT et Gagner" : "Se Connecter à mon Espace"}
-                </button>
+              {/* Trust Reassurance Badges */}
+              <div className="mt-5 pt-4 border-t border-neutral-100 flex items-center justify-center gap-3 text-[10px] text-neutral-500 font-medium">
+                <span className="flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Données 100% Sécurisées</span>
+                </span>
+                <span>•</span>
+                <span className="flex items-center gap-1">
+                  <span>📱</span>
+                  <span>T-Money &amp; Flooz</span>
+                </span>
               </div>
-
             </div>
           </motion.div>
         </div>
@@ -6230,9 +7041,17 @@ export default function App() {
           <span className="text-[9px] font-bold uppercase tracking-wider">{t("bottom_home")}</span>
         </button>
 
-
-
-
+        {/* Catalogue */}
+        <button 
+          onClick={() => {
+            setActiveTab("catalogue");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          className={`flex flex-col items-center gap-1 bg-transparent border-0 p-1 cursor-pointer transition-colors ${activeTab === "catalogue" ? "text-[#d4af37]" : "text-neutral-500 hover:text-neutral-905"}`}
+        >
+          <ShoppingBag className="w-5 h-5" />
+          <span className="text-[9px] font-bold uppercase tracking-wider">{language === "fr" ? "Catalogue" : "Fiasã"}</span>
+        </button>
 
         {/* Profil / Connexion */}
         <button 
@@ -6295,30 +7114,33 @@ export default function App() {
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="absolute bottom-0 inset-x-0 bg-white border-t border-neutral-200 rounded-t-xl p-6 shadow-2xl pb-safe select-none text-left"
+            className="absolute bottom-0 inset-x-0 bg-white border-t border-neutral-200 rounded-t-2xl p-5 sm:p-6 shadow-2xl pb-safe select-none text-left max-h-[88vh] overflow-y-auto"
           >
             {/* Header */}
-            <div className="flex items-center justify-between mb-6 pb-4 border-b border-neutral-100">
-              <div className="flex items-center gap-2">
-                {renderLogoNode("w-9 h-9")}
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-neutral-100 sticky top-0 bg-white z-10">
+              <div className="flex items-center gap-2.5">
+                {renderLogoNode("w-10 h-10")}
                 <div>
-                  <h3 className="font-sans font-black tracking-[0.04em] text-[#0E5224] text-sm leading-none">Miabé Asi</h3>
-                  <p className="text-[8px] text-[#D97706] tracking-[0.08em] leading-normal font-semibold uppercase mt-1 font-sans">{t("slogan")}</p>
+                  <h3 className="font-sans font-black tracking-[0.04em] text-[#0E5224] text-base leading-none">Miabé Asi</h3>
+                  <p className="text-[9px] text-[#D97706] tracking-[0.06em] leading-normal font-semibold uppercase mt-0.5 font-sans">{t("slogan")}</p>
                 </div>
               </div>
-            <button 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="p-1 px-1.5 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 border-0 bg-transparent cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+              <button 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-2 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 border-0 bg-transparent rounded-full cursor-pointer"
+                title="Fermer le menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
           {/* Menu Links List */}
           <div className="space-y-1.5">
             {[
               { label: language === "fr" ? "Accueil du site" : "Aƒeme dzesi", value: "accueil" as const, desc: language === "fr" ? "Découvrir nos sélections phares et histoire" : "Kpɔ míaƒe adzɔnu dzesiwo kple ŋutinya" },
               { label: language === "fr" ? "Catalogue de Produits" : "Adzɔnuwo kpeɖodzi", value: "catalogue" as const, desc: language === "fr" ? "Explorer l'ensemble de nos collections" : "Kpɔ míaƒe adzɔnu hame hamewo katã" },
+              { label: language === "fr" ? "Notifications & Suivi" : "Dzesiwo & Kpɔkplɔ", value: "notifications" as const, desc: language === "fr" ? "Suivi des commandes en temps réel" : "Dɔwɔwɔ ƒe dzesiwo" },
+              { label: language === "fr" ? "Vendre sur Miabé Asi" : "Dzra nu le Miabé Asi", value: "vendre" as const, desc: language === "fr" ? "Espace dédié aux producteurs, artisans et créateurs togolais" : "Teƒe tɔxɛ na asinɔlawo kple aɖaŋudɔwɔlawo" },
               { label: language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils de terroir et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
               { label: language === "fr" ? "Nous Contacter" : "Mía Kadodowo", value: "contact" as const, desc: language === "fr" ? "Support client, WhatsApp et localisation physique" : "WhatsApp kple afisi míele le Lomé" }
             ].map((link) => (
@@ -6341,6 +7163,19 @@ export default function App() {
             ))}
 
             <div className="h-[1px] bg-neutral-100 my-4" />
+
+            {/* Country Selection inside Mobile Menu */}
+            <div className="p-3 bg-neutral-50 text-neutral-850 rounded-sm flex items-center justify-between border border-neutral-200 mb-2">
+              <div className="flex flex-col text-left gap-0.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#C88A24]">
+                  Pays &amp; Devise
+                </span>
+                <span className="text-[10px] text-neutral-500 font-sans leading-tight">
+                  Zone PayDunya (7 pays)
+                </span>
+              </div>
+              <CountrySelector id="mobile-menu-country-selector" />
+            </div>
 
             {/* Language Selection inside Mobile Menu */}
             <button

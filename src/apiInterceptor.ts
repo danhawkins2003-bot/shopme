@@ -1,3 +1,5 @@
+import { isSupportedCountry, getCountryByCode } from "./data/westAfricanCountries";
+
 const defaultProducts: any[] = [];
 const defaultBlogs: any[] = [];
 
@@ -91,14 +93,6 @@ function initLocalStorage() {
   const existingProds = localStorage.getItem("asime_emulated_products");
   if (!existingProds) {
     localStorage.setItem("asime_emulated_products", JSON.stringify(defaultProducts));
-  } else {
-    try {
-      const parsed = JSON.parse(existingProds);
-      if (Array.isArray(parsed) && parsed.some(p => p && p.id && String(p.id).startsWith("prod_pop_"))) {
-        const cleaned = parsed.filter(p => p && p.id && !String(p.id).startsWith("prod_pop_"));
-        localStorage.setItem("asime_emulated_products", JSON.stringify(cleaned));
-      }
-    } catch (e) {}
   }
   if (!localStorage.getItem("asime_emulated_blogs")) {
     localStorage.setItem("asime_emulated_blogs", JSON.stringify(defaultBlogs));
@@ -153,7 +147,32 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
   // --- PRODUCTS PATHS ---
   if (cleanRoute === "/api/products") {
     if (method === "GET") {
-      const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+      let prods: any[] = [];
+      try {
+        const cached = localStorage.getItem("asime_emulated_products");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            prods = parsed;
+          }
+        }
+      } catch (e) {}
+
+      // If nothing in local cache, try fetching from static /produits.json
+      if (prods.length === 0) {
+        try {
+          const staticRes = await originalFetch("/produits.json?t=" + Date.now(), { cache: "no-store" });
+          const ct = (staticRes.headers.get("content-type") || "").toLowerCase();
+          if (staticRes.ok && (ct.includes("application/json") || ct.includes("json"))) {
+            const staticText = await staticRes.text();
+            if (staticText && staticText.trim().startsWith("[")) {
+              prods = JSON.parse(staticText);
+              localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+            }
+          }
+        } catch (e) {}
+      }
+
       return makeResponse(prods, 200, true);
     }
   }
@@ -232,7 +251,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       prixBarre: prodDetails.prixBarre ? Number(prodDetails.prixBarre) : null,
       images: Array.isArray(prodDetails.images) ? prodDetails.images : [prodDetails.images || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80"],
       categorie: String(prodDetails.categorie || "Général").trim(),
-      phare: !!prodDetails.phare,
+      phare: typeof prodDetails.phare !== "undefined" ? !!prodDetails.phare : true,
       stock: typeof prodDetails.stock !== "undefined" ? Math.max(0, Math.floor(Number(prodDetails.stock))) : 10,
       partenaire: prodDetails.partenaire || "Boutique en Direct",
       vendeurId: prodDetails.vendeurId || userId,
@@ -246,6 +265,17 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }
 
     localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+
+    // Replicate to backend server so mobile clients can see it immediately
+    originalFetch("/api/products", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": authHeader || "asime2026"
+      },
+      body: JSON.stringify({ ...savedProduct, auth: "asime2026" })
+    }).catch(() => {});
+
     return makeResponse({ success: true, product: savedProduct }, 200, true);
   }
 
@@ -256,7 +286,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }
 
     const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
-    let savedProduct = { ...product };
+    let savedProduct = { ...product, phare: typeof product?.phare !== "undefined" ? product.phare : true };
 
     if (savedProduct.id) {
       // Edit
@@ -268,11 +298,22 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       }
     } else {
       // New
-      savedProduct.id = "prod_emulated_" + Date.now();
+      savedProduct.id = "prod_" + Date.now();
       prods.unshift(savedProduct);
     }
 
     localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+
+    // Replicate to backend server so mobile clients can see it immediately
+    originalFetch("/api/products/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "asime2026"
+      },
+      body: JSON.stringify({ auth: "asime2026", product: savedProduct })
+    }).catch(() => {});
+
     return makeResponse({ success: true, product: savedProduct }, 200, true);
   }
 
@@ -322,11 +363,43 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     return makeResponse({ success: true, count: defaultProducts.length, message: "105 produits d'affiliation générés avec succès !" }, 200, true);
   }
 
+// Normalizes and guarantees persistent, valid country/currency/city fields on user records
+function normalizeStoredUser(user: any): any {
+  if (!user) return user;
+  const rawCountry = user.countryCode;
+  const validCountryCode = (rawCountry && isSupportedCountry(rawCountry))
+    ? rawCountry.toUpperCase()
+    : "TG";
+  const countryObj = getCountryByCode(validCountryCode);
+  const currencyCode = user.currencyCode || countryObj.currencyCode || "XOF";
+  const city = String(user.city !== undefined ? user.city : (user.quartier || "")).trim();
+  const quartier = String(user.quartier !== undefined ? user.quartier : (user.city || "")).trim();
+
+  return {
+    ...user,
+    countryCode: validCountryCode,
+    currencyCode,
+    city,
+    quartier
+  };
+}
+
+function sanitizeUserForResponse(user: any): any {
+  const normalized = normalizeStoredUser(user);
+  if (!normalized) return null;
+  const { passwordHash: _, ...safeUser } = normalized;
+  return safeUser;
+}
+
   // --- CUSTOMER AUTHENTICATION ---
   if ((cleanRoute === "/api/auth/register" || cleanRoute === "/auth/register") && method === "POST") {
-    const { name, email, password, phone, quartier } = bodyData;
+    const { name, email, password, phone, quartier, city, countryCode } = bodyData;
     if (!name || !email || !password) {
       return makeResponse({ success: false, error: "Veuillez remplir les champs obligatoires (Nom, Email, Mot de passe)." }, 400, false);
+    }
+
+    if (countryCode && !isSupportedCountry(countryCode)) {
+      return makeResponse({ success: false, error: "Le pays sélectionné n'est pas autorisé." }, 400, false);
     }
 
     const emailLower = String(email).trim().toLowerCase();
@@ -341,13 +414,21 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       return makeResponse({ success: false, error: "Cette adresse email est déjà enregistrée." }, 400, false);
     }
 
+    const validCountryCode = (countryCode && isSupportedCountry(countryCode)) ? countryCode.toUpperCase() : "TG";
+    const countryObj = getCountryByCode(validCountryCode);
+    const resolvedCurrencyCode = countryObj.currencyCode || "XOF";
+    const resolvedCity = String(city || quartier || "").trim();
+
     const newUser = {
       id: "user_" + Date.now().toString(),
       name: String(name).trim(),
       email: emailLower,
       passwordHash: hashPassword(password),
       phone: String(phone || "").trim(),
-      quartier: String(quartier || "").trim(),
+      quartier: resolvedCity,
+      city: resolvedCity,
+      countryCode: validCountryCode,
+      currencyCode: resolvedCurrencyCode,
       favorites: [],
       createdAt: new Date().toISOString()
     };
@@ -356,9 +437,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     localStorage.setItem("asime_emulated_users", JSON.stringify(users));
 
     const sessionToken = "user-token-" + btoa(newUser.id);
-    const { passwordHash: _, ...userResponse } = newUser;
-
-    return makeResponse({ success: true, token: sessionToken, user: userResponse }, 200, true);
+    return makeResponse({ success: true, token: sessionToken, user: sanitizeUserForResponse(newUser) }, 200, true);
   }
 
   if ((cleanRoute === "/api/auth/login" || cleanRoute === "/auth/login") && method === "POST") {
@@ -369,16 +448,22 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
 
     const emailLower = String(email).trim().toLowerCase();
     const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
-    const user = users.find((u: any) => u.email && u.email.toLowerCase() === emailLower);
+    const userIndex = users.findIndex((u: any) => u.email && u.email.toLowerCase() === emailLower);
 
-    if (!user || user.passwordHash !== hashPassword(password)) {
+    if (userIndex === -1 || users[userIndex].passwordHash !== hashPassword(password)) {
       return makeResponse({ success: false, error: "Identifiants de connexion incorrects." }, 401, false);
     }
 
-    const sessionToken = "user-token-" + btoa(user.id);
-    const { passwordHash: _, ...userResponse } = user;
+    const user = users[userIndex];
+    // Upgrade existing account if countryCode/currencyCode/city are missing, without breaking anything
+    const normalized = normalizeStoredUser(user);
+    if (!user.countryCode || !user.currencyCode || user.city === undefined) {
+      users[userIndex] = { ...user, ...normalized, passwordHash: user.passwordHash };
+      localStorage.setItem("asime_emulated_users", JSON.stringify(users));
+    }
 
-    return makeResponse({ success: true, token: sessionToken, user: userResponse }, 200, true);
+    const sessionToken = "user-token-" + btoa(user.id);
+    return makeResponse({ success: true, token: sessionToken, user: sanitizeUserForResponse(users[userIndex]) }, 200, true);
   }
 
   if ((cleanRoute === "/api/auth/me" || cleanRoute === "/auth/me") && method === "GET") {
@@ -401,14 +486,21 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }
 
     const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
-    const user = users.find((u: any) => u.id === userId);
+    const userIndex = users.findIndex((u: any) => u.id === userId);
 
-    if (!user) {
+    if (userIndex === -1) {
       return makeResponse({ success: false, error: "Utilisateur non trouvé." }, 404, false);
     }
 
-    const { passwordHash: _, ...userResponse } = user;
-    return makeResponse({ success: true, user: userResponse }, 200, true);
+    const user = users[userIndex];
+    // Upgrade existing account if countryCode/currencyCode/city are missing, without breaking anything
+    const normalized = normalizeStoredUser(user);
+    if (!user.countryCode || !user.currencyCode || user.city === undefined) {
+      users[userIndex] = { ...user, ...normalized, passwordHash: user.passwordHash };
+      localStorage.setItem("asime_emulated_users", JSON.stringify(users));
+    }
+
+    return makeResponse({ success: true, user: sanitizeUserForResponse(users[userIndex]) }, 200, true);
   }
 
   if (cleanRoute === "/api/auth/role-upgrade" && method === "POST") {
@@ -543,10 +635,22 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       return makeResponse({ success: false, error: "Utilisateur non trouvé." }, 404, false);
     }
 
-    const { name, phone, quartier, vendeurPin } = bodyData;
+    const { name, phone, quartier, city, countryCode, vendeurPin } = bodyData;
     users[userIndex].name = String(name || users[userIndex].name).trim();
     users[userIndex].phone = String(phone === undefined ? users[userIndex].phone : phone).trim();
-    users[userIndex].quartier = String(quartier === undefined ? users[userIndex].quartier : quartier).trim();
+    
+    const resolvedCity = String(city !== undefined ? city : (quartier !== undefined ? quartier : (users[userIndex].city || users[userIndex].quartier || ""))).trim();
+    users[userIndex].city = resolvedCity;
+    users[userIndex].quartier = resolvedCity;
+
+    if (countryCode && isSupportedCountry(countryCode)) {
+      users[userIndex].countryCode = countryCode.toUpperCase();
+      users[userIndex].currencyCode = getCountryByCode(countryCode).currencyCode;
+    } else if (!users[userIndex].countryCode) {
+      users[userIndex].countryCode = "TG";
+      users[userIndex].currencyCode = "XOF";
+    }
+
     if (vendeurPin !== undefined) {
       if (vendeurPin === "") {
         users[userIndex].vendeurPinHash = "";
@@ -566,10 +670,11 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       }
     }
 
+    // Ensure entire user is normalized
+    users[userIndex] = { ...users[userIndex], ...normalizeStoredUser(users[userIndex]) };
     localStorage.setItem("asime_emulated_users", JSON.stringify(users));
 
-    const { passwordHash: _, ...userResponse } = users[userIndex];
-    return makeResponse({ success: true, user: userResponse }, 200, true);
+    return makeResponse({ success: true, user: sanitizeUserForResponse(users[userIndex]) }, 200, true);
   }
 
   if (cleanRoute === "/api/auth/verify-pin" && method === "POST") {
@@ -864,7 +969,25 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       }
     }
 
-    const { items, totalAmount, shippingDetails, paymentMethod, affiliateRef } = bodyData;
+    const {
+      items,
+      totalAmount,
+      shippingDetails,
+      paymentMethod,
+      affiliateRef,
+      currencyCode,
+      destinationCountryCode,
+      destinationCity,
+      clientCountryCode,
+      clientCountryName,
+      clientCity,
+      clientName,
+      clientPhone,
+      sellerCountryCode,
+      sellerCountryName,
+      sellerCity,
+      sellerName
+    } = bodyData;
 
     if (!items || !Array.isArray(items) || items.length === 0 || !totalAmount) {
       return makeResponse({ success: false, error: "Le panier est vide ou le montant est invalide." }, 400, false);
@@ -881,27 +1004,152 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }
     localStorage.setItem("asime_emulated_products", JSON.stringify(products));
 
-    // Pre-calculate potential affiliate commission (3%)
+    const COUNTRY_NAMES_MAP: Record<string, string> = {
+      TG: "Togo",
+      BJ: "Bénin",
+      BF: "Burkina Faso",
+      CI: "Côte d'Ivoire",
+      ML: "Mali",
+      SN: "Sénégal",
+      CM: "Cameroun"
+    };
+
+    // Enrich each item with vendor origin (country, city, partner)
+    const enrichedItems = items.map((item: any) => {
+      const matchedProd = products.find((p: any) => p.id === item.product?.id);
+      const prod = item.product || {};
+
+      const resolvedCountryCode = (
+        prod.countryCode || 
+        matchedProd?.countryCode || 
+        matchedProd?.countryOrigin || 
+        "TG"
+      ).toUpperCase();
+
+      const resolvedCountryName = (
+        prod.countryOrigin || 
+        matchedProd?.countryOrigin || 
+        COUNTRY_NAMES_MAP[resolvedCountryCode] || 
+        "Togo"
+      );
+
+      const resolvedCity = prod.city || matchedProd?.city || "";
+      const resolvedPartner = prod.partenaire || matchedProd?.partenaire || "Vendeur Miabé Asi";
+      const resolvedVendeurId = prod.vendeurId || matchedProd?.vendeurId || "assisted_merchant";
+      const resolvedCurrency = prod.currencyCode || matchedProd?.currencyCode || (resolvedCountryCode === "CM" ? "XAF" : "XOF");
+
+      return {
+        ...item,
+        product: {
+          ...prod,
+          id: prod.id || matchedProd?.id,
+          nom: prod.nom || matchedProd?.nom || "Article",
+          prix: Number(prod.prix || matchedProd?.prix || 0),
+          partenaire: resolvedPartner,
+          vendeurId: resolvedVendeurId,
+          countryCode: resolvedCountryCode,
+          countryOrigin: resolvedCountryName,
+          city: resolvedCity,
+          quartier: prod.quartier || matchedProd?.quartier || "",
+          currencyCode: resolvedCurrency,
+          images: prod.images || matchedProd?.images || ["/placeholder.jpg"]
+        }
+      };
+    });
+
+    const resolvedClientCountry = (
+      destinationCountryCode ||
+      clientCountryCode ||
+      shippingDetails?.countryCode ||
+      "TG"
+    ).toUpperCase();
+    const resolvedClientCountryName = clientCountryName || COUNTRY_NAMES_MAP[resolvedClientCountry] || "Togo";
+    const resolvedClientCity = destinationCity || clientCity || shippingDetails?.city || shippingDetails?.quartier || "";
+    const resolvedClientName = clientName || shippingDetails?.name || (clientIndex > -1 ? users[clientIndex].name : "Client");
+    const resolvedClientPhone = clientPhone || shippingDetails?.phoneWithCountryCode || shippingDetails?.phone || "";
+    const resolvedCurrency = currencyCode || shippingDetails?.currencyCode || (resolvedClientCountry === "CM" ? "XAF" : "XOF");
+
+    const originCountries: string[] = Array.from(
+      new Set(enrichedItems.map((it: any) => it.product.countryCode).filter(Boolean))
+    );
+
+    const isCrossBorder = enrichedItems.some(
+      (it: any) => it.product.countryCode && it.product.countryCode !== resolvedClientCountry
+    );
+
+    const primaryItem = enrichedItems[0] || {};
+    const resolvedSellerCountryCode = (
+      sellerCountryCode ||
+      primaryItem.product?.countryCode ||
+      "TG"
+    ).toUpperCase();
+    const resolvedSellerCountryName = sellerCountryName || COUNTRY_NAMES_MAP[resolvedSellerCountryCode] || "Togo";
+    const resolvedSellerCity = sellerCity || primaryItem.product?.city || "";
+    const resolvedSellerName = sellerName || primaryItem.product?.partenaire || "Vendeur Miabé Asi";
+
+    // Affiliate attribution and commission model validation:
+    // Un affilié gagne une commission UNIQUEMENT lorsqu'un client achète réellement via son lien/code d'affiliation
+    // attribué à la vente et valide dans le système (rôle "affilie").
     let totalAffiliateCommission = 0;
-    if (affiliateRef) {
-      const affIndex = users.findIndex((u: any) => u.affiliateCode === affiliateRef || u.id === affiliateRef);
-      if (affIndex > -1) {
+    let validAffiliateCode: string | null = null;
+    if (affiliateRef && typeof affiliateRef === "string" && affiliateRef.trim()) {
+      const cleanRef = affiliateRef.trim();
+      const affUser = users.find((u: any) => (u.affiliateCode && u.affiliateCode === cleanRef) || u.id === cleanRef);
+      if (affUser && affUser.role === "affilie") {
+        validAffiliateCode = affUser.affiliateCode || affUser.id;
+        // 3% affiliate commission rate, deducted strictly from Miabé Asi's 10%
         totalAffiliateCommission = Math.floor(totalAmount * 0.03);
       }
     }
+
+    // Model calculation:
+    // - Vendeur: 90% (jamais réduit par affilié)
+    // - Miabé Asi part brute: 10%
+    // - Affilié: 3% (si affilié valide)
+    // - Miabé Asi net: solde des 10% (10% brut - commission affilié)
+    const sellerEarnings = Math.floor(totalAmount * 0.90);
+    const miabeAsiGrossCommission = Math.floor(totalAmount * 0.10);
+    const miabeAsiNetCommission = miabeAsiGrossCommission - totalAffiliateCommission;
+
+    const normalizedShippingDetails = {
+      ...shippingDetails,
+      countryCode: resolvedClientCountry,
+      currencyCode: resolvedCurrency,
+      city: resolvedClientCity,
+      name: resolvedClientName,
+      phone: resolvedClientPhone,
+      phoneWithCountryCode: shippingDetails?.phoneWithCountryCode || resolvedClientPhone
+    };
 
     const orders = JSON.parse(localStorage.getItem("asime_emulated_orders") || "[]");
     const newOrder = {
       id: "ord_" + (10001 + orders.length),
       userId,
-      items,
+      items: enrichedItems,
       totalAmount,
-      shippingDetails,
+      currencyCode: resolvedCurrency,
+      destinationCountryCode: resolvedClientCountry,
+      destinationCity: resolvedClientCity,
+      clientCountryCode: resolvedClientCountry,
+      clientCountryName: resolvedClientCountryName,
+      clientCity: resolvedClientCity,
+      clientName: resolvedClientName,
+      clientPhone: resolvedClientPhone,
+      sellerCountryCode: resolvedSellerCountryCode,
+      sellerCountryName: resolvedSellerCountryName,
+      sellerCity: resolvedSellerCity,
+      sellerName: resolvedSellerName,
+      originCountries,
+      isCrossBorder,
+      shippingDetails: normalizedShippingDetails,
       paymentMethod,
       paymentStatus: "En attente de paiement",
       orderStatus: "En préparation",
-      affiliateCode: affiliateRef || null,
+      affiliateCode: validAffiliateCode,
       affiliateCommission: totalAffiliateCommission,
+      sellerEarnings,
+      miabeAsiGrossCommission,
+      miabeAsiNetCommission,
       splitProcessed: false,
       createdAt: new Date().toISOString()
     };
@@ -914,7 +1162,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       clientUser.notifications = clientUser.notifications || [];
       clientUser.notifications.unshift({
         id: "notif_" + Date.now().toString() + "_" + Math.floor(Math.random() * 100),
-        text: `Votre commande #${newOrder.id} d'un montant de ${totalAmount.toLocaleString()} FCFA a été enregistrée. Veuillez procéder au paiement sécurisé de la commande.`,
+        text: `Votre commande #${newOrder.id} d'un montant de ${totalAmount.toLocaleString()} ${resolvedCurrency} a été enregistrée. Veuillez procéder au paiement sécurisé de la commande.`,
         type: "order",
         read: false,
         date: new Date().toISOString()
@@ -933,12 +1181,61 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     return makeResponse(providers, 200, true);
   }
 
-  // --- PAYMENTS: INITIATE SESSION (Real backend PayDunya integration) ---
+  // --- PAYMENTS: INITIATE SESSION (Real backend PayDunya integration & Fallback emulation) ---
   if (cleanRoute === "/api/payments/initiate" && method === "POST") {
+    const { orderId, providerId, name, phone, email, countryCode, currencyCode } = bodyData || {};
+    const orders = JSON.parse(localStorage.getItem("asime_emulated_orders") || "[]");
+    const order = orders.find((o: any) => o.id === orderId);
+
+    if (order) {
+      const rawCountryCode = (
+        countryCode ||
+        order.clientCountryCode ||
+        order.destinationCountryCode ||
+        order.shippingDetails?.countryCode ||
+        "TG"
+      ).toUpperCase();
+      const supportedCodes = ["TG", "BJ", "BF", "CI", "ML", "SN", "CM"];
+      const resolvedCountryCode = supportedCodes.includes(rawCountryCode) ? rawCountryCode : "TG";
+      const resolvedCurrencyCode = currencyCode || order.currencyCode || (resolvedCountryCode === "CM" ? "XAF" : "XOF");
+      const resolvedSellerCountry = (order.sellerCountryCode || order.items?.[0]?.product?.countryCode || "TG").toUpperCase();
+      const isCrossBorder = order.isCrossBorder !== undefined ? order.isCrossBorder : (resolvedCountryCode !== resolvedSellerCountry);
+      const transactionId = "TX-PD-MOCK-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
+
+      order.paymentGatewayTxId = transactionId;
+      order.paymentGatewayProvider = providerId || "paydunya";
+      order.paymentGatewayCurrencyCode = resolvedCurrencyCode;
+      order.paymentGatewayCountryCode = resolvedCountryCode;
+      order.paymentGatewayInitiatedAt = new Date().toISOString();
+      order.currencyCode = resolvedCurrencyCode;
+      order.clientCountryCode = resolvedCountryCode;
+      order.sellerCountryCode = resolvedSellerCountry;
+      order.isCrossBorder = isCrossBorder;
+      order.paymentStatus = "En attente de paiement";
+      localStorage.setItem("asime_emulated_orders", JSON.stringify(orders));
+
+      return makeResponse({
+        success: true,
+        session: {
+          success: true,
+          transactionId,
+          providerId: providerId || "paydunya",
+          amount: order.totalAmount,
+          currencyCode: resolvedCurrencyCode,
+          countryCode: resolvedCountryCode,
+          clientCountryCode: resolvedCountryCode,
+          sellerCountryCode: resolvedSellerCountry,
+          isCrossBorder,
+          status: "pending",
+          instructions: `Veuillez finaliser votre paiement sécurisé de ${order.totalAmount} ${resolvedCurrencyCode}.`
+        }
+      }, 200, true);
+    }
+
     return makeResponse({
       success: false,
-      error: "Impossible de joindre le serveur de paiement backend. Vérifiez que le serveur fonctionne et que les variables PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY et PAYDUNYA_TOKEN sont bien enregistrées dans votre fichier .env."
-    }, 503, false);
+      error: "Serveur de paiement backend indisponible et commande locale introuvable."
+    }, 404, false);
   }
 
   // --- EMULATED PAYMENTS: CONFIRM & SPLIT FUNDS ---
@@ -960,69 +1257,107 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       return makeResponse({ success: true, message: "La commande est déjà confirmée comme payée.", order }, 200, true);
     }
 
+    const orderCurrency = order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF");
     order.paymentStatus = "Payé";
     order.paymentGatewayTxId = transactionId;
     order.paymentGatewayProvider = providerId;
-    order.paymentMethod = providerId.toUpperCase();
+    order.paymentMethod = "PayDunya";
+    order.currencyCode = orderCurrency;
+    order.paymentConfirmedAt = new Date().toISOString();
 
-    // Splitting Logic!
+    // Definitive Revenue Splitting Logic
     if (!order.splitProcessed) {
       const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
       const wallets = JSON.parse(localStorage.getItem("asime_emulated_wallets") || "{}");
       const logs = JSON.parse(localStorage.getItem("asime_emulated_wallet_logs") || "[]");
+      const totalAmount = Number(order.totalAmount || 0);
 
+      // 1. Affiliate Validation:
+      // Un affilié gagne une commission UNIQUEMENT lorsqu'un client achète réellement via son lien/code d'affiliation
+      // attribué à la vente et s'il s'agit d'un utilisateur avec le rôle "affilie".
       let affiliateUserId = null;
+      let validAffiliateUser = null;
       if (order.affiliateCode) {
-        const affUser = users.find((u: any) => u.affiliateCode === order.affiliateCode || u.id === order.affiliateCode);
-        if (affUser) {
+        const affUser = users.find((u: any) => (u.affiliateCode && u.affiliateCode === order.affiliateCode) || u.id === order.affiliateCode);
+        if (affUser && affUser.role === "affilie") {
           affiliateUserId = affUser.id;
-          affUser.affiliateStats = affUser.affiliateStats || {
-            clicks: 0, Visitors: 0, ventes: 0, chiffreAffaires: 0, commissionsGagnees: 0, commissionDisponible: 0, commissionRetiree: 0
-          };
-          affUser.affiliateStats.ventes += 1;
-          affUser.affiliateStats.chiffreAffaires += order.totalAmount;
-          affUser.affiliateStats.commissionsGagnees += order.affiliateCommission;
-          affUser.affiliateStats.commissionDisponible += order.affiliateCommission;
-
-          affUser.notifications = affUser.notifications || [];
-          affUser.notifications.unshift({
-            id: "notif_split_aff_" + Date.now().toString(),
-            text: `Félicitations ! Vous avez gagné une commission de ${order.affiliateCommission.toLocaleString()} FCFA pour la vente affiliée de la commande #${order.id}.`,
-            type: "affiliate",
-            read: false,
-            date: new Date().toISOString()
-          });
-
-          // Ledger entry
-          if (!wallets[affiliateUserId]) {
-            wallets[affiliateUserId] = { userId: affiliateUserId, balance: 0, type: "affilie", history: [] };
-          }
-          wallets[affiliateUserId].balance += order.affiliateCommission;
-          const affTxId = "TX-COMM-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
-          wallets[affiliateUserId].history.unshift({
-            id: affTxId,
-            type: "commission",
-            amount: order.affiliateCommission,
-            orderId: order.id,
-            date: new Date().toISOString(),
-            description: `Commission d'affiliation de 3% pour la commande #${order.id}`,
-            status: "completed"
-          });
-
-          logs.push({
-            id: "log_" + Date.now() + "_" + Math.floor(Math.random() * 100),
-            timestamp: new Date().toISOString(),
-            userId: affiliateUserId,
-            action: "CREDIT_COMMISSION",
-            amount: order.affiliateCommission,
-            orderId: order.id,
-            txId: affTxId,
-            message: `Crédit commission d'affilié de ${order.affiliateCommission} FCFA pour la commande ${order.id}`
-          });
+          validAffiliateUser = affUser;
         }
       }
 
-      // Sellers Earnings Split
+      // 2. Commission Breakdown:
+      // - Vendeur: 90% garanti
+      // - Miabé Asi part brute: 10%
+      // - Affilié: 3% (taux existant) UNIQUEMENT si affilié valide, prélevé exclusivement sur les 10% de Miabé Asi
+      // - Sans affilié: affilié = 0, Miabé Asi conserve 10% en totalité
+      const sellerTotalEarnings = Math.floor(totalAmount * 0.90);
+      const miabeAsiGrossCommission = Math.floor(totalAmount * 0.10);
+
+      let actualAffiliateCommission = 0;
+      if (validAffiliateUser) {
+        actualAffiliateCommission = (order.affiliateCommission !== undefined && order.affiliateCommission > 0)
+          ? order.affiliateCommission
+          : Math.floor(totalAmount * 0.03);
+
+        validAffiliateUser.affiliateStats = validAffiliateUser.affiliateStats || {
+          clicks: 0, Visitors: 0, ventes: 0, chiffreAffaires: 0, commissionsGagnees: 0, commissionDisponible: 0, commissionRetiree: 0
+        };
+        validAffiliateUser.affiliateStats.ventes += 1;
+        validAffiliateUser.affiliateStats.chiffreAffaires += totalAmount;
+        validAffiliateUser.affiliateStats.commissionsGagnees += actualAffiliateCommission;
+        validAffiliateUser.affiliateStats.commissionDisponible += actualAffiliateCommission;
+
+        validAffiliateUser.notifications = validAffiliateUser.notifications || [];
+        validAffiliateUser.notifications.unshift({
+          id: "notif_split_aff_" + Date.now().toString(),
+          text: `Félicitations ! Vous avez gagné une commission de ${actualAffiliateCommission.toLocaleString()} ${orderCurrency} (3%) pour la vente affiliée de la commande #${order.id}. (Prélevée sur la part Miabé Asi)`,
+          type: "affiliate",
+          read: false,
+          date: new Date().toISOString()
+        });
+
+        // Ledger entry for affiliate
+        if (!wallets[affiliateUserId]) {
+          wallets[affiliateUserId] = { userId: affiliateUserId, balance: 0, currencyCode: orderCurrency, type: "affilie", history: [] };
+        }
+        wallets[affiliateUserId].balance += actualAffiliateCommission;
+        wallets[affiliateUserId].currencyCode = orderCurrency;
+        const affTxId = "TX-COMM-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
+        wallets[affiliateUserId].history.unshift({
+          id: affTxId,
+          type: "commission",
+          amount: actualAffiliateCommission,
+          currencyCode: orderCurrency,
+          orderId: order.id,
+          date: new Date().toISOString(),
+          description: `Commission d'affiliation de 3% (${actualAffiliateCommission} ${orderCurrency}) pour la commande #${order.id} (prélevée sur la part Miabé Asi)`,
+          status: "completed"
+        });
+
+        logs.push({
+          id: "log_" + Date.now() + "_" + Math.floor(Math.random() * 100),
+          timestamp: new Date().toISOString(),
+          userId: affiliateUserId,
+          action: "CREDIT_COMMISSION",
+          amount: actualAffiliateCommission,
+          currencyCode: orderCurrency,
+          orderId: order.id,
+          txId: affTxId,
+          message: `Crédit commission d'affilié de 3% (${actualAffiliateCommission} ${orderCurrency}) prélevée sur la part Miabé Asi pour la commande ${order.id}`
+        });
+      } else {
+        actualAffiliateCommission = 0;
+        order.affiliateCode = null;
+      }
+
+      const miabeAsiNetCommission = miabeAsiGrossCommission - actualAffiliateCommission;
+
+      order.sellerEarnings = sellerTotalEarnings;
+      order.miabeAsiGrossCommission = miabeAsiGrossCommission;
+      order.affiliateCommission = actualAffiliateCommission;
+      order.miabeAsiNetCommission = miabeAsiNetCommission;
+
+      // 3. Sellers Earnings Split (90% per item, never reduced)
       for (const item of order.items) {
         const itemTotal = item.product.prix * item.quantity;
         const sellerEarnings = Math.floor(itemTotal * 0.90);
@@ -1040,24 +1375,26 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
           sellerUser.notifications = sellerUser.notifications || [];
           sellerUser.notifications.unshift({
             id: "notif_split_sel_" + Date.now().toString() + "_" + Math.floor(Math.random() * 100),
-            text: `Nouvelle commande payée ! Votre produit "${item.product.nom}" (x${item.quantity}) a été vendu. Votre portefeuille a été crédité de ${sellerEarnings.toLocaleString()} FCFA (90%).`,
+            text: `Nouvelle commande payée ! Votre produit "${item.product.nom}" (x${item.quantity}) a été vendu. Votre portefeuille a été crédité de ${sellerEarnings.toLocaleString()} ${orderCurrency} (Part vendeur 90% garantie).`,
             type: "sale",
             read: false,
             date: new Date().toISOString()
           });
 
           if (!wallets[sellerId]) {
-            wallets[sellerId] = { userId: sellerId, balance: 0, type: "vendeur", history: [] };
+            wallets[sellerId] = { userId: sellerId, balance: 0, currencyCode: orderCurrency, type: "vendeur", history: [] };
           }
           wallets[sellerId].balance += sellerEarnings;
+          wallets[sellerId].currencyCode = orderCurrency;
           const sellerTxId = "TX-SALE-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
           wallets[sellerId].history.unshift({
             id: sellerTxId,
             type: "vente",
             amount: sellerEarnings,
+            currencyCode: orderCurrency,
             orderId: order.id,
             date: new Date().toISOString(),
-            description: `Vente produit : "${item.product.nom}" (x${item.quantity}) - Part vendeur 90%`,
+            description: `Vente produit : "${item.product.nom}" (x${item.quantity}) - Part vendeur 90% intégrale`,
             status: "completed"
           });
 
@@ -1067,9 +1404,10 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
             userId: sellerId,
             action: "CREDIT_SALE",
             amount: sellerEarnings,
+            currencyCode: orderCurrency,
             orderId: order.id,
             txId: sellerTxId,
-            message: `Crédit vente de ${sellerEarnings} FCFA pour "${item.product.nom}" (x${item.quantity}) sur commande ${order.id}`
+            message: `Crédit vente de ${sellerEarnings} ${orderCurrency} pour "${item.product.nom}" (x${item.quantity}) sur commande ${order.id} - Part vendeur 90% intégrale`
           });
         }
       }
@@ -1089,7 +1427,7 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
         users[clientIndex].notifications = users[clientIndex].notifications || [];
         users[clientIndex].notifications.unshift({
           id: "notif_pay_" + Date.now().toString(),
-          text: `Paiement confirmé ! Votre commande #${order.id} d'un montant de ${order.totalAmount.toLocaleString()} FCFA a été payée avec succès via ${order.paymentMethod}.`,
+          text: `Paiement confirmé ! Votre commande #${order.id} d'un montant de ${order.totalAmount.toLocaleString()} ${orderCurrency} a été payée avec succès via ${order.paymentMethod}.`,
           type: "order",
           read: false,
           date: new Date().toISOString()
@@ -1129,15 +1467,47 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }
 
     if (currentUser.role === "vendeur") {
-      const businessName = currentUser.businessName || currentUser.name;
+      const businessName = (currentUser.businessName || currentUser.name || "").toLowerCase().trim();
+      const sellerId = currentUser.id;
+      const sellerSlug = (currentUser.boutiqueSlug || currentUser.vendeurSlug || "").toLowerCase().trim();
+
       const sellerOrders = orders.filter((o: any) =>
-        o.items.some((item: any) => item.product.partenaire === businessName || item.product.partenaire === currentUser.name)
+        (o.items && o.items.some((item: any) => {
+          const p = item.product || {};
+          const pPartenaire = (p.partenaire || "").toLowerCase().trim();
+          const pVendeurId = p.vendeurId;
+          const pSlug = (p.vendeurSlug || "").toLowerCase().trim();
+          return (
+            (businessName && pPartenaire === businessName) ||
+            (currentUser.name && pPartenaire === currentUser.name.toLowerCase().trim()) ||
+            (sellerId && pVendeurId === sellerId) ||
+            (sellerSlug && pSlug === sellerSlug)
+          );
+        })) ||
+        (o.sellerName && businessName && o.sellerName.toLowerCase().trim() === businessName) ||
+        (o.sellerCountryCode && o.userId === userId)
       );
       return makeResponse(sellerOrders, 200, true);
     }
 
-    const clientOrders = orders.filter((o: any) => o.userId === userId);
+    const clientPhone = currentUser.phone ? currentUser.phone.replace(/[^0-9]/g, "") : "";
+    const clientOrders = orders.filter((o: any) => 
+      o.userId === userId || 
+      (clientPhone && o.shippingDetails?.phone && o.shippingDetails.phone.replace(/[^0-9]/g, "") === clientPhone) ||
+      (clientPhone && o.clientPhone && o.clientPhone.replace(/[^0-9]/g, "") === clientPhone)
+    );
     return makeResponse(clientOrders, 200, true);
+  }
+
+  // --- EMULATED ORDERS: TRACK ORDER PUBLICLY ---
+  if (cleanRoute.startsWith("/api/orders/track/") && method === "GET") {
+    const orderId = cleanRoute.replace("/api/orders/track/", "").trim();
+    const orders = JSON.parse(localStorage.getItem("asime_emulated_orders") || "[]");
+    const order = orders.find((o: any) => o.id.toLowerCase() === orderId.toLowerCase());
+    if (!order) {
+      return makeResponse({ success: false, error: "Commande non trouvée." }, 404, false);
+    }
+    return makeResponse({ success: true, order }, 200, true);
   }
 
   // --- EMULATED WALLET: MY WALLET ---
@@ -1382,7 +1752,65 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }
 
     localStorage.setItem("asime_emulated_users", JSON.stringify(users));
-    return makeResponse({ success: true }, 200, true);
+    return makeResponse({ success: true, notifications: user.notifications || [] }, 200, true);
+  }
+
+  // --- EMULATED NOTIFICATIONS: CLEAR ALL ---
+  if (cleanRoute === "/api/auth/notifications/clear" && method === "POST") {
+    const authHeader = getAuthHeader(init);
+    if (!authHeader) {
+      return makeResponse({ success: false, error: "Non connecté." }, 401, false);
+    }
+
+    let userId = "";
+    try {
+      if (authHeader.startsWith("user-token-")) {
+        userId = atob(authHeader.replace("user-token-", ""));
+      }
+    } catch (e) {}
+
+    if (!userId) {
+      return makeResponse({ success: false, error: "Session non valide." }, 401, false);
+    }
+
+    const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
+    const userIndex = users.findIndex((u: any) => u.id === userId);
+    if (userIndex === -1) {
+      return makeResponse({ success: false, error: "Utilisateur non trouvé." }, 404, false);
+    }
+
+    users[userIndex].notifications = [];
+    localStorage.setItem("asime_emulated_users", JSON.stringify(users));
+    return makeResponse({ success: true, notifications: [] }, 200, true);
+  }
+
+  // --- EMULATED NOTIFICATIONS: DELETE ONE ---
+  if (cleanRoute.startsWith("/api/auth/notifications/") && cleanRoute.endsWith("/delete") && method === "POST") {
+    const authHeader = getAuthHeader(init);
+    if (!authHeader) {
+      return makeResponse({ success: false, error: "Non connecté." }, 401, false);
+    }
+
+    let userId = "";
+    try {
+      if (authHeader.startsWith("user-token-")) {
+        userId = atob(authHeader.replace("user-token-", ""));
+      }
+    } catch (e) {}
+
+    if (!userId) {
+      return makeResponse({ success: false, error: "Session non valide." }, 401, false);
+    }
+
+    const notifId = cleanRoute.split("/")[4];
+    const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
+    const userIndex = users.findIndex((u: any) => u.id === userId);
+    if (userIndex > -1) {
+      users[userIndex].notifications = (users[userIndex].notifications || []).filter((n: any) => n.id !== notifId);
+      localStorage.setItem("asime_emulated_users", JSON.stringify(users));
+      return makeResponse({ success: true, notifications: users[userIndex].notifications }, 200, true);
+    }
+    return makeResponse({ success: false, error: "Non trouvé" }, 404, false);
   }
 
   // --- EMULATED MESSAGES ---
@@ -1692,62 +2120,100 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     order.paymentStatus = "Payé";
     order.paymentMethod = order.paymentMethod || "ADMIN_VALIDATION";
 
-    // Revenue splitting logic
+    // Definitive Revenue Splitting Logic
     if (!order.splitProcessed) {
       const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
       const wallets = JSON.parse(localStorage.getItem("asime_emulated_wallets") || "{}");
       const logs = JSON.parse(localStorage.getItem("asime_emulated_wallet_logs") || "[]");
+      const orderCurrency = order.currencyCode || (order.destinationCountryCode === "CM" || order.clientCountryCode === "CM" ? "XAF" : "XOF");
+      const totalAmount = Number(order.totalAmount || 0);
 
+      // 1. Affiliate Validation:
+      // Un affilié gagne une commission UNIQUEMENT lorsqu'un client achète réellement via son lien/code d'affiliation
+      // attribué à la vente et s'il s'agit d'un utilisateur avec le rôle "affilie".
       let affiliateUserId = null;
+      let validAffiliateUser = null;
       if (order.affiliateCode) {
-        const affUser = users.find((u: any) => u.affiliateCode === order.affiliateCode || u.id === order.affiliateCode);
-        if (affUser) {
+        const affUser = users.find((u: any) => (u.affiliateCode && u.affiliateCode === order.affiliateCode) || u.id === order.affiliateCode);
+        if (affUser && affUser.role === "affilie") {
           affiliateUserId = affUser.id;
-          affUser.affiliateStats = affUser.affiliateStats || {
-            clicks: 0, Visitors: 0, ventes: 0, chiffreAffaires: 0, commissionsGagnees: 0, commissionDisponible: 0, commissionRetiree: 0
-          };
-          affUser.affiliateStats.ventes += 1;
-          affUser.affiliateStats.chiffreAffaires += order.totalAmount;
-          affUser.affiliateStats.commissionsGagnees += order.affiliateCommission;
-          affUser.affiliateStats.commissionDisponible += order.affiliateCommission;
-
-          affUser.notifications = affUser.notifications || [];
-          affUser.notifications.unshift({
-            id: "notif_split_aff_" + Date.now().toString(),
-            text: `Félicitations ! Vous avez gagné une commission de ${order.affiliateCommission.toLocaleString()} FCFA pour la vente affiliée de la commande #${order.id}.`,
-            type: "affiliate",
-            read: false,
-            date: new Date().toISOString()
-          });
-
-          if (!wallets[affiliateUserId]) {
-            wallets[affiliateUserId] = { userId: affiliateUserId, balance: 0, type: "affilie", history: [] };
-          }
-          wallets[affiliateUserId].balance += order.affiliateCommission;
-          const affTxId = "TX-COMM-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
-          wallets[affiliateUserId].history.unshift({
-            id: affTxId,
-            type: "commission",
-            amount: order.affiliateCommission,
-            orderId: order.id,
-            date: new Date().toISOString(),
-            description: `Commission d'affiliation de 3% pour la commande #${order.id}`,
-            status: "completed"
-          });
-
-          logs.push({
-            id: "log_" + Date.now() + "_" + Math.floor(Math.random() * 100),
-            timestamp: new Date().toISOString(),
-            userId: affiliateUserId,
-            action: "CREDIT_COMMISSION",
-            amount: order.affiliateCommission,
-            orderId: order.id,
-            txId: affTxId,
-            message: `Crédit commission d'affilié de ${order.affiliateCommission} FCFA pour la commande ${order.id}`
-          });
+          validAffiliateUser = affUser;
         }
       }
 
+      // 2. Commission Breakdown:
+      // - Vendeur: 90% garanti
+      // - Miabé Asi part brute: 10%
+      // - Affilié: 3% (taux existant) UNIQUEMENT si affilié valide, prélevé exclusivement sur les 10% de Miabé Asi
+      // - Sans affilié: affilié = 0, Miabé Asi conserve 10% en totalité
+      const sellerTotalEarnings = Math.floor(totalAmount * 0.90);
+      const miabeAsiGrossCommission = Math.floor(totalAmount * 0.10);
+
+      let actualAffiliateCommission = 0;
+      if (validAffiliateUser) {
+        actualAffiliateCommission = (order.affiliateCommission !== undefined && order.affiliateCommission > 0)
+          ? order.affiliateCommission
+          : Math.floor(totalAmount * 0.03);
+
+        validAffiliateUser.affiliateStats = validAffiliateUser.affiliateStats || {
+          clicks: 0, Visitors: 0, ventes: 0, chiffreAffaires: 0, commissionsGagnees: 0, commissionDisponible: 0, commissionRetiree: 0
+        };
+        validAffiliateUser.affiliateStats.ventes += 1;
+        validAffiliateUser.affiliateStats.chiffreAffaires += totalAmount;
+        validAffiliateUser.affiliateStats.commissionsGagnees += actualAffiliateCommission;
+        validAffiliateUser.affiliateStats.commissionDisponible += actualAffiliateCommission;
+
+        validAffiliateUser.notifications = validAffiliateUser.notifications || [];
+        validAffiliateUser.notifications.unshift({
+          id: "notif_split_aff_" + Date.now().toString(),
+          text: `Félicitations ! Vous avez gagné une commission de ${actualAffiliateCommission.toLocaleString()} ${orderCurrency} (3%) pour la vente affiliée de la commande #${order.id}. (Prélevée sur la part Miabé Asi)`,
+          type: "affiliate",
+          read: false,
+          date: new Date().toISOString()
+        });
+
+        if (!wallets[affiliateUserId]) {
+          wallets[affiliateUserId] = { userId: affiliateUserId, balance: 0, currencyCode: orderCurrency, type: "affilie", history: [] };
+        }
+        wallets[affiliateUserId].balance += actualAffiliateCommission;
+        wallets[affiliateUserId].currencyCode = orderCurrency;
+        const affTxId = "TX-COMM-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
+        wallets[affiliateUserId].history.unshift({
+          id: affTxId,
+          type: "commission",
+          amount: actualAffiliateCommission,
+          currencyCode: orderCurrency,
+          orderId: order.id,
+          date: new Date().toISOString(),
+          description: `Commission d'affiliation de 3% (${actualAffiliateCommission} ${orderCurrency}) pour la commande #${order.id} (prélevée sur la part Miabé Asi)`,
+          status: "completed"
+        });
+
+        logs.push({
+          id: "log_" + Date.now() + "_" + Math.floor(Math.random() * 100),
+          timestamp: new Date().toISOString(),
+          userId: affiliateUserId,
+          action: "CREDIT_COMMISSION",
+          amount: actualAffiliateCommission,
+          currencyCode: orderCurrency,
+          orderId: order.id,
+          txId: affTxId,
+          message: `Crédit commission d'affilié de 3% (${actualAffiliateCommission} ${orderCurrency}) prélevée sur la part Miabé Asi pour la commande ${order.id}`
+        });
+      } else {
+        actualAffiliateCommission = 0;
+        order.affiliateCode = null;
+      }
+
+      const miabeAsiNetCommission = miabeAsiGrossCommission - actualAffiliateCommission;
+
+      order.sellerEarnings = sellerTotalEarnings;
+      order.miabeAsiGrossCommission = miabeAsiGrossCommission;
+      order.affiliateCommission = actualAffiliateCommission;
+      order.miabeAsiNetCommission = miabeAsiNetCommission;
+      order.currencyCode = orderCurrency;
+
+      // 3. Sellers Earnings Split (90% per item, never reduced)
       for (const item of order.items) {
         const itemTotal = item.product.prix * item.quantity;
         const sellerEarnings = Math.floor(itemTotal * 0.90);
@@ -1765,24 +2231,26 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
           sellerUser.notifications = sellerUser.notifications || [];
           sellerUser.notifications.unshift({
             id: "notif_split_sel_" + Date.now().toString() + "_" + Math.floor(Math.random() * 100),
-            text: `Nouvelle commande payée ! Votre produit "${item.product.nom}" (x${item.quantity}) a été vendu. Votre portefeuille a été crédité de ${sellerEarnings.toLocaleString()} FCFA (90%).`,
+            text: `Nouvelle commande payée ! Votre produit "${item.product.nom}" (x${item.quantity}) a été vendu. Votre portefeuille a été crédité de ${sellerEarnings.toLocaleString()} ${orderCurrency} (Part vendeur 90% garantie).`,
             type: "sale",
             read: false,
             date: new Date().toISOString()
           });
 
           if (!wallets[sellerId]) {
-            wallets[sellerId] = { userId: sellerId, balance: 0, type: "vendeur", history: [] };
+            wallets[sellerId] = { userId: sellerId, balance: 0, currencyCode: orderCurrency, type: "vendeur", history: [] };
           }
           wallets[sellerId].balance += sellerEarnings;
+          wallets[sellerId].currencyCode = orderCurrency;
           const sellerTxId = "TX-SALE-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
           wallets[sellerId].history.unshift({
             id: sellerTxId,
             type: "vente",
             amount: sellerEarnings,
+            currencyCode: orderCurrency,
             orderId: order.id,
             date: new Date().toISOString(),
-            description: `Vente produit : "${item.product.nom}" (x${item.quantity}) - Part vendeur 90%`,
+            description: `Vente produit : "${item.product.nom}" (x${item.quantity}) - Part vendeur 90% intégrale`,
             status: "completed"
           });
 
@@ -1792,9 +2260,10 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
             userId: sellerId,
             action: "CREDIT_SALE",
             amount: sellerEarnings,
+            currencyCode: orderCurrency,
             orderId: order.id,
             txId: sellerTxId,
-            message: `Crédit vente de ${sellerEarnings} FCFA pour "${item.product.nom}" (x${item.quantity}) sur commande ${order.id}`
+            message: `Crédit vente de ${sellerEarnings} ${orderCurrency} pour "${item.product.nom}" (x${item.quantity}) sur commande ${order.id} - Part vendeur 90% intégrale`
           });
         }
       }
@@ -1809,15 +2278,21 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     return makeResponse({ success: true, message: "Paiement validé administrativement avec succès !", order }, 200, true);
   }
 
-  if (cleanRoute.startsWith("/api/admin/orders/") && cleanRoute.endsWith("/update-status") && method === "POST") {
+  if ((cleanRoute.startsWith("/api/admin/orders/") && cleanRoute.endsWith("/update-status")) || (cleanRoute.startsWith("/api/orders/") && cleanRoute.endsWith("/update-status")) && method === "POST") {
     const authHeader = getAuthHeader(init);
-    if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
+    const isAdminRoute = cleanRoute.startsWith("/api/admin/");
+    if (isAdminRoute && authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
       return makeResponse({ success: false, error: "Accès refusé." }, 403, false);
     }
 
     const parts = cleanRoute.split("/");
-    const id = parts[4]; // /api/admin/orders/:id/update-status
-    const { orderStatus } = bodyData;
+    const id = parts[isAdminRoute ? 4 : 3]; // /api/admin/orders/:id/update-status or /api/orders/:id/update-status
+    const { orderStatus, status } = bodyData;
+    const newStatus = orderStatus || status;
+
+    if (!newStatus) {
+      return makeResponse({ success: false, error: "Le nouveau statut est requis." }, 400, false);
+    }
 
     const orders = JSON.parse(localStorage.getItem("asime_emulated_orders") || "[]");
     const orderIndex = orders.findIndex((o: any) => o.id === id);
@@ -1825,10 +2300,55 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       return makeResponse({ success: false, error: "Commande non trouvée." }, 404, false);
     }
 
-    orders[orderIndex].orderStatus = orderStatus;
+    const oldStatus = orders[orderIndex].orderStatus || orders[orderIndex].status || "En attente";
+    orders[orderIndex].orderStatus = newStatus;
+    orders[orderIndex].status = newStatus;
+    orders[orderIndex].updatedAt = new Date().toISOString();
     localStorage.setItem("asime_emulated_orders", JSON.stringify(orders));
 
-    return makeResponse({ success: true, order: orders[orderIndex] }, 200, true);
+    // Push notification to user
+    const buyerUserId = orders[orderIndex].userId;
+    const notifText = `📦 Commande #${id} : Votre commande est passée au statut "${newStatus}".`;
+    const notifObj = {
+      id: "notif_order_" + Date.now().toString() + "_" + Math.floor(Math.random() * 1000).toString(),
+      orderId: id,
+      oldStatus,
+      newStatus,
+      title: `Statut Commande : ${newStatus}`,
+      text: notifText,
+      type: "order_status",
+      read: false,
+      date: new Date().toISOString(),
+      clientName: orders[orderIndex].clientName || orders[orderIndex].name,
+      clientPhone: orders[orderIndex].clientPhone || orders[orderIndex].phone,
+      totalAmount: orders[orderIndex].totalAmount
+    };
+
+    // Save in user profile if logged in
+    const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
+    if (buyerUserId && !buyerUserId.startsWith("guest_")) {
+      const uIndex = users.findIndex((u: any) => u.id === buyerUserId);
+      if (uIndex > -1) {
+        users[uIndex].notifications = users[uIndex].notifications || [];
+        users[uIndex].notifications.unshift(notifObj);
+        localStorage.setItem("asime_emulated_users", JSON.stringify(users));
+      }
+    }
+
+    // Save in global notifications store for guest / realtime listeners
+    try {
+      const globalNotifs = JSON.parse(localStorage.getItem("asime_global_notifications") || "[]");
+      globalNotifs.unshift(notifObj);
+      if (globalNotifs.length > 50) globalNotifs.pop();
+      localStorage.setItem("asime_global_notifications", JSON.stringify(globalNotifs));
+      
+      // Dispatch custom browser event for instant live notification in all open tabs/views
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("asime:order-status-changed", { detail: notifObj }));
+      }
+    } catch (e) {}
+
+    return makeResponse({ success: true, order: orders[orderIndex], notification: notifObj }, 200, true);
   }
 
   if (cleanRoute === "/api/admin/withdrawals" && method === "GET") {
@@ -1959,22 +2479,41 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
 
   if (cleanRoute === "/api/admin/dashboard-stats" && method === "GET") {
     const authHeader = getAuthHeader(init);
-    if (authHeader !== "asime2026-auth-session") {
-      return makeResponse({ success: false, error: "Accès refusé." }, 403, false);
+    if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
+      return makeResponse({ success: false, error: "Accès refusé. Administration uniquement." }, 403, false);
     }
 
     const orders = JSON.parse(localStorage.getItem("asime_emulated_orders") || "[]");
     const products = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
     const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
+    const withdrawals = JSON.parse(localStorage.getItem("asime_emulated_withdrawals") || "[]");
 
-    const paidOrders = orders.filter((o: any) => o.paymentStatus === "Payé");
-    const totalRevenue = paidOrders.reduce((sum: number, o: any) => sum + o.totalAmount, 0);
+    const totalClients = users.filter((u: any) => !u.role || u.role === "client").length;
+    const totalSellers = users.filter((u: any) => u.role === "vendeur").length;
+    const totalAffiliates = users.filter((u: any) => u.role === "affilie").length;
+    const totalProducts = products.length;
+    const totalOrders = orders.length;
+
+    const globalTurnover = orders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0);
+    const affiliateCommissions = orders.reduce((sum: number, o: any) => sum + (o.affiliateCommission || 0), 0);
+
+    // Miabé Asi retains 10% gross. Affiliate commission is deducted exclusively from this 10%.
+    const rawPlatformFee = Math.floor(globalTurnover * 0.10);
+    const asimeNetRevenue = rawPlatformFee - affiliateCommissions;
+    const pendingWithdrawals = withdrawals.filter((w: any) => w.status === "En attente").length;
 
     return makeResponse({
       totalUsers: users.length,
-      totalOrders: orders.length,
-      totalProducts: products.length,
-      totalRevenue
+      totalClients,
+      totalSellers,
+      totalAffiliates,
+      totalProducts,
+      totalOrders,
+      globalTurnover,
+      totalRevenue: globalTurnover,
+      asimeRevenue: Math.max(0, asimeNetRevenue),
+      affiliateCommissions,
+      pendingWithdrawals
     }, 200, true);
   }
 
@@ -2148,6 +2687,139 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }
   }
 
+  if (cleanRoute === "/api/shops/check-slug" && method === "GET") {
+    const urlObj = new URL(urlPath, "http://localhost");
+    const rawSlug = String(urlObj.searchParams.get("slug") || "").trim().toLowerCase();
+    
+    if (!rawSlug) {
+      return makeResponse({ available: false, reason: "Veuillez entrer un nom d'URL.", formattedSlug: "" }, 200, true);
+    }
+
+    const formattedSlug = rawSlug
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    if (formattedSlug.length < 3) {
+      return makeResponse({ available: false, reason: "L'URL doit comporter au moins 3 caractères.", formattedSlug }, 200, true);
+    }
+    if (formattedSlug.length > 35) {
+      return makeResponse({ available: false, reason: "L'URL ne doit pas dépasser 35 caractères.", formattedSlug }, 200, true);
+    }
+
+    const reservedWords = [
+      "admin", "api", "boutique", "shop", "miabeasi", "asime", "root", "system", "auth",
+      "login", "register", "null", "undefined", "help", "support", "dashboard", "settings",
+      "vendre", "produit", "catalogue", "blog", "contact", "cart", "panier", "checkout"
+    ];
+
+    if (reservedWords.includes(formattedSlug)) {
+      return makeResponse({ available: false, reason: "Ce terme est réservé par la plateforme.", formattedSlug }, 200, true);
+    }
+
+    const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
+    const isTaken = users.some((u: any) => {
+      const userSlug = String(u.boutiqueSlug || u.shopSlug || "").trim().toLowerCase();
+      return userSlug === formattedSlug;
+    });
+
+    if (isTaken) {
+      return makeResponse({ available: false, reason: "Ce nom d'URL est déjà utilisé par une autre boutique.", formattedSlug }, 200, true);
+    }
+
+    return makeResponse({ available: true, reason: "Disponible ✓", formattedSlug }, 200, true);
+  }
+
+  if (cleanRoute.startsWith("/api/shops/") && method === "GET") {
+    const slug = cleanRoute.replace("/api/shops/", "").trim().toLowerCase();
+    const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
+    const seller = users.find((u: any) => {
+      if (!u || u.role !== "vendeur") return false;
+      const userSlug = String(u.boutiqueSlug || u.shopSlug || "").trim().toLowerCase();
+      return userSlug === slug;
+    });
+
+    if (!seller) {
+      return makeResponse({ success: false, error: "Boutique introuvable." }, 404, false);
+    }
+
+    const plan = seller.vendeurPlan || (seller.vendeurSubscription === "Offre 3" ? "BUSINESS" : seller.vendeurSubscription === "Offre 2" ? "PRO" : "Gratuit");
+    if (plan === "Gratuit") {
+      return makeResponse({ 
+        success: false, 
+        error: "Cette boutique fonctionne actuellement en formule GRATUIT sans URL publique active. Les URLs publiques sont réservées aux abonnements PRO et BUSINESS." 
+      }, 403, false);
+    }
+
+    const products = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+    const sellerProducts = products.filter((p: any) => {
+      return p.vendeurId === seller.id || (seller.businessName && p.partenaire === seller.businessName) || (seller.boutiqueName && p.partenaire === seller.boutiqueName);
+    });
+
+    return makeResponse({
+      success: true,
+      shop: {
+        id: seller.id,
+        name: seller.businessName || seller.boutiqueName || seller.name,
+        gerant: seller.name,
+        slug: seller.boutiqueSlug || seller.shopSlug,
+        plan: plan,
+        bio: seller.boutiqueBio || seller.description || "Artisan & Vendeur partenaire officiel Miabé Asi au Togo.",
+        histoire: seller.boutiqueHistoire || "",
+        logo: seller.boutiqueLogo || seller.logo || "",
+        coverImage: seller.boutiqueCover || seller.coverImage || "",
+        primaryColor: seller.boutiqueColor || "#0E5224",
+        whatsapp: seller.boutiqueWhatsapp || seller.contactPhone || seller.phone || "",
+        phone: seller.contactPhone || seller.phone || "",
+        quartier: seller.quartier || "Lomé",
+        ville: seller.ville || "Lomé, Togo",
+        category: seller.category || "Artisanat & Terroir",
+        badge: plan === "BUSINESS" ? "business" : "pro",
+        rating: 5.0,
+        reviewsCount: 0,
+        productsCount: sellerProducts.length,
+        createdAt: seller.createdAt || new Date().toISOString()
+      },
+      products: sellerProducts
+    }, 200, true);
+  }
+
+  if (cleanRoute === "/api/seller/featured-request" && method === "POST") {
+    const { productId } = bodyData;
+    const products = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+    const target = products.find((p: any) => p.id === productId);
+    if (target) {
+      target.phareStatus = "pending";
+      localStorage.setItem("asime_emulated_products", JSON.stringify(products));
+    }
+    return makeResponse({ success: true, message: "Demande envoyée à l'administration.", product: target }, 200, true);
+  }
+
+  if (cleanRoute === "/api/seller/banner-request" && method === "POST") {
+    const banners = JSON.parse(localStorage.getItem("asime_banner_requests") || "[]");
+    const newReq = {
+      id: "req_banner_" + Date.now().toString(),
+      ...bodyData,
+      status: "pending",
+      createdAt: new Date().toISOString()
+    };
+    banners.unshift(newReq);
+    localStorage.setItem("asime_banner_requests", JSON.stringify(banners));
+    return makeResponse({ success: true, message: "Bannière soumise avec succès.", request: newReq }, 200, true);
+  }
+
+  if (cleanRoute === "/api/seller/my-banners" && method === "GET") {
+    const banners = JSON.parse(localStorage.getItem("asime_banner_requests") || "[]");
+    return makeResponse({ success: true, banners }, 200, true);
+  }
+
+  if (cleanRoute === "/api/admin/banner-requests" && method === "GET") {
+    const banners = JSON.parse(localStorage.getItem("asime_banner_requests") || "[]");
+    return makeResponse({ success: true, requests: banners }, 200, true);
+  }
+
   if (cleanRoute === "/api/admin/db-status" && method === "GET") {
     return makeResponse({
       configured: false,
@@ -2175,9 +2847,13 @@ const customFetch = async function(input: RequestInfo | URL, init?: RequestInit)
     const res = await originalFetch(input, init);
     const isApiRoute = urlStr.includes("/api/") || urlStr.includes("/auth/") || urlStr.endsWith("/api") || urlStr.endsWith("/auth");
     if (isApiRoute) {
-      const contentType = res.headers.get("content-type") || "";
-      if (!res.ok && !contentType.includes("application/json")) {
-        console.warn(`[API Interceptor] Route ${urlStr} returned status ${res.status} (Non-JSON). Falling back to client emulation.`);
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      // If an API route returned HTML (doctype, Vite SPA fallback, or 502/503 HTML gateway error) or non-JSON when failed:
+      const isHtmlResponse = contentType.includes("text/html");
+      const isNonJsonFailure = !res.ok && !contentType.includes("application/json");
+
+      if (isHtmlResponse || isNonJsonFailure) {
+        console.warn(`[API Interceptor] Route ${urlStr} returned Non-JSON (status: ${res.status}, Content-Type: ${contentType}). Falling back to client emulation.`);
         return await handleEmulatedRequest(urlStr, init);
       }
     }

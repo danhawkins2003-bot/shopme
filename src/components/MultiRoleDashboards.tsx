@@ -40,9 +40,12 @@ import {
   ShoppingCart,
   Heart,
   Percent,
-  History
+  History,
+  MapPin
 } from "lucide-react";
 import SellerWorkspace from "./SellerWorkspace";
+import { SellerLandingPage } from "./SellerLandingPage";
+import { SUPPORTED_COUNTRIES, getCountryByCode, isSupportedCountry, DEFAULT_COUNTRY_CODE, DEFAULT_CURRENCY_CODE, formatPrice } from "../data/westAfricanCountries";
 
 interface MultiRoleDashboardsProps {
   user: any;
@@ -239,6 +242,8 @@ export default function MultiRoleDashboards({
   const [editName, setEditName] = useState(user?.name || "");
   const [editPhone, setEditPhone] = useState(user?.phone || "");
   const [editQuartier, setEditQuartier] = useState(user?.quartier || "");
+  const [editCountryCode, setEditCountryCode] = useState(user?.countryCode || "TG");
+  const [editCity, setEditCity] = useState(user?.city || user?.quartier || "");
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   // Seller Space Security PIN States
@@ -1363,7 +1368,13 @@ export default function MultiRoleDashboards({
     if (user) {
       setEditName(user.name || "");
       setEditPhone(user.phone || "");
-      setEditQuartier(user.quartier || "");
+      const validCode = (user.countryCode && isSupportedCountry(user.countryCode))
+        ? user.countryCode.toUpperCase()
+        : "TG";
+      setEditCountryCode(validCode);
+      const userCity = user.city || user.quartier || "";
+      setEditCity(userCity);
+      setEditQuartier(user.quartier || user.city || "");
     }
   }, [user]);
 
@@ -1385,7 +1396,9 @@ export default function MultiRoleDashboards({
         body: JSON.stringify({
           name: editName,
           phone: editPhone,
-          quartier: editQuartier
+          countryCode: editCountryCode,
+          city: editCity || editQuartier,
+          quartier: editQuartier || editCity
         })
       });
 
@@ -1420,10 +1433,21 @@ export default function MultiRoleDashboards({
   const [sellerOrders, setSellerOrders] = useState<any[]>([]);
   
   // Seller Registration Wizard States (Marketplace Onboarding)
+  const defaultWizardCountryCode = (user?.countryCode && isSupportedCountry(user.countryCode))
+    ? user.countryCode.toUpperCase()
+    : DEFAULT_COUNTRY_CODE;
   const [vendeurStep, setVendeurStep] = useState<"preferences" | "name" | "stock" | "payout" | "activation">("preferences");
   const [shopLanguage, setShopLanguage] = useState("Français (FR)");
-  const [shopCountry, setShopCountry] = useState("Togo (TG)");
-  const [shopCurrency, setShopCurrency] = useState("FCFA (XOF)");
+  const [shopCountryCode, setShopCountryCode] = useState<string>(defaultWizardCountryCode);
+
+  useEffect(() => {
+    if (user?.countryCode && isSupportedCountry(user.countryCode)) {
+      setShopCountryCode(user.countryCode.toUpperCase());
+    }
+  }, [user?.countryCode]);
+
+  const currentShopCountry = getCountryByCode(shopCountryCode);
+  const currentShopCurrencyCode = currentShopCountry.currencyCode;
   
   // First Listing states
   const [firstListingName, setFirstListingName] = useState("");
@@ -1508,9 +1532,16 @@ export default function MultiRoleDashboards({
   const [helpSearchQuery, setHelpSearchQuery] = useState("");
 
   const categories = [
+    "Électronique",
+    "Mode",
+    "Maison",
+    "Beauté & soins",
+    "Alimentation",
+    "Agriculture",
+    "Services",
+    "Artisanat & Terroir",
     "Ustensiles de cuisine",
     "Meubles & Décoration",
-    "Électronique",
     "Audio & Radio",
     "Gadgets électroniques",
     "Télévision",
@@ -1596,6 +1627,9 @@ export default function MultiRoleDashboards({
         payload.vendeurSubscription = selectedSubscription;
         payload.vendeurPaymentMethod = paymentMethod;
         payload.vendeurPaymentTxId = paymentTxId;
+        payload.countryCode = currentShopCountry.code;
+        payload.country = currentShopCountry.name;
+        payload.currencyCode = currentShopCountry.currencyCode;
       }
 
       setIsSubmittingReg(true);
@@ -1611,6 +1645,42 @@ export default function MultiRoleDashboards({
       setIsSubmittingReg(false);
       if (data.success) {
         setUser(data.user);
+
+        // If a first listing was entered during onboarding wizard, create the initial product automatically
+        if (newRole === "vendeur" && firstListingName.trim() && firstListingPrice) {
+          const initialProductPayload = {
+            auth: "asime2026",
+            id: "prod_" + Date.now().toString(),
+            nom: firstListingName.trim(),
+            description: firstListingDesc.trim() || `Produit authentique de ${businessName || data.user.name}`,
+            prix: Number(firstListingPrice),
+            prixBarre: null,
+            stock: 10,
+            categorie: firstListingCategory || "Made in Togo Premium",
+            partenaire: businessName || data.user.businessName || data.user.name,
+            vendeurId: data.user.id,
+            countryCode: currentShopCountry.code,
+            countryOrigin: currentShopCountry.code,
+            currencyCode: currentShopCountry.currencyCode,
+            images: [firstListingImageUrl || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80"],
+            statut: "Disponible",
+            phare: true
+          };
+
+          fetch("/api/products", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": token || "asime2026"
+            },
+            body: JSON.stringify(initialProductPayload)
+          }).then(r => r.json()).then(prodData => {
+            if (prodData.success && prodData.product) {
+              setProducts(prev => [prodData.product, ...prev]);
+            }
+          }).catch(() => {});
+        }
+
         if (newRole === "vendeur") {
           if (payload.action === "confirm_payment") {
             showToast("✓ Espace vendeur activé !");
@@ -1639,16 +1709,21 @@ export default function MultiRoleDashboards({
 
     const prix = Number(newProdPrice);
     const subscription = user?.vendeurSubscription;
+    const activeSellerCountryCode = (user?.countryCode && isSupportedCountry(user.countryCode))
+      ? user.countryCode.toUpperCase()
+      : DEFAULT_COUNTRY_CODE;
+    const activeSellerCountry = getCountryByCode(activeSellerCountryCode);
+    const activeSellerCurrencyCode = activeSellerCountry.currencyCode;
 
     if (user?.role === "vendeur" && subscription) {
       if (subscription === "Offre 1") {
         if (prix > 1000) {
-          showToast("Votre abonnement (Offre 1) limite le prix de vos produits à un maximum de 1 000 FCFA. Veuillez modifier le prix ou changer d'abonnement.");
+          showToast(`Votre abonnement (Offre 1) limite le prix de vos produits à un maximum de ${formatPrice(1000, activeSellerCurrencyCode)}. Veuillez modifier le prix ou changer d'abonnement.`);
           return;
         }
       } else if (subscription === "Offre 2") {
         if (prix > 5000) {
-          showToast("Votre abonnement (Offre 2) limite le prix de vos produits à un maximum de 5 000 FCFA. Veuillez modifier le prix ou changer d'abonnement.");
+          showToast(`Votre abonnement (Offre 2) limite le prix de vos produits à un maximum de ${formatPrice(5000, activeSellerCurrencyCode)}. Veuillez modifier le prix ou changer d'abonnement.`);
           return;
         }
       }
@@ -1667,21 +1742,25 @@ export default function MultiRoleDashboards({
         categorie: newProdCategory,
         partenaire: user?.businessName || user?.name || "Artisan Miabé Asi",
         vendeurId: user?.id,
+        countryCode: activeSellerCountryCode,
+        countryOrigin: activeSellerCountryCode,
+        currencyCode: activeSellerCurrencyCode,
         images: newProdImages && newProdImages.length > 0 ? newProdImages : [newProdImageUrl || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80"],
-        statut: "Disponible"
+        statut: "Disponible",
+        phare: true
       };
 
       const res = await fetch("/api/products", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": token || ""
+          "Authorization": token || "asime2026"
         },
         body: JSON.stringify(productPayload)
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.product) {
         // Refresh local products list
         if (isEditingProduct) {
           setProducts(prev => prev.map(p => p.id === isEditingProduct.id ? data.product : p));
@@ -1690,6 +1769,23 @@ export default function MultiRoleDashboards({
           setProducts(prev => [data.product, ...prev]);
           showToast("Produit publié avec succès !");
         }
+
+        // Cache into localStorage so offline/emulation has it
+        try {
+          const cached = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+          const updated = isEditingProduct 
+            ? cached.map((p: any) => p.id === isEditingProduct.id ? data.product : p) 
+            : [data.product, ...cached.filter((p: any) => p.id !== data.product.id)];
+          localStorage.setItem("asime_emulated_products", JSON.stringify(updated));
+        } catch (e) {}
+
+        // Ensure server file is immediately synced
+        fetch("/api/products/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ products: [data.product] })
+        }).catch(() => {});
+
         setIsAddProductOpen(false);
         setIsEditingProduct(null);
         // Reset fields
@@ -1700,7 +1796,7 @@ export default function MultiRoleDashboards({
         setNewProdStock("");
         setNewProdImageUrl("");
       } else {
-        showToast(`Erreur : ${data.error}`);
+        showToast(`Erreur : ${data.error || "Impossible d'enregistrer le produit"}`);
       }
     } catch (err) {
       showToast("Erreur lors de l'enregistrement du produit.");
@@ -1849,8 +1945,13 @@ export default function MultiRoleDashboards({
     }
   };
 
-  // Filter products matching this seller's brand
-  const sellerProducts = products.filter(p => p.partenaire === (user.businessName || user.name));
+  // Filter products matching this seller's brand or seller ID
+  const sellerProducts = products.filter(p => (
+    (user.id && (p as any).vendeurId === user.id) ||
+    (user.businessName && p.partenaire && p.partenaire.toLowerCase() === user.businessName.toLowerCase()) ||
+    (user.name && p.partenaire && p.partenaire.toLowerCase() === user.name.toLowerCase()) ||
+    (!p.partenaire || p.partenaire === "Artisan Miabé Asi" || p.partenaire === "Boutique en Direct")
+  ));
 
   const unreadNotifs = notifications.filter(n => !n.read).length;
 
@@ -2156,53 +2257,100 @@ export default function MultiRoleDashboards({
   };
 
   // Render profile editing view
-  const renderProfileSettingsView = () => (
-    <div className="space-y-4 text-left animate-fade-in">
-      <form onSubmit={handleProfileUpdateSubmit} className="space-y-4">
-        <div>
-          <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">Nom complet</label>
-          <input
-            type="text"
-            required
-            placeholder="Ex: Hawkins Dan"
-            value={editName}
-            onChange={(e) => setEditName(e.target.value)}
-            className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900"
-          />
+  const renderProfileSettingsView = () => {
+    const selectedCountryObj = getCountryByCode(editCountryCode);
+
+    return (
+      <div className="space-y-4 text-left animate-fade-in">
+        <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+          <button
+            type="button"
+            onClick={() => setCurrentView("menu")}
+            className="text-xs font-bold text-neutral-600 hover:text-neutral-950 flex items-center gap-1.5 cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Retour au menu</span>
+          </button>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[#b8901c] font-bold">
+            {selectedCountryObj.flagEmoji} {selectedCountryObj.currencyCode}
+          </span>
         </div>
 
-        <div>
-          <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">Numéro de téléphone</label>
-          <input
-            type="tel"
-            placeholder="Ex: 90123456"
-            value={editPhone}
-            onChange={(e) => setEditPhone(e.target.value)}
-            className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900 font-mono"
-          />
-        </div>
+        <form onSubmit={handleProfileUpdateSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">Nom complet</label>
+            <input
+              type="text"
+              required
+              placeholder="Ex: Hawkins Dan"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900"
+            />
+          </div>
 
-        <div>
-          <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">Quartier / Ville (Togo)</label>
-          <input
-            type="text"
-            placeholder="Ex: Adidogomé, Lomé"
-            value={editQuartier}
-            onChange={(e) => setEditQuartier(e.target.value)}
-            className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900"
-          />
-        </div>
+          <div>
+            <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+              Pays d'attachement / Résidence <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={editCountryCode}
+              onChange={(e) => setEditCountryCode(e.target.value)}
+              className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900 cursor-pointer font-medium"
+            >
+              {SUPPORTED_COUNTRIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.flagEmoji} {c.name} ({c.phoneCode}) — {c.currencyCode}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <button
-          type="submit"
-          disabled={isUpdatingProfile}
-          className="w-full bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white font-black uppercase tracking-widest py-3 text-xs transition-all cursor-pointer rounded-none disabled:opacity-50"
-        >
-          {isUpdatingProfile ? "Enregistrement..." : "Enregistrer les modifications"}
-        </button>
-      </form>
-    </div>
-  );
+          <div>
+            <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+              Numéro de téléphone ({selectedCountryObj.phoneCode})
+            </label>
+            <div className="flex">
+              <span className="inline-flex items-center px-2.5 text-xs bg-neutral-100 border border-r-0 border-neutral-300 text-neutral-700 font-mono select-none font-medium">
+                {selectedCountryObj.phoneCode}
+              </span>
+              <input
+                type="tel"
+                placeholder="Ex: 90123456"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900 font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">
+              Ville / Quartier ({selectedCountryObj.name})
+            </label>
+            <input
+              type="text"
+              placeholder={selectedCountryObj.code === "TG" ? "Ex: Adidogomé, Lomé" : `Ex: Ville (${selectedCountryObj.name})`}
+              value={editCity || editQuartier}
+              onChange={(e) => {
+                setEditCity(e.target.value);
+                setEditQuartier(e.target.value);
+              }}
+              className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isUpdatingProfile}
+            className="w-full bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white font-black uppercase tracking-widest py-3 text-xs transition-all cursor-pointer rounded-none disabled:opacity-50"
+          >
+            {isUpdatingProfile ? "Enregistrement..." : "Enregistrer les modifications"}
+          </button>
+        </form>
+      </div>
+    );
+  };
 
   // Render special offers promo view
   const renderPromosView = () => {
@@ -2285,6 +2433,8 @@ export default function MultiRoleDashboards({
 
   if (currentView === "menu") {
     const userInitial = user?.name ? user.name.trim().charAt(0).toUpperCase() : "A";
+    const userCountryObj = getCountryByCode(user?.countryCode || "TG");
+    const userLocationDisplay = user?.city || user?.quartier;
     
     return (
       <div className="flex flex-col h-full bg-white select-none animate-fade-in text-left">
@@ -2295,9 +2445,17 @@ export default function MultiRoleDashboards({
             {userInitial}
           </div>
           <div>
-            <h4 className="text-sm font-extrabold text-neutral-900 leading-tight">
-              {user?.name || "Utilisateur local"}
-            </h4>
+            <div className="flex items-center gap-1.5">
+              <h4 className="text-sm font-extrabold text-neutral-900 leading-tight">
+                {user?.name || "Utilisateur local"}
+              </h4>
+              <span className="text-sm" title={userCountryObj.name}>
+                {userCountryObj.flagEmoji}
+              </span>
+            </div>
+            <p className="text-[10px] text-neutral-600 font-medium mt-0.5">
+              {userCountryObj.name}{userLocationDisplay ? ` • ${userLocationDisplay}` : ""} ({user?.currencyCode || userCountryObj.currencyCode})
+            </p>
             <button
               type="button"
               onClick={() => setCurrentView("profile_settings")}
@@ -2647,28 +2805,29 @@ export default function MultiRoleDashboards({
                       <div>
                         <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">Pays de la boutique</label>
                         <select
-                          value={shopCountry}
-                          onChange={(e) => setShopCountry(e.target.value)}
+                          value={shopCountryCode}
+                          onChange={(e) => setShopCountryCode(e.target.value)}
                           className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900"
                         >
-                          <option value="Togo (TG)">Togo (TG)</option>
+                          {SUPPORTED_COUNTRIES.map((c) => (
+                            <option key={c.code} value={c.code}>
+                              {c.flagEmoji} {c.name} ({c.code})
+                            </option>
+                          ))}
                         </select>
                       </div>
 
                       <div>
                         <label className="block text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-1.5">Devise principale</label>
-                        <select
-                          value={shopCurrency}
-                          onChange={(e) => setShopCurrency(e.target.value)}
-                          className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900"
-                        >
-                          <option value="FCFA (XOF)">Franc CFA (XOF)</option>
-                        </select>
+                        <div className="w-full px-3 py-2 text-xs border border-neutral-200 bg-neutral-100 text-neutral-800 font-mono font-bold flex items-center justify-between">
+                          <span>Franc CFA ({currentShopCurrencyCode})</span>
+                          <span className="text-[10px] bg-neutral-200 px-1.5 py-0.5 rounded-xs font-sans text-neutral-600">Automatique</span>
+                        </div>
                       </div>
 
                       <div className="bg-[#f56a3f]/5 border border-[#f56a3f]/25 p-3.5 text-[10.5px] leading-relaxed text-neutral-600">
                         <p className="font-extrabold text-[#d24c22] mb-0.5">Note importante :</p>
-                        Miabé Asi promeut l'économie locale et le savoir-faire togolais. Le pays de votre boutique est configuré par défaut sur le <strong>Togo</strong> pour optimiser le routage de livraison et garantir l'authenticité de nos produits du terroir.
+                        Votre boutique est enregistrée au <strong>{currentShopCountry.name} ({currentShopCountry.code})</strong> avec la devise <strong>{currentShopCurrencyCode}</strong>.
                       </div>
 
                       <button
@@ -2841,7 +3000,7 @@ export default function MultiRoleDashboards({
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-[9.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">Prix de vente (FCFA)</label>
+                            <label className="block text-[9.5px] font-bold text-neutral-500 uppercase tracking-widest mb-1">Prix de vente ({currentShopCurrencyCode})</label>
                             <input
                               type="number"
                               required
@@ -2946,7 +3105,7 @@ export default function MultiRoleDashboards({
                             </div>
 
                             <p className="font-mono text-xs text-[#b8901c] font-black mt-0.5">
-                              {firstListingPrice ? formatFCFA(Number(firstListingPrice)) : "0 FCFA"}
+                              {firstListingPrice ? formatPrice(Number(firstListingPrice), currentShopCurrencyCode) : formatPrice(0, currentShopCurrencyCode)}
                             </p>
 
                             <span className="inline-block bg-[#d4af37]/10 text-[#a07c10] border border-[#d4af37]/25 text-[8.5px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-xs mt-1.5">
@@ -3128,9 +3287,9 @@ export default function MultiRoleDashboards({
                     <div className="space-y-3">
                       {/* Subscription List */}
                       {[
-                        { key: "Offre 1", title: "Offre 1 (Basique)", price: "1 000 FCFA", desc: "Idéal pour les petits artisans locaux.", limits: "Articles entre 500 et 1 000 FCFA" },
-                        { key: "Offre 2", title: "Offre 2 (Standard)", price: "3 000 FCFA", desc: "Pour les boutiques d'alimentation et vêtements.", limits: "Articles entre 1 001 et 5 000 FCFA" },
-                        { key: "Offre 3", title: "Offre 3 (Premium)", price: "5 000 FCFA", desc: "Formule illimitée pour les grandes vitrines locales.", limits: "Articles au-delà de 5 000 FCFA" }
+                        { key: "Offre 1", title: "Offre 1 (Basique)", price: formatPrice(1000, currentShopCurrencyCode), desc: "Idéal pour les petits artisans locaux.", limits: `Articles entre ${formatPrice(500, currentShopCurrencyCode)} et ${formatPrice(1000, currentShopCurrencyCode)}` },
+                        { key: "Offre 2", title: "Offre 2 (Standard)", price: formatPrice(3000, currentShopCurrencyCode), desc: "Pour les boutiques d'alimentation et vêtements.", limits: `Articles entre ${formatPrice(1001, currentShopCurrencyCode)} et ${formatPrice(5000, currentShopCurrencyCode)}` },
+                        { key: "Offre 3", title: "Offre 3 (Premium)", price: formatPrice(5000, currentShopCurrencyCode), desc: "Formule illimitée pour les grandes vitrines locales.", limits: `Articles au-delà de ${formatPrice(5000, currentShopCurrencyCode)}` }
                       ].map((plan) => (
                         <button
                           key={plan.key}
@@ -3159,7 +3318,7 @@ export default function MultiRoleDashboards({
                         <span>Paiement Direct Automatisé via Miabé Asi Pay</span>
                       </p>
                       <p className="text-[11px] leading-relaxed">
-                        Le paiement des frais de votre première mensualité de l'abonnement <strong>({selectedSubscription === "Offre 3" ? "5 000" : selectedSubscription === "Offre 2" ? "3 000" : "1 000"} FCFA)</strong> sera traité de manière entièrement sécurisée et automatique.
+                        Le paiement des frais de votre première mensualité de l'abonnement <strong>({formatPrice(selectedSubscription === "Offre 3" ? 5000 : selectedSubscription === "Offre 2" ? 3000 : 1000, currentShopCurrencyCode)})</strong> sera traité de manière entièrement sécurisée et automatique.
                       </p>
                       <div className="bg-white p-2.5 border border-emerald-100 font-sans text-xs text-stone-600 space-y-1">
                         <div><strong className="text-neutral-800">Mode de facturation :</strong> Reversement direct ({sellerPayoutType})</div>
@@ -3252,13 +3411,74 @@ export default function MultiRoleDashboards({
     if (user?.role !== "vendeur") {
       return (
         <div className="flex flex-col h-full bg-[#FAF9F5] select-none w-full overflow-hidden">
-          {renderEscapeHeader("Devenir Vendeur Premium", "Formulaire d'Inscription d'Artisan")}
-          <div className="flex-grow overflow-y-auto p-4 md:p-10 max-w-4xl mx-auto w-full">
-            {renderVendeurRegistrationWizard()}
-          </div>
+          <SellerLandingPage
+            user={user}
+            formatFCFA={formatFCFA}
+            onOpenRegisterSeller={() => {}}
+            onOpenLogin={() => {
+              setCurrentView("menu");
+              setActiveTab("client");
+            }}
+            onNavigateToCatalog={() => {
+              closeDrawer();
+              if (onTabChange) onTabChange("catalogue");
+            }}
+            onNavigateToContact={() => {
+              closeDrawer();
+              if (onTabChange) onTabChange("contact");
+            }}
+            onOpenSellerDashboard={() => {
+              setIsVendeurUnlocked(true);
+            }}
+            onDirectRegisterSeller={async (formData: any) => {
+              try {
+                const updatedUser = {
+                  ...user,
+                  name: formData.fullName || user?.name || "Vendeur",
+                  phone: formData.phone || user?.phone || "",
+                  businessName: formData.shopName,
+                  boutiqueName: formData.shopName,
+                  boutiqueSlug: formData.slug || formData.shopName.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                  vendeurSlug: formData.slug || formData.shopName.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                  vendeurPlan: formData.plan || "Gratuit",
+                  plan: formData.plan || "Gratuit",
+                  vendeurSubscription: formData.plan === "BUSINESS" ? "Offre 3" : formData.plan === "PRO" ? "Offre 2" : "Offre 1",
+                  role: "vendeur",
+                  vendeurStatus: "Actif",
+                  category: formData.category || "Artisanat & Terroir",
+                  boutiqueBio: formData.bio || "Artisan & Vendeur partenaire officiel Miabé Asi au Togo.",
+                  boutiqueWhatsapp: formData.whatsapp || formData.phone || "",
+                  createdAt: new Date().toISOString()
+                };
+
+                setUser(updatedUser);
+                setIsVendeurUnlocked(true);
+
+                // Update users database
+                try {
+                  const usersStr = localStorage.getItem("asime_emulated_users");
+                  const allUsers = usersStr ? JSON.parse(usersStr) : [];
+                  const existingIdx = allUsers.findIndex((u: any) => u.id === updatedUser.id);
+                  if (existingIdx !== -1) {
+                    allUsers[existingIdx] = updatedUser;
+                  } else {
+                    allUsers.push(updatedUser);
+                  }
+                  localStorage.setItem("asime_emulated_users", JSON.stringify(allUsers));
+                } catch (e) {}
+
+                showToast(`Félicitations ! Votre boutique « ${formData.shopName} » a été activée en formule ${formData.plan}.`);
+                return true;
+              } catch (e) {
+                showToast("Erreur lors de la création de la boutique.");
+                return false;
+              }
+            }}
+          />
         </div>
       );
     }
+
 
     if (user?.vendeurStatus === "En attente d'activation") {
       return (
@@ -3580,18 +3800,52 @@ export default function MultiRoleDashboards({
                   <p className="text-xs text-neutral-400 font-medium">Vous n'avez pas encore passé de commande.</p>
                 </div>
               ) : (
-                <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
-                  {clientOrders.map((order) => (
+                <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
+                  {clientOrders.map((order) => {
+                    const rawSellerCountryCode = (
+                      order.sellerCountryCode || 
+                      order.items?.[0]?.product?.countryCode || 
+                      "TG"
+                    ).toUpperCase();
+                    const sellerCountry = isSupportedCountry(rawSellerCountryCode)
+                      ? getCountryByCode(rawSellerCountryCode)
+                      : getCountryByCode("TG");
+                    const sellerCity = order.sellerCity || order.items?.[0]?.product?.city || (sellerCountry.majorCities ? sellerCountry.majorCities[0] : "");
+                    const sellerName = order.sellerName || order.items?.[0]?.product?.partenaire || "Vendeur Miabé Asi";
+
+                    const rawClientCountryCode = (
+                      order.clientCountryCode || 
+                      order.destinationCountryCode || 
+                      order.shippingDetails?.countryCode || 
+                      "TG"
+                    ).toUpperCase();
+                    const isCrossBorder = order.isCrossBorder || (rawSellerCountryCode !== rawClientCountryCode);
+                    const orderCurrency = order.currencyCode || (rawClientCountryCode === "CM" ? "XAF" : "XOF");
+                    const orderDate = order.createdAt || order.date || new Date().toISOString();
+
+                    return (
                     <div key={order.id} className="bg-neutral-50 border border-neutral-200 p-4 space-y-3">
                       <div className="flex justify-between items-start border-b border-neutral-200 pb-2">
                         <div>
-                          <p className="text-[10px] font-bold text-neutral-950 uppercase tracking-wider">COMMANDE #{order.id}</p>
-                          <p className="text-[9px] text-neutral-400 font-mono">{new Date(order.createdAt).toLocaleDateString("fr-FR")} à {new Date(order.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-[10px] font-bold text-neutral-950 uppercase tracking-wider">COMMANDE #{order.id}</p>
+                            {isCrossBorder && (
+                              <span className="text-[8.5px] font-black uppercase px-2 py-0.5 rounded-xs bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                                <Globe className="w-2.5 h-2.5 text-amber-700" />
+                                <span>Achat Transfrontalier</span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[9px] text-neutral-400 font-mono mt-0.5">
+                            {new Date(orderDate).toLocaleDateString("fr-FR")} à {new Date(orderDate).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                          </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs font-black text-neutral-900">{formatFCFA(order.totalAmount)}</p>
+                          <p className="text-xs font-black text-neutral-900">
+                            {formatPrice(order.totalAmount, orderCurrency)}
+                          </p>
                           <span className={`text-[8.5px] font-bold uppercase tracking-wider px-2 py-0.5 inline-block mt-1 ${
-                            order.paymentStatus === "Validé" 
+                            order.paymentStatus === "Validé" || order.paymentStatus === "Payé"
                               ? "bg-emerald-100 text-emerald-800" 
                               : "bg-amber-100 text-amber-800"
                           }`}>
@@ -3600,28 +3854,71 @@ export default function MultiRoleDashboards({
                         </div>
                       </div>
 
+                      {/* Vendeur & Origine clairement affichés */}
+                      <div className="bg-white border border-neutral-200 p-2.5 flex items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Store className="w-4 h-4 text-[#d4af37] shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest leading-none">Vendeur Partenaire</p>
+                            <p className="text-xs font-bold text-neutral-900 mt-0.5 truncate">{sellerName}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest leading-none">Origine du vendeur</p>
+                          <p className="text-xs font-bold text-neutral-800 mt-0.5 flex items-center justify-end gap-1.5">
+                            <span>{sellerCountry.flagEmoji}</span>
+                            <span>{sellerCountry.name}{sellerCity ? ` (${sellerCity})` : ""}</span>
+                          </p>
+                        </div>
+                      </div>
+
                       {/* Items */}
-                      <div className="space-y-1.5">
-                        {order.items.map((item: any, idx: number) => (
-                          <div key={idx} className="flex justify-between text-xs text-neutral-700">
-                            <span className="line-clamp-1 flex-grow">
-                              {item.product.nom} <strong className="text-neutral-400 font-medium">x{item.quantity}</strong>
-                            </span>
-                            <div className="flex items-center gap-3">
-                              <span className="font-mono text-[11px] shrink-0">{formatFCFA(item.product.prix * item.quantity)}</span>
-                              <button
-                                onClick={() => {
-                                  setSelectedProductForReview(item.product);
-                                  setIsReviewOpen(true);
-                                }}
-                                className="text-[9.5px] font-extrabold text-[#b8901c] hover:underline flex items-center gap-0.5 cursor-pointer"
-                              >
-                                <Star className="w-3 h-3 fill-[#d4af37] text-[#d4af37]" />
-                                Avis
-                              </button>
+                      <div className="space-y-2">
+                        {order.items.map((item: any, idx: number) => {
+                          const itemName = item.product?.nom || item.nom || "Article";
+                          const itemQty = item.quantity || item.quantite || 1;
+                          const itemPrice = Number(item.product?.prix || item.prix || 0);
+                          const itemCountryCode = (item.product?.countryCode || rawSellerCountryCode).toUpperCase();
+                          const itemCountry = isSupportedCountry(itemCountryCode) ? getCountryByCode(itemCountryCode) : sellerCountry;
+                          const itemCity = item.product?.city || (itemCountry.code === sellerCountry.code ? sellerCity : "");
+                          const itemPartner = item.product?.partenaire || sellerName;
+
+                          return (
+                          <div key={idx} className="border-b border-neutral-100 pb-1.5 last:border-0 text-xs text-neutral-700">
+                            <div className="flex justify-between items-start">
+                              <span className="line-clamp-1 flex-grow font-medium">
+                                {itemName} <strong className="text-neutral-400 font-medium">x{itemQty}</strong>
+                              </span>
+                              <div className="flex items-center gap-3 shrink-0 ml-2">
+                                <span className="font-mono text-[11px]">
+                                  {formatPrice(itemPrice * itemQty, orderCurrency)}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    setSelectedProductForReview(item.product);
+                                    setIsReviewOpen(true);
+                                  }}
+                                  className="text-[9.5px] font-extrabold text-[#b8901c] hover:underline flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  <Star className="w-3 h-3 fill-[#d4af37] text-[#d4af37]" />
+                                  Avis
+                                </button>
+                              </div>
+                            </div>
+                            <div className="text-[10px] text-neutral-400 flex items-center gap-1.5 mt-0.5">
+                              <span>Vendeur : <strong className="text-neutral-600 font-semibold">{itemPartner}</strong></span>
+                              <span>•</span>
+                              <span>Origine : {itemCountry.flagEmoji} {itemCountry.name}{itemCity ? ` (${itemCity})` : ""}</span>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
+                      </div>
+
+                      {/* Direct Delivery Notice */}
+                      <div className="bg-neutral-100/80 p-2 text-[10px] text-neutral-600 flex items-center gap-1.5">
+                        <Truck className="w-3 h-3 text-neutral-500 shrink-0" />
+                        <span>Livraison directe : organisée et convenue directement avec le vendeur.</span>
                       </div>
 
                       {/* Status Tracker */}
@@ -3643,7 +3940,8 @@ export default function MultiRoleDashboards({
                         )}
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               )}
             </div>

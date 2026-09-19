@@ -68,6 +68,13 @@ export interface PaymentCustomerDetails {
   name: string;
   phone: string;
   email?: string;
+  countryCode?: string;
+  currencyCode?: string;
+  clientCountryCode?: string;
+  sellerCountryCode?: string;
+  clientCity?: string;
+  sellerCity?: string;
+  sellerName?: string;
 }
 
 export interface PaymentSession {
@@ -75,6 +82,11 @@ export interface PaymentSession {
   transactionId: string;
   providerId: string;
   amount: number;
+  currencyCode?: string;
+  countryCode?: string;
+  clientCountryCode?: string;
+  sellerCountryCode?: string;
+  isCrossBorder?: boolean;
   status: "pending" | "success" | "failed";
   redirectUrl?: string;
   instructions?: string;
@@ -84,6 +96,8 @@ export interface PaymentVerificationResult {
   status: "success" | "failed" | "pending";
   transactionId: string;
   amount: number;
+  currencyCode?: string;
+  countryCode?: string;
   providerTxId?: string;
   message?: string;
 }
@@ -265,45 +279,80 @@ export class PayDunyaProvider implements IPaymentProvider {
 
   async initiatePayment(orderId: string, amount: number, customer: PaymentCustomerDetails): Promise<PaymentSession> {
     const { masterKey, privateKey, token, mode } = this.getApiKeys();
-    
-    // Strict error if keys are missing in .env (No silent mock fallback)
+
+    // Determine Country & Currency based on the 7 supported PayDunya countries
+    // TG, BJ, BF, CI, ML, SN -> XOF
+    // CM -> XAF
+    const rawCountry = (customer.countryCode || customer.clientCountryCode || "TG").toUpperCase();
+    const supportedCodes = ["TG", "BJ", "BF", "CI", "ML", "SN", "CM"];
+    const countryCode = supportedCodes.includes(rawCountry) ? rawCountry : "TG";
+    const currencyCode = customer.currencyCode || (countryCode === "CM" ? "XAF" : "XOF");
+    const clientCountryCode = (customer.clientCountryCode || countryCode).toUpperCase();
+    const sellerCountryCode = (customer.sellerCountryCode || "TG").toUpperCase();
+    const isCrossBorder = clientCountryCode !== sellerCountryCode;
+
+    // Strict error if keys are missing in live mode; graceful simulation in test mode
     if (!privateKey || !token) {
+      if (mode !== "live") {
+        console.warn(`[PayDunya] Clés non configurées en mode ${mode}. Utilisation d'une session de simulation démo.`);
+        const mockTx = "TX-PD-MOCK-" + crypto.randomBytes(4).toString("hex").toUpperCase();
+        return {
+          success: true,
+          transactionId: mockTx,
+          providerId: this.id,
+          amount,
+          currencyCode,
+          countryCode,
+          clientCountryCode,
+          sellerCountryCode,
+          isCrossBorder,
+          status: "pending",
+          instructions: `[MODE TEST/DÉMO] Session de simulation PayDunya pour la commande #${orderId} (${amount} ${currencyCode}).`
+        };
+      }
       console.error("[PayDunya] Clés d'API manquantes dans .env (PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY, PAYDUNYA_TOKEN).");
       throw new Error("Clés PayDunya non trouvées dans le fichier .env. Veuillez renseigner PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY et PAYDUNYA_TOKEN dans .env pour la production.");
     }
 
     try {
       const baseUrl = this.getBaseUrl();
-      console.log(`[PayDunya] Initialisation facture en mode ${mode.toUpperCase()} sur URL ${baseUrl}...`);
+      console.log(`[PayDunya] Initialisation facture en mode ${mode.toUpperCase()} (${countryCode} - ${currencyCode}) sur URL ${baseUrl}...`);
 
       const payload = {
         invoice: {
           total_amount: amount,
-          description: `Paiement commande #${orderId} - Asime Togo`,
+          description: `Paiement commande #${orderId} (${currencyCode}) - Miabé Asi`,
           items: [
             {
               name: `Commande #${orderId}`,
               quantity: 1,
               unit_price: amount,
-              total_price: amount
+              total_price: amount,
+              description: `Articles Miabé Asi (${currencyCode})`
             }
           ]
         },
         store: {
-          name: "Asime Togo",
-          tagline: "L'artisanat togolais à portée de clic",
-          postal_address: "Lomé, Togo",
-          phone: "+22890000000"
+          name: "Miabé Asi",
+          tagline: "Marché digital d'Afrique de l'Ouest",
+          postal_address: `${countryCode}, Afrique de l'Ouest`,
+          phone: customer.phone || "+22890000000"
         },
         custom_data: {
           order_id: orderId,
+          amount: amount,
+          currency_code: currencyCode,
+          country_code: countryCode,
+          client_country_code: clientCountryCode,
+          seller_country_code: sellerCountryCode,
+          is_cross_border: isCrossBorder,
           customer_name: customer.name,
           customer_phone: customer.phone,
           customer_email: customer.email || "support@miabeasi.com"
         },
         actions: {
           cancel_url: `${process.env.APP_URL || "http://localhost:3000"}/order-history?payment=cancel&orderId=${orderId}`,
-          return_url: `${process.env.APP_URL || "http://localhost:3000"}/order-history?payment=success&orderId=${orderId}`
+          return_url: `${process.env.APP_URL || "http://localhost:3000"}/order-history?payment=success&orderId=${orderId}&token={token}`
         }
       };
 
@@ -326,9 +375,14 @@ export class PayDunyaProvider implements IPaymentProvider {
           transactionId: resData.token, // Store PayDunya token as transactionId
           providerId: this.id,
           amount,
+          currencyCode,
+          countryCode,
+          clientCountryCode,
+          sellerCountryCode,
+          isCrossBorder,
           status: "pending",
           redirectUrl: resData.response_text, // Contains PayDunya Hosted Checkout URL
-          instructions: "Veuillez compléter votre paiement sur l'interface sécurisée PayDunya."
+          instructions: `Veuillez compléter votre paiement de ${amount} ${currencyCode} sur l'interface sécurisée PayDunya.`
         };
       } else {
         console.error("[PayDunya API] Réponse d'échec de PayDunya:", resData);
@@ -368,10 +422,13 @@ export class PayDunyaProvider implements IPaymentProvider {
       const resData = await response.json() as any;
 
       if (resData && resData.status === "completed") {
+        const customData = resData.custom_data || {};
         return {
           status: "success",
           transactionId,
           amount: Number(resData.invoice?.total_amount || 0),
+          currencyCode: customData.currency_code,
+          countryCode: customData.country_code,
           providerTxId: resData.transaction_id || "PD-" + crypto.randomBytes(6).toString("hex").toUpperCase(),
           message: `Paiement PayDunya validé. Statut: ${resData.status}. Reçu via ${resData.invoice?.payment_method || "PayDunya"}`
         };

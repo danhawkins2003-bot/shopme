@@ -11,7 +11,7 @@ interface Message {
 }
 
 interface AIAssistantWidgetProps {
-  onNavigateToTab?: (tab: "accueil" | "catalogue" | "blog" | "contact") => void;
+  onNavigateToTab?: (tab: "accueil" | "catalogue" | "blog" | "contact" | "vendre" | "notifications") => void;
   onSearchProduct?: (query: string) => void;
 }
 

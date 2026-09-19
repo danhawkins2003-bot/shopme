@@ -122,6 +122,102 @@ export default function AdminApp() {
     aspectRatio: "square" | "portrait" | "landscape" | "banner";
   } | null>(null);
 
+  // Banner Requests from Business Sellers State
+  const [bannerRequests, setBannerRequests] = useState<any[]>([]);
+  // Featured Products Requests from Pro & Business Sellers State
+  const [featuredRequests, setFeaturedRequests] = useState<any[]>([]);
+  const [adminToast, setAdminToast] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setAdminToast(msg);
+    setTimeout(() => setAdminToast(null), 3500);
+  };
+
+  const fetchAdminRequests = () => {
+    fetch("/api/admin/banner-requests")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.requests)) {
+          setBannerRequests(data.requests);
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/admin/featured-requests", {
+      headers: { "Authorization": "asime2026" }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.requests)) {
+          setFeaturedRequests(data.requests);
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchAdminRequests();
+  }, []);
+
+  const handleApproveBanner = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/banner-requests/${id}/approve`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        showToast("✓ Bannière partenaire approuvée et publiée sur la page d'accueil !");
+        fetchAdminRequests();
+      } else {
+        showToast(`Erreur: ${data.error}`);
+      }
+    } catch {
+      showToast("Erreur lors de l'approbation de la bannière.");
+    }
+  };
+
+  const handleRejectBanner = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/banner-requests/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "Visuel non conforme aux spécifications." })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("Demande de bannière rejetée.");
+        fetchAdminRequests();
+      }
+    } catch {
+      showToast("Erreur lors du rejet.");
+    }
+  };
+
+  const handleApproveFeatured = async (productId: string) => {
+    try {
+      const res = await fetch(`/api/admin/featured-requests/${productId}/approve`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        showToast("✓ Produit validé comme Produit Phare !");
+        fetchAdminRequests();
+        fetchProducts();
+      }
+    } catch {
+      showToast("Erreur lors de l'approbation.");
+    }
+  };
+
+  const handleRejectFeatured = async (productId: string) => {
+    try {
+      const res = await fetch(`/api/admin/featured-requests/${productId}/reject`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        showToast("Demande de Produit Phare refusée.");
+        fetchAdminRequests();
+      }
+    } catch {
+      showToast("Erreur lors du rejet.");
+    }
+  };
+
   // Sync showcase from API on mount
   useEffect(() => {
     fetch("/api/showcase")
@@ -437,13 +533,28 @@ export default function AdminApp() {
   // Fetch all products
   const fetchProducts = async () => {
     try {
-      const res = await fetch("/api/products?t=" + Date.now());
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data);
+      const res = await fetch("/api/products?t=" + Date.now(), {
+        headers: { "Accept": "application/json" }
+      });
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      if (res.ok && (contentType.includes("application/json") || contentType.includes("json"))) {
+        const text = await res.text();
+        if (text && text.trim().startsWith("[")) {
+          const data = JSON.parse(text);
+          setProducts(data);
+          return;
+        }
+      }
+      // Fallback
+      const staticRes = await fetch("/produits.json?t=" + Date.now());
+      if (staticRes.ok) {
+        const staticText = await staticRes.text();
+        if (staticText && staticText.trim().startsWith("[")) {
+          setProducts(JSON.parse(staticText));
+        }
       }
     } catch (err) {
-      console.error("Error fetching products inside administration console:", err);
+      console.warn("Notice fetching products inside administration console:", err);
     }
   };
 
@@ -1567,6 +1678,114 @@ export default function AdminApp() {
                   </div>
                 )}
 
+                {/* Banner Requests from BUSINESS Sellers */}
+                {bannerRequests.filter(b => b.status === "pending").length > 0 && (
+                  <div className="bg-white p-5 border-2 border-[#d4af37] rounded-sm shadow-xs mb-6">
+                    <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                      <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4 text-[#d4af37]" />
+                        <span>Bannières Accueil Soumises (Vendeurs BUSINESS)</span>
+                      </h3>
+                      <span className="bg-[#d4af37]/20 text-[#b8901c] font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase">
+                        {bannerRequests.filter(b => b.status === "pending").length} en attente
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {bannerRequests.filter(b => b.status === "pending").map((b) => (
+                        <div key={b.id} className="p-3 border border-neutral-200 bg-[#FAF8F5] rounded-sm space-y-2">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-bold text-neutral-900 text-[11px] uppercase">{b.boutiqueName || b.vendeurName}</p>
+                              <p className="text-[10px] text-neutral-600 font-medium">{b.title}</p>
+                              {b.subtitle && <p className="text-[9px] text-neutral-400 italic">{b.subtitle}</p>}
+                            </div>
+                            <span className="bg-neutral-950 text-[#d4af37] px-1.5 py-0.5 rounded-xs text-[8px] font-black uppercase tracking-widest">
+                              BUSINESS
+                            </span>
+                          </div>
+
+                          {b.imageUrl && (
+                            <div className="h-24 w-full rounded-xs overflow-hidden border border-neutral-200">
+                              <img src={b.imageUrl} alt={b.title} className="w-full h-full object-cover" />
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <button
+                              onClick={() => handleApproveBanner(b.id)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                            >
+                              Approuver &amp; Publier
+                            </button>
+                            <button
+                              onClick={() => handleRejectBanner(b.id)}
+                              className="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                            >
+                              Refuser le visuel
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Featured Products Requests from PRO/BUSINESS Sellers */}
+                {featuredRequests.filter(p => p.phareStatus === "pending").length > 0 && (
+                  <div className="bg-white p-5 border-2 border-emerald-500 rounded-sm shadow-xs mb-6">
+                    <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                      <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-emerald-600" />
+                        <span>Demandes de Produits Phares (PRO &amp; BUSINESS)</span>
+                      </h3>
+                      <span className="bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase">
+                        {featuredRequests.filter(p => p.phareStatus === "pending").length} en attente
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {featuredRequests.filter(p => p.phareStatus === "pending").map((p) => (
+                        <div key={p.id} className="p-3 border border-neutral-200 bg-[#FAF8F5] rounded-sm flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <img
+                              src={p.images?.[0] || "/images/placeholder.jpg"}
+                              alt={p.nom}
+                              className="w-12 h-12 rounded-xs object-cover border border-neutral-200 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className="font-bold text-neutral-900 text-[11px] truncate uppercase">{p.nom}</p>
+                              <p className="text-[9px] text-neutral-500">Par {p.partenaire || "Vendeur"} &bull; <strong className="font-mono text-neutral-800">{formatFCFA(p.prix)}</strong></p>
+                              <span className={`text-[8px] font-black uppercase tracking-widest px-1 rounded-xs mt-0.5 inline-block ${
+                                p.pharePriority === "high" ? "bg-amber-100 text-amber-800" : "bg-neutral-200 text-neutral-700"
+                              }`}>
+                                {p.pharePriority === "high" ? "Priorité Business" : "Standard Pro"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => handleApproveFeatured(p.id)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white py-1 px-2.5 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer"
+                              title="Valider en Produit Phare"
+                            >
+                              Valider
+                            </button>
+                            <button
+                              onClick={() => handleRejectFeatured(p.id)}
+                              className="bg-red-600 hover:bg-red-700 text-white py-1 px-2.5 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer"
+                              title="Refuser"
+                            >
+                              Refuser
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Users Directory Card */}
                 <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs">
                   <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
@@ -2445,6 +2664,13 @@ PAYDUNYA_MODE=live`}
             }
           }}
         />
+      )}
+
+      {adminToast && (
+        <div className="fixed bottom-6 right-6 z-[300] bg-stone-900 text-white px-5 py-3 rounded-lg shadow-2xl border border-[#d4af37] text-xs font-bold animate-bounce flex items-center gap-2 select-none">
+          <Sparkles className="w-4 h-4 text-[#d4af37]" />
+          <span>{adminToast}</span>
+        </div>
       )}
     </div>
   );

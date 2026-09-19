@@ -27,6 +27,10 @@ export const translations: TranslationDictionary = {
     fr: "Contact",
     ee: "Kadodo",
   },
+  nav_vendre: {
+    fr: "Vendre sur Miabé Asi",
+    ee: "Dzra nu le Miabé Asi",
+  },
   search_placeholder: {
     fr: "Rechercher un produit...",
     ee: "Di adzɔnu aɖe...",

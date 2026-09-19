@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Lock, Check, AlertCircle, CreditCard, Shield, ArrowLeft, RefreshCw, Smartphone, Globe, Sparkles } from "lucide-react";
+import { getCountryByCode } from "../data/westAfricanCountries";
 
 interface SimulatedPaymentPortalProps {
   tx: string;
@@ -56,13 +57,20 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
       .catch(err => console.error("Error fetching order in gateway:", err));
   }, [tx]);
 
+  const clientCountryCode = (orderDetails?.clientCountryCode || orderDetails?.destinationCountryCode || "TG").toUpperCase();
+  const sellerCountryCode = (orderDetails?.sellerCountryCode || "TG").toUpperCase();
+  const clientCountry = getCountryByCode(clientCountryCode);
+  const sellerCountry = getCountryByCode(sellerCountryCode);
+  const orderCurrency = orderDetails?.currencyCode || (clientCountryCode === "CM" ? "XAF" : "XOF");
+  const isCrossBorder = orderDetails?.isCrossBorder || (clientCountryCode !== sellerCountryCode);
+
   // Terminal steps text simulation
   const processingSteps = [
     `[SSL] Initialisation de la connexion sécurisée TLS 1.3 256-bit...`,
     `[AUTH] Liaison cryptée avec la passerelle d'authentification ${provider.toUpperCase()}...`,
     `[GATEWAY] Validation de la transaction ID: ${tx}...`,
-    `[GATEWAY] Envoi de la demande de prélèvement de ${(orderDetails?.totalAmount || 15000).toLocaleString()} FCFA...`,
-    `[OPERATOR] Approbation du débit par l'opérateur réseau en cours...`,
+    `[GATEWAY] Envoi de la demande de prélèvement de ${(orderDetails?.totalAmount || 15000).toLocaleString()} ${orderCurrency}...`,
+    `[OPERATOR] Approbation du débit par l'opérateur réseau (${clientCountry?.name || "Afrique"}) en cours...`,
     `[LEDGER] Écriture comptable sur les portefeuilles vendeurs (90%) et affiliés (3%)...`,
     `[OK] Signature électronique de la transaction confirmée. statut: TRANSACTION_SUCCESS.`
   ];
@@ -237,7 +245,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
           
           <div className="text-right">
             <p className="text-[9px] uppercase tracking-widest text-stone-300 font-bold">Montant Commande</p>
-            <p className="text-2xl font-black tracking-tight mt-0.5 text-[#d4af37]">{amount.toLocaleString()} <span className="text-xs">FCFA</span></p>
+            <p className="text-2xl font-black tracking-tight mt-0.5 text-[#d4af37]">{amount.toLocaleString()} <span className="text-xs">{orderCurrency}</span></p>
           </div>
         </div>
 
@@ -254,12 +262,21 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
               className="p-6 space-y-6"
             >
               {/* Order quick metadata */}
-              <div className="bg-stone-100/80 p-3 rounded-sm text-[10px] font-mono flex justify-between border border-stone-200">
+              <div className="bg-stone-100/80 p-3 rounded-sm text-[10px] font-mono flex flex-col sm:flex-row justify-between gap-1.5 border border-stone-200">
                 <div>
                   <span className="text-stone-500 font-bold">COMMANDE :</span> <span className="text-neutral-900 font-black">#{orderId}</span>
                 </div>
+                {isCrossBorder ? (
+                  <div className="text-amber-800 font-bold flex items-center gap-1">
+                    <span>🌐 {sellerCountry?.flagEmoji || "📦"} {sellerCountry?.name || sellerCountryCode} ➔ {clientCountry?.flagEmoji || "📍"} {clientCountry?.name || clientCountryCode}</span>
+                  </div>
+                ) : (
+                  <div>
+                    <span className="text-stone-500 font-bold">ZONE :</span> <span className="text-neutral-900 font-black">{clientCountry?.flagEmoji} {clientCountry?.name} ({orderCurrency})</span>
+                  </div>
+                )}
                 <div>
-                  <span className="text-stone-500 font-bold">TRANSACTION REF :</span> <span className="text-neutral-900 font-black">{tx.slice(0, 16)}...</span>
+                  <span className="text-stone-500 font-bold">REF :</span> <span className="text-neutral-900 font-black">{tx.slice(0, 14)}...</span>
                 </div>
               </div>
 
@@ -270,7 +287,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
                   <div className="bg-amber-50 border border-amber-200 p-3 rounded-sm text-[10px] text-amber-950 space-y-2 leading-relaxed">
                     <p className="font-extrabold uppercase text-[8px] text-amber-800 tracking-wider">Instructions de Transfert Mix by Yas</p>
                     <p>
-                      Veuillez envoyer le montant de <strong>{(orderDetails?.totalAmount || 15000).toLocaleString()} FCFA</strong> vers le numéro marchand de l'administrateur :
+                      Veuillez envoyer le montant de <strong>{(orderDetails?.totalAmount || 15000).toLocaleString()} {orderCurrency}</strong> vers le numéro marchand de l'administrateur :
                     </p>
                     <div className="bg-white border border-amber-300 p-2 text-center font-mono text-xs text-neutral-900 select-all font-bold tracking-wider rounded-sm">
                       +{merchantNumber}
@@ -563,7 +580,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
                     className={`w-2/3 py-2.5 text-white text-[10px] font-black uppercase tracking-widest rounded-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm ${config.primaryColor} hover:opacity-90`}
                   >
                     <Lock className="w-3.5 h-3.5" />
-                    <span>Valider {amount.toLocaleString()} FCFA</span>
+                    <span>Valider {amount.toLocaleString()} {orderCurrency}</span>
                   </button>
                 </div>
 
@@ -626,7 +643,7 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
                 </div>
                 <h2 className="text-xl font-black text-emerald-800 uppercase tracking-tight">Paiement Réussi !</h2>
                 <p className="text-[10px] text-stone-600 max-w-sm mx-auto">
-                  Votre transaction de <strong>{amount.toLocaleString()} FCFA</strong> a été validée avec succès par les serveurs de <strong>{config.title}</strong>.
+                  Votre transaction de <strong>{amount.toLocaleString()} {orderCurrency}</strong> a été validée avec succès par les serveurs de <strong>{config.title}</strong>.
                 </p>
               </div>
 
@@ -640,12 +657,16 @@ export default function SimulatedPaymentPortal({ tx, provider, onClose }: Simula
                   <span className="font-extrabold text-neutral-800">{tx.slice(0, 18)}...</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-stone-400">Zone / Devise :</span>
+                  <span className="font-extrabold text-neutral-800 uppercase">{clientCountry?.name} ({orderCurrency})</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-stone-400">Mode Utilisé :</span>
                   <span className="font-extrabold text-neutral-800 uppercase">{provider}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-400">Reversement Split (90%) :</span>
-                  <span className="font-extrabold text-[#0b4d26]">{Math.floor(amount * 0.90).toLocaleString()} FCFA</span>
+                  <span className="font-extrabold text-[#0b4d26]">{Math.floor(amount * 0.90).toLocaleString()} {orderCurrency}</span>
                 </div>
               </div>
 
