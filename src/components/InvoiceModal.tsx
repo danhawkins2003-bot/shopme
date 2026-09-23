@@ -1,6 +1,7 @@
 import React from "react";
 import { X, Printer, Share2, CheckCircle, ShieldCheck, Download, ExternalLink, Globe } from "lucide-react";
 import { isSupportedCountry, getCountryByCode, formatPrice } from "../data/westAfricanCountries";
+import officialLogoImg from "../assets/images/miabe_asi_official_logo_1787563252544.jpg";
 
 interface OrderItem {
   product: {
@@ -172,16 +173,26 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
         {/* Invoice Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-neutral-200">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-logo font-black text-2xl text-[#0E5224] tracking-wider">
-                MIABÉ <span className="text-[#C88A24]">ASI</span>
-              </span>
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-lg bg-white border border-[#C88A24]/40 shadow-xs flex items-center justify-center p-1 shrink-0 overflow-hidden">
+              <img
+                src={logoUrl || officialLogoImg}
+                alt="Logo Officiel Miabé Asi"
+                className="w-full h-full object-contain"
+                referrerPolicy="no-referrer"
+              />
             </div>
-            <p className="text-[10px] text-neutral-500 uppercase tracking-widest font-semibold">
-              Place de Marché d'Afrique de l'Ouest • 7 Pays Connectés
-            </p>
-            <p className="text-[10px] text-neutral-500">Service Client & Support : (+228) {merchantPhone}</p>
+            <div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="font-logo font-black text-2xl text-[#0E5224] tracking-wider">
+                  MIABÉ <span className="text-[#C88A24]">ASI</span>
+                </span>
+              </div>
+              <p className="text-[10px] text-neutral-500 uppercase tracking-widest font-semibold">
+                Place de Marché d'Afrique de l'Ouest • 7 Pays Connectés
+              </p>
+              <p className="text-[10px] text-neutral-500">Service Client & Support : (+228) {merchantPhone}</p>
+            </div>
           </div>
 
           <div className="text-left sm:text-right space-y-1">

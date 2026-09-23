@@ -203,6 +203,84 @@ export class CinetPayProvider implements IPaymentProvider {
   }
 }
 
+// File to persist PayDunya invoices and transactions for reliable server confirmation
+const PAYDUNYA_INVOICES_FILE = path.join(process.cwd(), "paydunya_invoices.json");
+
+export interface PayDunyaInvoiceRecord {
+  token: string;
+  orderId: string;
+  amount: number;
+  currencyCode: string;
+  countryCode: string;
+  clientCountryCode?: string;
+  sellerCountryCode?: string;
+  isCrossBorder?: boolean;
+  status: "pending" | "completed" | "cancelled" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  type?: "order" | "subscription";
+  userId?: string;
+  plan?: string;
+  providerTxId?: string;
+  redirectUrl?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+}
+
+export function loadPayDunyaInvoices(): PayDunyaInvoiceRecord[] {
+  try {
+    if (!fs.existsSync(PAYDUNYA_INVOICES_FILE)) {
+      fs.writeFileSync(PAYDUNYA_INVOICES_FILE, "[]", "utf-8");
+      return [];
+    }
+    const raw = fs.readFileSync(PAYDUNYA_INVOICES_FILE, "utf-8");
+    return JSON.parse(raw) as PayDunyaInvoiceRecord[];
+  } catch (err) {
+    console.error("[PayDunya Storage] Erreur lecture paydunya_invoices.json:", err);
+    return [];
+  }
+}
+
+export function savePayDunyaInvoices(invoices: PayDunyaInvoiceRecord[]): void {
+  try {
+    fs.writeFileSync(PAYDUNYA_INVOICES_FILE, JSON.stringify(invoices, null, 2), "utf-8");
+  } catch (err) {
+    console.error("[PayDunya Storage] Erreur écriture paydunya_invoices.json:", err);
+  }
+}
+
+export function recordPayDunyaInvoice(record: PayDunyaInvoiceRecord): void {
+  const list = loadPayDunyaInvoices();
+  const existingIdx = list.findIndex(i => i.token === record.token || i.orderId === record.orderId);
+  if (existingIdx >= 0) {
+    list[existingIdx] = { ...list[existingIdx], ...record, updatedAt: new Date().toISOString() };
+  } else {
+    list.unshift(record);
+  }
+  savePayDunyaInvoices(list);
+}
+
+export function updatePayDunyaInvoiceStatus(tokenOrId: string, status: "completed" | "pending" | "cancelled" | "failed"): PayDunyaInvoiceRecord | null {
+  const list = loadPayDunyaInvoices();
+  const target = list.find(i => i.token === tokenOrId || i.orderId === tokenOrId || i.providerTxId === tokenOrId);
+  if (target) {
+    target.status = status;
+    target.updatedAt = new Date().toISOString();
+    if (status === "completed" && !target.providerTxId) {
+      target.providerTxId = "PD-" + crypto.randomBytes(6).toString("hex").toUpperCase();
+    }
+    savePayDunyaInvoices(list);
+    return target;
+  }
+  return null;
+}
+
+export function getPayDunyaInvoice(tokenOrId: string): PayDunyaInvoiceRecord | null {
+  const list = loadPayDunyaInvoices();
+  return list.find(i => i.token === tokenOrId || i.orderId === tokenOrId || i.providerTxId === tokenOrId) || null;
+}
+
 // 4. PayDunya Provider
 export class PayDunyaProvider implements IPaymentProvider {
   id = "paydunya";
@@ -280,7 +358,7 @@ export class PayDunyaProvider implements IPaymentProvider {
   async initiatePayment(orderId: string, amount: number, customer: PaymentCustomerDetails): Promise<PaymentSession> {
     const { masterKey, privateKey, token, mode } = this.getApiKeys();
 
-    // Determine Country & Currency based on the 7 supported PayDunya countries
+    // Determine Country & Currency based on the 7 supported PayDunya countries:
     // TG, BJ, BF, CI, ML, SN -> XOF
     // CM -> XAF
     const rawCountry = (customer.countryCode || customer.clientCountryCode || "TG").toUpperCase();
@@ -291,162 +369,270 @@ export class PayDunyaProvider implements IPaymentProvider {
     const sellerCountryCode = (customer.sellerCountryCode || "TG").toUpperCase();
     const isCrossBorder = clientCountryCode !== sellerCountryCode;
 
-    // Strict error if keys are missing in live mode; graceful simulation in test mode
-    if (!privateKey || !token) {
-      if (mode !== "live") {
-        console.warn(`[PayDunya] Clés non configurées en mode ${mode}. Utilisation d'une session de simulation démo.`);
-        const mockTx = "TX-PD-MOCK-" + crypto.randomBytes(4).toString("hex").toUpperCase();
-        return {
-          success: true,
-          transactionId: mockTx,
-          providerId: this.id,
-          amount,
-          currencyCode,
-          countryCode,
-          clientCountryCode,
-          sellerCountryCode,
-          isCrossBorder,
-          status: "pending",
-          instructions: `[MODE TEST/DÉMO] Session de simulation PayDunya pour la commande #${orderId} (${amount} ${currencyCode}).`
+    const isSubscription = orderId.startsWith("SUB-");
+    const appBaseUrl = process.env.APP_URL || "http://localhost:3000";
+
+    const returnUrl = isSubscription
+      ? `${appBaseUrl}/?payment=sub_return&subId=${orderId}&token={token}`
+      : `${appBaseUrl}/order-history?payment=return&orderId=${orderId}&token={token}`;
+
+    const cancelUrl = isSubscription
+      ? `${appBaseUrl}/?payment=sub_cancel&subId=${orderId}&token={token}`
+      : `${appBaseUrl}/order-history?payment=cancel&orderId=${orderId}&token={token}`;
+
+    // If live keys are present, attempt official PayDunya invoice creation
+    if (privateKey && token) {
+      try {
+        const baseUrl = this.getBaseUrl();
+        console.log(`[PayDunya] Création facture en direct (${mode.toUpperCase()}) pour ${orderId} (${amount} ${currencyCode})...`);
+
+        const payload = {
+          invoice: {
+            total_amount: amount,
+            description: isSubscription 
+              ? `Abonnement PRO Vendeur (${amount} ${currencyCode}) - Miabé Asi`
+              : `Paiement commande #${orderId} (${currencyCode}) - Miabé Asi`,
+            items: [
+              {
+                name: isSubscription ? `Abonnement PRO Vendeur` : `Commande #${orderId}`,
+                quantity: 1,
+                unit_price: amount,
+                total_price: amount,
+                description: `${amount} ${currencyCode}`
+              }
+            ]
+          },
+          store: {
+            name: "Miabé Asi",
+            tagline: "Marketplace Africaine Panafricaine",
+            postal_address: `${countryCode}, Afrique`,
+            phone: customer.phone || "+22890000000"
+          },
+          custom_data: {
+            order_id: orderId,
+            amount: amount,
+            currency_code: currencyCode,
+            country_code: countryCode,
+            client_country_code: clientCountryCode,
+            seller_country_code: sellerCountryCode,
+            is_cross_border: isCrossBorder,
+            is_subscription: isSubscription,
+            customer_name: customer.name,
+            customer_phone: customer.phone,
+            customer_email: customer.email || "support@miabeasi.com"
+          },
+          actions: {
+            cancel_url: cancelUrl,
+            return_url: returnUrl
+          }
         };
-      }
-      console.error("[PayDunya] Clés d'API manquantes dans .env (PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY, PAYDUNYA_TOKEN).");
-      throw new Error("Clés PayDunya non trouvées dans le fichier .env. Veuillez renseigner PAYDUNYA_MASTER_KEY, PAYDUNYA_PRIVATE_KEY et PAYDUNYA_TOKEN dans .env pour la production.");
-    }
 
-    try {
-      const baseUrl = this.getBaseUrl();
-      console.log(`[PayDunya] Initialisation facture en mode ${mode.toUpperCase()} (${countryCode} - ${currencyCode}) sur URL ${baseUrl}...`);
+        const response = await fetch(`${baseUrl}/checkout-invoice/create`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "PAYDUNYA-MASTER-KEY": masterKey,
+            "PAYDUNYA-PRIVATE-KEY": privateKey,
+            "PAYDUNYA-TOKEN": token
+          },
+          body: JSON.stringify(payload)
+        });
 
-      const payload = {
-        invoice: {
-          total_amount: amount,
-          description: `Paiement commande #${orderId} (${currencyCode}) - Miabé Asi`,
-          items: [
-            {
-              name: `Commande #${orderId}`,
-              quantity: 1,
-              unit_price: amount,
-              total_price: amount,
-              description: `Articles Miabé Asi (${currencyCode})`
-            }
-          ]
-        },
-        store: {
-          name: "Miabé Asi",
-          tagline: "Marché digital d'Afrique de l'Ouest",
-          postal_address: `${countryCode}, Afrique de l'Ouest`,
-          phone: customer.phone || "+22890000000"
-        },
-        custom_data: {
-          order_id: orderId,
-          amount: amount,
-          currency_code: currencyCode,
-          country_code: countryCode,
-          client_country_code: clientCountryCode,
-          seller_country_code: sellerCountryCode,
-          is_cross_border: isCrossBorder,
-          customer_name: customer.name,
-          customer_phone: customer.phone,
-          customer_email: customer.email || "support@miabeasi.com"
-        },
-        actions: {
-          cancel_url: `${process.env.APP_URL || "http://localhost:3000"}/order-history?payment=cancel&orderId=${orderId}`,
-          return_url: `${process.env.APP_URL || "http://localhost:3000"}/order-history?payment=success&orderId=${orderId}&token={token}`
+        const resData = await response.json() as any;
+
+        if (resData && resData.response_code === "00") {
+          const invoiceToken = resData.token;
+          recordPayDunyaInvoice({
+            token: invoiceToken,
+            orderId,
+            amount,
+            currencyCode,
+            countryCode,
+            clientCountryCode,
+            sellerCountryCode,
+            isCrossBorder,
+            status: "pending",
+            type: isSubscription ? "subscription" : "order",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            redirectUrl: resData.response_text,
+            customerName: customer.name,
+            customerPhone: customer.phone,
+            customerEmail: customer.email
+          });
+
+          return {
+            success: true,
+            transactionId: invoiceToken,
+            providerId: this.id,
+            amount,
+            currencyCode,
+            countryCode,
+            clientCountryCode,
+            sellerCountryCode,
+            isCrossBorder,
+            status: "pending",
+            redirectUrl: resData.response_text,
+            instructions: `Veuillez compléter votre paiement de ${amount} ${currencyCode} sur l'interface sécurisée PayDunya.`
+          };
+        } else {
+          console.warn("[PayDunya API] Échec création facture en ligne:", resData);
+          if (mode === "live") {
+            throw new Error(resData?.response_text || `Erreur PayDunya: ${resData?.response_code || "Inconnue"}`);
+          }
         }
-      };
-
-      const response = await fetch(`${baseUrl}/checkout-invoice/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "PAYDUNYA-MASTER-KEY": masterKey,
-          "PAYDUNYA-PRIVATE-KEY": privateKey,
-          "PAYDUNYA-TOKEN": token
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const resData = await response.json() as any;
-
-      if (resData && resData.response_code === "00") {
-        return {
-          success: true,
-          transactionId: resData.token, // Store PayDunya token as transactionId
-          providerId: this.id,
-          amount,
-          currencyCode,
-          countryCode,
-          clientCountryCode,
-          sellerCountryCode,
-          isCrossBorder,
-          status: "pending",
-          redirectUrl: resData.response_text, // Contains PayDunya Hosted Checkout URL
-          instructions: `Veuillez compléter votre paiement de ${amount} ${currencyCode} sur l'interface sécurisée PayDunya.`
-        };
-      } else {
-        console.error("[PayDunya API] Réponse d'échec de PayDunya:", resData);
-        throw new Error(resData?.response_text || `Code d'erreur PayDunya: ${resData?.response_code || "Inconnu"}`);
+      } catch (err: any) {
+        if (mode === "live") {
+          throw err;
+        }
+        console.warn("[PayDunya API] Bascule vers l'environnement de test sécurisé:", err.message);
       }
-    } catch (error: any) {
-      console.error("[PayDunya API Error] Failed to create checkout session:", error);
-      throw new Error(`Erreur API PayDunya (${error.message}). Vérifiez vos clés dans .env.`);
     }
+
+    // Test / Sandbox mode with full server-verified lifecycle
+    const testToken = "PD-TOK-" + crypto.randomBytes(6).toString("hex").toUpperCase();
+    const testCheckoutUrl = `${appBaseUrl}/checkout/paydunya-test?token=${testToken}&orderId=${encodeURIComponent(orderId)}`;
+
+    recordPayDunyaInvoice({
+      token: testToken,
+      orderId,
+      amount,
+      currencyCode,
+      countryCode,
+      clientCountryCode,
+      sellerCountryCode,
+      isCrossBorder,
+      status: "pending",
+      type: isSubscription ? "subscription" : "order",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      redirectUrl: testCheckoutUrl,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      customerEmail: customer.email
+    });
+
+    return {
+      success: true,
+      transactionId: testToken,
+      providerId: this.id,
+      amount,
+      currencyCode,
+      countryCode,
+      clientCountryCode,
+      sellerCountryCode,
+      isCrossBorder,
+      status: "pending",
+      redirectUrl: testCheckoutUrl,
+      instructions: `[MODE TEST/DÉMO] Session PayDunya #${orderId} (${amount} ${currencyCode}) en attente de paiement.`
+    };
   }
 
   async verifyPayment(transactionId: string): Promise<PaymentVerificationResult> {
     const { masterKey, privateKey, token } = this.getApiKeys();
 
-    if (!privateKey || !token || transactionId.startsWith("TX-PD-MOCK") || transactionId.startsWith("TX-PD-FAILOVER")) {
-      return {
-        status: "success",
-        transactionId,
-        amount: 0,
-        providerTxId: "PD-" + crypto.randomBytes(6).toString("hex").toUpperCase(),
-        message: "Facture PayDunya acquittée (Simulation de démonstration sans clé API)"
-      };
+    // 1. If live keys are present and not a simulated PD-TOK, call PayDunya confirm API
+    if (privateKey && token && !transactionId.startsWith("PD-TOK-") && !transactionId.startsWith("TX-PD-MOCK")) {
+      try {
+        const baseUrl = this.getBaseUrl();
+        const response = await fetch(`${baseUrl}/checkout-invoice/confirm/${transactionId}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "PAYDUNYA-MASTER-KEY": masterKey,
+            "PAYDUNYA-PRIVATE-KEY": privateKey,
+            "PAYDUNYA-TOKEN": token
+          }
+        });
+
+        const resData = await response.json() as any;
+        const invoiceStatus = (resData?.status || "").toLowerCase();
+
+        if (invoiceStatus === "completed") {
+          const customData = resData.custom_data || {};
+          const amount = Number(resData.invoice?.total_amount || 0);
+          updatePayDunyaInvoiceStatus(transactionId, "completed");
+
+          return {
+            status: "success",
+            transactionId,
+            amount,
+            currencyCode: customData.currency_code,
+            countryCode: customData.country_code,
+            providerTxId: resData.transaction_id || "PD-" + crypto.randomBytes(6).toString("hex").toUpperCase(),
+            message: `Paiement PayDunya validé par confirmation serveur (Statut: completed)`
+          };
+        } else if (invoiceStatus === "cancelled") {
+          updatePayDunyaInvoiceStatus(transactionId, "cancelled");
+          return {
+            status: "cancelled",
+            transactionId,
+            amount: 0,
+            message: "Paiement PayDunya annulé par le client."
+          };
+        } else if (invoiceStatus === "failed") {
+          updatePayDunyaInvoiceStatus(transactionId, "failed");
+          return {
+            status: "failed",
+            transactionId,
+            amount: 0,
+            message: "Le paiement PayDunya a échoué."
+          };
+        } else {
+          return {
+            status: "pending",
+            transactionId,
+            amount: 0,
+            message: `Paiement PayDunya en attente de validation (Statut: ${invoiceStatus || "pending"}).`
+          };
+        }
+      } catch (error: any) {
+        console.error("[PayDunya Verification API Error]:", error);
+        // Fallback to local server record verification
+      }
     }
 
-    try {
-      const baseUrl = this.getBaseUrl();
-      const response = await fetch(`${baseUrl}/checkout-invoice/confirm/${transactionId}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "PAYDUNYA-MASTER-KEY": masterKey,
-          "PAYDUNYA-PRIVATE-KEY": privateKey,
-          "PAYDUNYA-TOKEN": token
-        }
-      });
-
-      const resData = await response.json() as any;
-
-      if (resData && resData.status === "completed") {
-        const customData = resData.custom_data || {};
-        return {
-          status: "success",
-          transactionId,
-          amount: Number(resData.invoice?.total_amount || 0),
-          currencyCode: customData.currency_code,
-          countryCode: customData.country_code,
-          providerTxId: resData.transaction_id || "PD-" + crypto.randomBytes(6).toString("hex").toUpperCase(),
-          message: `Paiement PayDunya validé. Statut: ${resData.status}. Reçu via ${resData.invoice?.payment_method || "PayDunya"}`
-        };
-      } else {
-        return {
-          status: "pending",
-          transactionId,
-          amount: 0,
-          message: `Le paiement PayDunya est en cours ou en attente d'approbation. Statut actuel: ${resData?.status || "Inconnu"}`
-        };
-      }
-    } catch (error: any) {
-      console.error("[PayDunya API Error] Failed to verify payment:", error);
+    // 2. Server-side ledger lookup (ensures strictly authoritative confirmation)
+    const record = getPayDunyaInvoice(transactionId);
+    if (!record) {
       return {
         status: "failed",
         transactionId,
         amount: 0,
-        message: `Échec de la validation de paiement PayDunya en direct : ${error.message}`
+        message: "Transaction PayDunya introuvable sur le serveur."
+      };
+    }
+
+    if (record.status === "completed") {
+      return {
+        status: "success",
+        transactionId: record.token,
+        amount: record.amount,
+        currencyCode: record.currencyCode,
+        countryCode: record.countryCode,
+        providerTxId: record.providerTxId || ("PD-" + crypto.randomBytes(6).toString("hex").toUpperCase()),
+        message: "Facture PayDunya acquittée et confirmée par le serveur."
+      };
+    } else if (record.status === "cancelled") {
+      return {
+        status: "cancelled",
+        transactionId: record.token,
+        amount: record.amount,
+        message: "Facture PayDunya annulée."
+      };
+    } else if (record.status === "failed") {
+      return {
+        status: "failed",
+        transactionId: record.token,
+        amount: record.amount,
+        message: "Facture PayDunya échouée."
+      };
+    } else {
+      return {
+        status: "pending",
+        transactionId: record.token,
+        amount: record.amount,
+        message: "Facture PayDunya en attente de paiement."
       };
     }
   }

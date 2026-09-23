@@ -49,7 +49,7 @@ for (const envFile of possibleEnvPaths) {
 }
 
 import { GoogleGenAI } from "@google/genai";
-import { PaymentGateway } from "./paymentGateway";
+import { PaymentGateway, updatePayDunyaInvoiceStatus, getPayDunyaInvoice, recordPayDunyaInvoice, loadPayDunyaInvoices } from "./paymentGateway";
 import { WalletManager } from "./walletHelper";
 import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions, getSupabaseClient, checkSupabaseHealth, syncProductToSupabaseTable, deleteProductFromSupabaseTable, syncAllProductsToSupabaseTable, loadProductsFromSupabaseTable, migrateProductsFileToSupabase } from "./supabaseHelper";
 
@@ -104,6 +104,60 @@ const SETTINGS_FILE = path.join(process.cwd(), "settings.json");
 const SHOWCASE_FILE = path.join(process.cwd(), "showcase.json");
 const BANNERS_FILE = path.join(process.cwd(), "banners.json");
 const BANNER_REQUESTS_FILE = path.join(process.cwd(), "banner_requests.json");
+const PRODUCTS_BACKUP_FILE = path.join(process.cwd(), "products.json");
+const DELETED_PRODUCTS_FILE = path.join(process.cwd(), "deleted_products.json");
+
+// Helper to retrieve all permanently deleted product IDs
+function getDeletedProductIds(): string[] {
+  try {
+    const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
+    if (!Array.isArray(list)) return [];
+    return list.map(item => typeof item === "string" ? item : (item?.id ? String(item.id) : "")).filter(Boolean);
+  } catch (e) {
+    return [];
+  }
+}
+
+// Helper to record a product ID in the persistent tombstone blacklist
+function recordDeletedProductId(id: string): void {
+  try {
+    const idStr = String(id).trim();
+    if (!idStr) return;
+    const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
+    const existingIds = new Set(list.map(item => typeof item === "string" ? item : (item?.id ? String(item.id) : "")).filter(Boolean));
+    if (!existingIds.has(idStr)) {
+      list.push({ id: idStr, deletedAt: new Date().toISOString() });
+      writeJSONFile(DELETED_PRODUCTS_FILE, list);
+      console.log(`🛡️ [Tombstone] Produit "${idStr}" enregistré dans la blacklist persistante (total: ${list.length}).`);
+      if (isSupabaseConfigured()) {
+        saveToSupabaseStore("deleted_products.json", list).catch(err => {
+          console.warn("⚠️ [Tombstone Supabase] Erreur enregistrement deleted_products:", err);
+        });
+      }
+    }
+  } catch (e) {
+    console.error("Erreur enregistrement produit supprimé:", e);
+  }
+}
+
+// Helper to un-tombstone a product if explicitly created/saved anew by admin
+function removeDeletedProductId(id: string): void {
+  try {
+    const idStr = String(id).trim();
+    if (!idStr) return;
+    const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
+    const filtered = list.filter(item => {
+      const existingId = typeof item === "string" ? item : (item?.id ? String(item.id) : "");
+      return existingId !== idStr;
+    });
+    if (filtered.length !== list.length) {
+      writeJSONFile(DELETED_PRODUCTS_FILE, filtered);
+      if (isSupabaseConfigured()) {
+        saveToSupabaseStore("deleted_products.json", filtered).catch(() => {});
+      }
+    }
+  } catch (e) {}
+}
 
 // Helper to hash password
 function hashPassword(password: string): string {
@@ -650,12 +704,24 @@ function writeJSONFile<T>(filePath: string, data: T): boolean {
 
 // --- API Endpoints ---
 
-// GET products (Supabase public.products as primary source of truth, with local JSON fallback)
+// GET deleted product IDs (tombstones blacklist)
+app.get(["/api/products/deleted-ids", "/api/products/deleted-ids/"], (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  const deletedIds = getDeletedProductIds();
+  res.json({ success: true, deletedIds });
+});
+
+// GET products (Supabase public.products as primary source of truth, with local JSON fallback and tombstone filtering)
 app.get(["/api/products", "/api/products/"], async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
+
+  const deletedIds = new Set(getDeletedProductIds());
 
   let supabaseProducts: any[] | null = null;
   if (isSupabaseConfigured()) {
@@ -667,16 +733,21 @@ app.get(["/api/products", "/api/products/"], async (req, res) => {
   }
 
   if (Array.isArray(supabaseProducts) && supabaseProducts.length > 0) {
+    const cleanSupabase = supabaseProducts.filter((p: any) => !deletedIds.has(String(p?.id)));
     // Keep local cache file updated as offline fallback
     try {
-      writeJSONFile(PRODUCTS_FILE, supabaseProducts);
+      writeJSONFile(PRODUCTS_FILE, cleanSupabase);
+      if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
+        writeJSONFile(PRODUCTS_BACKUP_FILE, cleanSupabase);
+      }
     } catch (e) {}
-    return res.json(supabaseProducts);
+    return res.json(cleanSupabase);
   }
 
-  // Fallback to local products.json
+  // Fallback to local produits.json
   const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
-  res.json(Array.isArray(products) ? products : []);
+  const cleanProducts = products.filter((p: any) => !deletedIds.has(String(p?.id)));
+  res.json(Array.isArray(cleanProducts) ? cleanProducts : []);
 });
 
 // GET blog posts
@@ -700,7 +771,13 @@ app.post("/api/admin/auth", (req, res) => {
 // Inscription (Sign-up)
 app.post(["/api/auth/register", "/auth/register"], (req, res) => {
   try {
-    const { name, email, password, phone, quartier, role, boutiqueName, countryCode, country, currencyCode } = req.body || {};
+    const { 
+      name, email, password, phone, quartier, role, 
+      boutiqueName, businessName, countryCode, country, currencyCode,
+      plan, vendeurPlan, vendeurSubscription, boutiqueSlug, vendeurSlug,
+      boutiqueDescription, boutiqueBio, boutiqueWhatsapp, boutiqueLogo, category
+    } = req.body || {};
+
     if (!name || !email || !password) {
       return res.status(400).json({ success: false, error: "Veuillez remplir les champs obligatoires (Nom, Email, Mot de passe)." });
     }
@@ -723,21 +800,61 @@ app.post(["/api/auth/register", "/auth/register"], (req, res) => {
       : "TG";
     const userCurrencyCode = currencyCode || (userCountryCode === "CM" ? "XAF" : "XOF");
 
-    const newUser = {
-      id: "user_" + Date.now().toString(),
+    const effectiveRole = role === "vendeur" ? "vendeur" : (role === "admin" ? "admin" : (role === "affilie" ? "affilie" : "client"));
+    const isVendeur = effectiveRole === "vendeur";
+    
+    // Resolve seller plan: "Gratuit" | "PRO" | "BUSINESS"
+    const chosenPlan = (vendeurPlan || plan || (isVendeur ? "Gratuit" : "")).toString().trim();
+    const isPro = chosenPlan === "PRO" || chosenPlan === "BUSINESS";
+
+    // Free plan -> immediate active access
+    // Pro/Business plan -> pending until PayDunya payment confirmed by server
+    const initialSubscriptionStatus = isVendeur 
+      ? (isPro ? "pending" : "active")
+      : undefined;
+
+    const bName = String(boutiqueName || businessName || name || "").trim();
+    const rawSlug = boutiqueSlug || vendeurSlug || "";
+    const bSlug = isPro ? String(rawSlug).trim() : "";
+
+    const newUser: any = {
+      id: "user_" + Date.now().toString() + "_" + Math.floor(Math.random() * 1000),
       name: String(name).trim(),
       email: emailLower,
       passwordHash: hashPassword(password),
       phone: String(phone || "").trim(),
       quartier: String(quartier || "").trim(),
-      role: role === "vendeur" ? "vendeur" : (role === "admin" ? "admin" : "client"),
-      boutiqueName: boutiqueName ? String(boutiqueName).trim() : "",
+      role: effectiveRole,
+      boutiqueName: bName,
+      businessName: bName,
       countryCode: userCountryCode,
       country: country ? String(country).trim() : (userCountryCode === "CM" ? "Cameroun" : "Togo"),
       currencyCode: userCurrencyCode,
       favorites: [],
       createdAt: new Date().toISOString()
     };
+
+    if (isVendeur) {
+      newUser.vendeurPlan = chosenPlan || "Gratuit";
+      newUser.plan = newUser.vendeurPlan;
+      newUser.vendeurSubscription = vendeurSubscription || (chosenPlan === "BUSINESS" ? "Offre 3" : chosenPlan === "PRO" ? "Offre 2" : "Offre 1");
+      newUser.vendeurSubscriptionStatus = initialSubscriptionStatus; // "active" (Gratuit) or "pending" (PRO/BUSINESS)
+      newUser.subscriptionStatus = initialSubscriptionStatus;
+      newUser.vendeurStatus = "Actif";
+      newUser.boutiqueSlug = bSlug;
+      newUser.vendeurSlug = bSlug;
+      newUser.boutiqueDescription = String(boutiqueDescription || boutiqueBio || "").trim();
+      newUser.boutiqueBio = newUser.boutiqueDescription;
+      newUser.boutiqueWhatsapp = String(boutiqueWhatsapp || phone || "").trim();
+      newUser.boutiqueLogo = String(boutiqueLogo || "").trim();
+      newUser.category = String(category || "").trim();
+
+      // Initialize vendor wallet
+      WalletManager.getWallet(newUser.id, "vendeur");
+    } else if (effectiveRole === "affilie") {
+      newUser.affiliateCode = "AFF-" + crypto.randomBytes(3).toString("hex").toUpperCase();
+      WalletManager.getWallet(newUser.id, "affilie");
+    }
 
     users.push(newUser);
     writeJSONFile(USERS_FILE, users);
@@ -979,6 +1096,14 @@ app.post("/api/products/save", async (req, res) => {
   }
 
   const success = writeJSONFile(PRODUCTS_FILE, products);
+  if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
+    try {
+      writeJSONFile(PRODUCTS_BACKUP_FILE, products);
+    } catch (e) {}
+  }
+
+  // Remove from deleted products tombstone blacklist in case it was previously deleted
+  removeDeletedProductId(String(validatedProduct.id));
 
   // Synchronize immediately to Supabase public.products table
   if (isSupabaseConfigured()) {
@@ -1093,7 +1218,10 @@ app.post("/api/admin/db-push", async (req, res) => {
     { file: WITHDRAWALS_FILE, key: "withdrawals.json" },
     { file: REVIEWS_FILE, key: "reviews.json" },
     { file: MESSAGES_FILE, key: "messages.json" },
-    { file: SETTINGS_FILE, key: "settings.json" }
+    { file: SETTINGS_FILE, key: "settings.json" },
+    { file: SHOWCASE_FILE, key: "showcase.json" },
+    { file: BANNERS_FILE, key: "banners.json" },
+    { file: DELETED_PRODUCTS_FILE, key: "deleted_products.json" }
   ];
 
   const results: any[] = [];
@@ -1182,9 +1310,10 @@ app.post("/api/admin/sync-products", async (req, res) => {
   }
 });
 
-// DELETE product (Secure - deletes from Supabase public.products and local file)
+// DELETE product (Secure - deletes from Supabase public.products, local file, backup products.json, and adds to tombstone)
 app.delete("/api/products/:id", async (req, res) => {
   const { id } = req.params;
+  const idStr = String(id).trim();
   const authHeader = req.headers.authorization;
   const token = authHeader?.replace(/^Bearer\s+/i, "");
 
@@ -1208,32 +1337,50 @@ app.delete("/api/products/:id", async (req, res) => {
     return res.status(403).json({ success: false, error: "Accès refusé. Non autorisé." });
   }
 
-  // Delete from Supabase public.products table
+  // 1. Delete from Supabase public.products table
   let supabaseDeleted = false;
   if (isSupabaseConfigured()) {
     try {
-      supabaseDeleted = await deleteProductFromSupabaseTable(id);
-      console.log(`🗑️ [Supabase] Produit ${id} supprimé de public.products (résultat: ${supabaseDeleted})`);
+      supabaseDeleted = await deleteProductFromSupabaseTable(idStr);
+      console.log(`🗑️ [Supabase] Produit ${idStr} supprimé de public.products (résultat: ${supabaseDeleted})`);
     } catch (sbErr) {
-      console.warn(`⚠️ [Supabase] Erreur de suppression produit ${id}:`, sbErr);
+      console.warn(`⚠️ [Supabase] Erreur de suppression produit ${idStr}:`, sbErr);
     }
   }
 
+  // 2. Delete from produits.json
   const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
-  const filtered = products.filter((p) => p.id !== id);
+  const filtered = products.filter((p) => String(p.id) !== idStr);
   const wasInLocalFile = products.length !== filtered.length;
 
   if (wasInLocalFile) {
     writeJSONFile(PRODUCTS_FILE, filtered);
   }
 
-  if (!wasInLocalFile && !supabaseDeleted) {
-    return res.status(404).json({ success: false, error: "Produit non trouvé." });
+  // 3. Delete from backup products.json if present
+  if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
+    try {
+      const backupProducts = readJSONFile<any[]>(PRODUCTS_BACKUP_FILE, []);
+      const filteredBackup = backupProducts.filter((p) => String(p.id) !== idStr);
+      if (backupProducts.length !== filteredBackup.length) {
+        writeJSONFile(PRODUCTS_BACKUP_FILE, filteredBackup);
+      }
+    } catch (e) {
+      console.warn("⚠️ [Backup] Erreur suppression dans products.json:", e);
+    }
   }
 
-  console.log(`🗑️ [Products DELETE] Produit ${id} supprimé avec succès.`);
+  // 4. Record the deleted ID in persistent tombstone blacklist
+  recordDeletedProductId(idStr);
+
+  console.log(`🗑️ [Products DELETE] Produit ${idStr} supprimé définitivement et enregistré dans la blacklist tombstone.`);
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  res.json({ success: true, id });
+  res.json({ 
+    success: true, 
+    id: idStr, 
+    deletedId: idStr, 
+    message: "Produit supprimé définitivement." 
+  });
 });
 
 // --- NEW WORKSPACE APIs FOR CLIENTS, SELLERS, AFFILIATES & ADMINS ---
@@ -1350,7 +1497,12 @@ app.post("/api/auth/role-upgrade", (req, res) => {
 });
 
 // Create/Update Product from Vendor (with pricing limit validation based on subscription)
-app.post(["/api/products", "/api/products/:id"], async (req, res) => {
+app.post(["/api/products", "/api/products/:id"], async (req, res, next) => {
+  // Pass through special sub-routes
+  if (req.params.id === "sync" || req.params.id === "save" || req.params.id === "deleted-ids") {
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   const bodyAuth = req.body?.auth;
   
@@ -1499,16 +1651,29 @@ app.post("/api/products/sync", async (req, res) => {
       return res.status(400).json({ success: false, error: "Liste de produits requise sous forme de tableau." });
     }
 
-    const currentProducts = readJSONFile<any[]>(PRODUCTS_FILE, []);
+    const deletedIds = getDeletedProductIds();
+    const deletedIdSet = new Set(deletedIds);
+
+    const currentProducts = readJSONFile<any[]>(PRODUCTS_FILE, []).filter((p: any) => !deletedIdSet.has(String(p?.id)));
     let addedCount = 0;
+    let rejectedDeletedCount = 0;
     const newItems: any[] = [];
 
     for (const cp of clientProducts) {
       if (cp && cp.id && cp.nom) {
-        const idx = currentProducts.findIndex((p: any) => p.id === cp.id);
+        const idStr = String(cp.id).trim();
+        
+        // CRITICAL: Reject any product that has been permanently deleted / tombstoned
+        if (deletedIdSet.has(idStr)) {
+          rejectedDeletedCount++;
+          continue;
+        }
+
+        const idx = currentProducts.findIndex((p: any) => String(p.id) === idStr);
         if (idx === -1) {
           const item = {
             ...cp,
+            id: idStr,
             phare: typeof cp.phare !== "undefined" ? cp.phare : true,
             valide: true,
             status: cp.status || "actif"
@@ -1522,7 +1687,12 @@ app.post("/api/products/sync", async (req, res) => {
 
     if (addedCount > 0) {
       writeJSONFile(PRODUCTS_FILE, currentProducts);
-      console.log(`[Product Sync] ${addedCount} produits synchronisés depuis le navigateur client vers le serveur !`);
+      if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
+        try {
+          writeJSONFile(PRODUCTS_BACKUP_FILE, currentProducts);
+        } catch (e) {}
+      }
+      console.log(`[Product Sync] ${addedCount} produits synchronisés depuis le client (${rejectedDeletedCount} rejetés car définitivement supprimés) !`);
 
       if (isSupabaseConfigured() && newItems.length > 0) {
         try {
@@ -1534,7 +1704,14 @@ app.post("/api/products/sync", async (req, res) => {
     }
 
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    return res.json({ success: true, count: currentProducts.length, addedCount, products: currentProducts });
+    return res.json({ 
+      success: true, 
+      count: currentProducts.length, 
+      addedCount, 
+      rejectedDeletedCount, 
+      deletedIds, 
+      products: currentProducts 
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message || "Erreur de synchronisation des produits." });
   }
@@ -2068,14 +2245,15 @@ app.post("/api/payments/initiate", (req, res) => {
 
 // POST confirm/verify payment
 app.post("/api/payments/confirm", (req, res) => {
-  const { transactionId, providerId, orderId } = req.body;
-  if (!transactionId || !providerId) {
-    return res.status(400).json({ success: false, error: "ID de transaction et de prestataire requis." });
+  const { transactionId, providerId = "paydunya", orderId } = req.body || {};
+  const tx = transactionId || orderId;
+  if (!tx) {
+    return res.status(400).json({ success: false, error: "Identifiant de transaction ou de commande requis." });
   }
 
   const orders = readJSONFile<any[]>(ORDERS_FILE, []);
-  // Support lookup by transactionId or orderId as a fallback
-  const orderIndex = orders.findIndex(o => o.paymentGatewayTxId === transactionId || o.id === orderId);
+  // Support lookup by transactionId or orderId
+  const orderIndex = orders.findIndex(o => o.paymentGatewayTxId === tx || o.id === tx || o.id === orderId);
 
   if (orderIndex === -1) {
     return res.status(404).json({ success: false, error: "Commande associée introuvable." });
@@ -2083,17 +2261,18 @@ app.post("/api/payments/confirm", (req, res) => {
 
   const order = orders[orderIndex];
   if (order.paymentStatus === "Payé") {
-    return res.json({ success: true, message: "La commande est déjà confirmée comme payée.", order });
+    return res.json({ success: true, status: "completed", message: "La commande est déjà confirmée comme payée.", order });
   }
 
-  PaymentGateway.getInstance().verifyPayment(providerId, transactionId)
+  PaymentGateway.getInstance().verifyPayment(providerId, tx)
     .then(result => {
       if (result.status === "success") {
         const orderCurrency = order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF");
         order.paymentStatus = "Payé";
-        order.paymentGatewayTxId = transactionId;
+        order.status = "En préparation";
+        order.paymentGatewayTxId = tx;
         order.paymentGatewayProvider = providerId;
-        order.paymentMethod = PaymentGateway.getInstance().getProvider(providerId)?.name || providerId;
+        order.paymentMethod = PaymentGateway.getInstance().getProvider(providerId)?.name || "PayDunya";
         order.paymentConfirmedAt = new Date().toISOString();
         order.currencyCode = orderCurrency;
         writeJSONFile(ORDERS_FILE, orders);
@@ -2101,7 +2280,7 @@ app.post("/api/payments/confirm", (req, res) => {
         // Execute automatic split of funds to seller and affiliate wallets!
         executeOrderRevenueSplit(order.id);
 
-        // Notify client
+        // Only send payment confirmation notification when payment is truly confirmed
         const clientUserId = order.userId;
         if (clientUserId && !clientUserId.startsWith("guest_")) {
           const users = readJSONFile<any[]>(USERS_FILE, []);
@@ -2110,7 +2289,7 @@ app.post("/api/payments/confirm", (req, res) => {
             users[clientIndex].notifications = users[clientIndex].notifications || [];
             users[clientIndex].notifications.unshift({
               id: "notif_pay_" + Date.now().toString(),
-              text: `Paiement confirmé ! Votre commande #${order.id} d'un montant de ${order.totalAmount.toLocaleString()} ${orderCurrency} a été payée avec succès via ${order.paymentMethod}.`,
+              text: `Paiement confirmé ! Votre commande #${order.id} d'un montant de ${order.totalAmount.toLocaleString()} ${orderCurrency} a été payée avec succès via PayDunya.`,
               type: "order",
               read: false,
               date: new Date().toISOString()
@@ -2119,14 +2298,360 @@ app.post("/api/payments/confirm", (req, res) => {
           }
         }
 
-        res.json({ success: true, message: "Paiement validé avec succès !", order });
+        return res.json({ success: true, status: "completed", message: "Paiement PayDunya validé avec succès !", order });
+      } else if (result.status === "pending") {
+        order.paymentStatus = "En attente";
+        writeJSONFile(ORDERS_FILE, orders);
+        return res.status(200).json({ 
+          success: false, 
+          status: "pending", 
+          message: "Le paiement PayDunya est en cours de validation par l'opérateur.",
+          order 
+        });
+      } else if (result.status === "cancelled") {
+        order.paymentStatus = "Annulé";
+        writeJSONFile(ORDERS_FILE, orders);
+        return res.status(200).json({ 
+          success: false, 
+          status: "cancelled", 
+          message: "Le paiement PayDunya a été annulé par le client.",
+          order 
+        });
       } else {
-        res.status(400).json({ success: false, error: "Le paiement n'a pas pu être validé par le prestataire." });
+        order.paymentStatus = "Échoué";
+        writeJSONFile(ORDERS_FILE, orders);
+        return res.status(200).json({ 
+          success: false, 
+          status: "failed", 
+          message: "Le paiement PayDunya a échoué ou a été refusé.",
+          order 
+        });
       }
     })
     .catch(err => {
+      console.error("Payment confirmation error:", err);
       res.status(500).json({ success: false, error: err.message });
     });
+});
+
+// POST initiate vendor subscription payment (PRO / BUSINESS)
+app.post("/api/subscriptions/initiate", async (req, res) => {
+  try {
+    const { userId, plan, countryCode, phone, providerId = "paydunya" } = req.body || {};
+    const effectivePlan = plan === "BUSINESS" ? "BUSINESS" : "PRO";
+    const amount = effectivePlan === "BUSINESS" ? 3200 : 1600;
+
+    const users = readJSONFile<any[]>(USERS_FILE, []);
+    let targetUser = users.find(u => u.id === userId);
+    if (!targetUser) {
+      const authHeader = req.headers.authorization;
+      const idFromAuth = authHeader ? getUserIdFromToken(authHeader) : null;
+      if (idFromAuth) {
+        targetUser = users.find(u => u.id === idFromAuth);
+      }
+    }
+
+    const resolvedUserId = targetUser?.id || userId || "user_pro";
+    const userCountry = (countryCode || targetUser?.countryCode || "TG").toUpperCase();
+    const userCurrency = targetUser?.currencyCode || (userCountry === "CM" ? "XAF" : "XOF");
+    const subOrderId = `SUB-${resolvedUserId}-${Date.now()}`;
+
+    const payProvider = PaymentGateway.getInstance().getProvider(providerId) || PaymentGateway.getInstance().getProvider("paydunya");
+    if (!payProvider) {
+      return res.status(500).json({ success: false, error: "Passerelle de paiement PayDunya indisponible." });
+    }
+
+    const session = await payProvider.initiatePayment(subOrderId, amount, {
+      name: targetUser?.name || targetUser?.boutiqueName || "Vendeur Pro",
+      phone: phone || targetUser?.phone || "+22890000000",
+      email: targetUser?.email || "vendeur@miabeasi.com",
+      countryCode: userCountry,
+      currencyCode: userCurrency
+    });
+
+    return res.json({
+      success: true,
+      subId: subOrderId,
+      plan: effectivePlan,
+      amount,
+      currencyCode: userCurrency,
+      session
+    });
+  } catch (err: any) {
+    console.error("Subscription initiate error:", err);
+    return res.status(500).json({ success: false, error: err.message || "Erreur lors de l'initialisation de l'abonnement." });
+  }
+});
+
+// POST confirm vendor subscription payment (PRO / BUSINESS)
+app.post("/api/subscriptions/confirm", async (req, res) => {
+  try {
+    const { transactionId, providerId = "paydunya", subId, userId } = req.body || {};
+    const tx = transactionId || subId;
+    if (!tx) {
+      return res.status(400).json({ success: false, error: "Identifiant de transaction requis." });
+    }
+
+    const result = await PaymentGateway.getInstance().verifyPayment(providerId, tx);
+    const users = readJSONFile<any[]>(USERS_FILE, []);
+
+    let userIndex = -1;
+    if (userId) {
+      userIndex = users.findIndex(u => u.id === userId);
+    }
+    if (userIndex === -1 && subId && subId.startsWith("SUB-")) {
+      const parts = subId.split("-");
+      if (parts.length >= 2) {
+        const extractedUserId = parts.slice(1, parts.length - 1).join("-");
+        userIndex = users.findIndex(u => u.id === extractedUserId);
+      }
+    }
+    if (userIndex === -1) {
+      const authHeader = req.headers.authorization;
+      const idFromAuth = authHeader ? getUserIdFromToken(authHeader) : null;
+      if (idFromAuth) {
+        userIndex = users.findIndex(u => u.id === idFromAuth);
+      }
+    }
+
+    if (result.status === "success") {
+      if (userIndex !== -1) {
+        const u = users[userIndex];
+        u.vendeurPlan = u.vendeurPlan === "BUSINESS" ? "BUSINESS" : "PRO";
+        u.plan = u.vendeurPlan;
+        u.vendeurSubscriptionStatus = "active";
+        u.subscriptionStatus = "active";
+        u.vendeurStatus = "Actif";
+        u.proSubscription = {
+          active: true,
+          plan: u.vendeurPlan,
+          amount: result.amount || (u.vendeurPlan === "BUSINESS" ? 3200 : 1600),
+          currency: result.currencyCode || u.currencyCode || "XOF",
+          transactionId: tx,
+          activatedAt: new Date().toISOString()
+        };
+        u.notifications = u.notifications || [];
+        u.notifications.unshift({
+          id: "notif_sub_" + Date.now().toString(),
+          text: `🎉 Votre abonnement PRO (${u.proSubscription.amount} ${u.proSubscription.currency}) a été confirmé par PayDunya ! Votre espace vendeur Pro est débloqué.`,
+          type: "system",
+          read: false,
+          date: new Date().toISOString()
+        });
+        writeJSONFile(USERS_FILE, users);
+        const { passwordHash, ...safeUser } = u;
+        return res.json({
+          success: true,
+          status: "active",
+          message: "Abonnement PRO validé et activé avec succès !",
+          user: safeUser
+        });
+      }
+      return res.json({
+        success: true,
+        status: "active",
+        message: "Paiement de l'abonnement validé par PayDunya."
+      });
+    } else if (result.status === "pending") {
+      return res.status(200).json({
+        success: false,
+        status: "pending",
+        error: "Le paiement de votre abonnement Pro est en attente de confirmation par PayDunya. Accès Pro bloqué."
+      });
+    } else if (result.status === "cancelled") {
+      if (userIndex !== -1) {
+        users[userIndex].vendeurSubscriptionStatus = "cancelled";
+        writeJSONFile(USERS_FILE, users);
+      }
+      return res.status(200).json({
+        success: false,
+        status: "cancelled",
+        error: "Paiement de l'abonnement annulé par l'utilisateur. Accès Pro bloqué."
+      });
+    } else {
+      if (userIndex !== -1) {
+        users[userIndex].vendeurSubscriptionStatus = "failed";
+        writeJSONFile(USERS_FILE, users);
+      }
+      return res.status(200).json({
+        success: false,
+        status: "failed",
+        error: "Le paiement de votre abonnement a échoué. Accès Pro bloqué."
+      });
+    }
+  } catch (err: any) {
+    console.error("Subscription confirm error:", err);
+    return res.status(500).json({ success: false, error: err.message || "Erreur serveur." });
+  }
+});
+
+// POST simulation test endpoint to transition PayDunya invoice status
+app.post("/api/payments/paydunya/test-set-status", (req, res) => {
+  const { token, transactionId, status } = req.body || {};
+  const targetId = token || transactionId;
+  if (!targetId || !status) {
+    return res.status(400).json({ success: false, error: "token/transactionId et status requis." });
+  }
+  const allowed = ["completed", "pending", "cancelled", "failed"];
+  if (!allowed.includes(status)) {
+    return res.status(400).json({ success: false, error: `Statut invalide. Autorisés: ${allowed.join(", ")}` });
+  }
+
+  const updated = updatePayDunyaInvoiceStatus(targetId, status);
+  if (!updated) {
+    return res.status(404).json({ success: false, error: "Facture PayDunya introuvable." });
+  }
+  return res.json({ success: true, invoice: updated });
+});
+
+// GET PayDunya simulation test checkout interface
+app.get("/checkout/paydunya-test", (req, res) => {
+  const token = String(req.query.token || "");
+  const orderId = String(req.query.orderId || "");
+  const invoice = getPayDunyaInvoice(token) || getPayDunyaInvoice(orderId);
+
+  const isSub = (invoice?.type === "subscription") || orderId.startsWith("SUB-");
+  const returnUrl = isSub ? `/?payment=sub_return&subId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}` : `/order-history?payment=return&orderId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}`;
+  const cancelUrl = isSub ? `/?payment=sub_cancel&subId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}` : `/order-history?payment=cancel&orderId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}`;
+
+  const amount = invoice?.amount || (isSub ? 1600 : 5000);
+  const currency = invoice?.currencyCode || "XOF";
+  const country = invoice?.countryCode || "TG";
+  const currentStatus = invoice?.status || "pending";
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PayDunya - Passerelle de Test Sécurisée</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0c0d0e; color: #f3f4f6; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #18191c; border: 1px solid #2a2c33; border-radius: 16px; max-width: 480px; width: 100%; padding: 28px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2a2c33; padding-bottom: 16px; margin-bottom: 20px; }
+    .logo { font-size: 20px; font-weight: 900; color: #10b981; letter-spacing: -0.5px; }
+    .badge { background: #374151; color: #9ca3af; font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: 600; text-transform: uppercase; }
+    .detail { background: #22242a; padding: 14px; border-radius: 10px; margin-bottom: 18px; }
+    .detail-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #9ca3af; }
+    .detail-row span:last-child { color: #f3f4f6; font-weight: 600; }
+    .amount-box { text-align: center; padding: 16px 0; font-size: 32px; font-weight: 900; color: #10b981; }
+    .status-badge { display: inline-block; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .status-pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .status-completed { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .status-cancelled { background: rgba(156, 163, 175, 0.15); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.3); }
+    .status-failed { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .btn { display: block; width: 100%; padding: 14px; margin-bottom: 10px; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; transition: transform 0.1s ease; }
+    .btn:active { transform: scale(0.98); }
+    .btn-success { background: #10b981; color: #fff; }
+    .btn-success:hover { background: #059669; }
+    .btn-pending { background: #d97706; color: #fff; }
+    .btn-pending:hover { background: #b45309; }
+    .btn-cancel { background: #4b5563; color: #f3f4f6; }
+    .btn-cancel:hover { background: #374151; }
+    .btn-fail { background: #dc2626; color: #fff; }
+    .btn-fail:hover { background: #b91c1c; }
+    .footer { text-align: center; font-size: 11px; color: #6b7280; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="logo">PayDunya <span style="font-size: 12px; color: #9ca3af; font-weight: normal;">Checkout</span></div>
+      <div class="badge">Environnement Test</div>
+    </div>
+
+    <div class="amount-box">
+      ${amount.toLocaleString()} ${currency}
+    </div>
+
+    <div class="detail">
+      <div class="detail-row">
+        <span>Référence :</span>
+        <span>${orderId || invoice?.orderId || "N/A"}</span>
+      </div>
+      <div class="detail-row">
+        <span>Type :</span>
+        <span>${isSub ? "Abonnement PRO Vendeur" : "Paiement Commande Client"}</span>
+      </div>
+      <div class="detail-row">
+        <span>Pays / Devise :</span>
+        <span>${country} • ${currency}</span>
+      </div>
+      <div class="detail-row">
+        <span>Statut actuel serveur :</span>
+        <span class="status-badge status-${currentStatus}">${currentStatus}</span>
+      </div>
+    </div>
+
+    <p style="font-size: 12px; color: #9ca3af; margin-bottom: 16px; text-align: center;">
+      Sélectionnez le résultat à simuler pour vérifier le comportement serveur :
+    </p>
+
+    <button class="btn btn-success" onclick="triggerStatus('completed', '${returnUrl}')">
+      ✓ Valider le paiement (Completed)
+    </button>
+    <button class="btn btn-pending" onclick="triggerStatus('pending', '${returnUrl}')">
+      ⏳ Laisser en attente (Pending)
+    </button>
+    <button class="btn btn-cancel" onclick="triggerStatus('cancelled', '${cancelUrl}')">
+      ✕ Annuler le paiement (Cancelled)
+    </button>
+    <button class="btn btn-fail" onclick="triggerStatus('failed', '${cancelUrl}')">
+      ⚠️ Simuler un échec (Failed)
+    </button>
+
+    <div class="footer">
+      Miabé Asi • Passerelle PayDunya sécurisée (7 pays supportés)
+    </div>
+  </div>
+
+  <script>
+    async function triggerStatus(status, redirectTarget) {
+      try {
+        await fetch('/api/payments/paydunya/test-set-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: '${token}', transactionId: '${token}', status: status })
+        });
+      } catch (e) {
+        console.error('Error setting test status:', e);
+      }
+      window.location.href = redirectTarget;
+    }
+  </script>
+</body>
+</html>`;
+
+  res.send(html);
+});
+
+// POST change vendor plan (e.g. switch between Gratuit, PRO, BUSINESS)
+app.post("/api/users/change-plan", (req, res) => {
+  const { userId, plan } = req.body || {};
+  const authHeader = req.headers.authorization;
+  const id = userId || (authHeader ? getUserIdFromToken(authHeader) : null);
+  if (!id) {
+    return res.status(401).json({ success: false, error: "Non identifié." });
+  }
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const uIdx = users.findIndex(u => u.id === id);
+  if (uIdx === -1) {
+    return res.status(404).json({ success: false, error: "Utilisateur non trouvé." });
+  }
+  const u = users[uIdx];
+  const newPlan = plan === "BUSINESS" ? "BUSINESS" : (plan === "PRO" ? "PRO" : "Gratuit");
+  u.vendeurPlan = newPlan;
+  u.plan = newPlan;
+  if (newPlan === "Gratuit") {
+    u.vendeurSubscriptionStatus = "active";
+    u.subscriptionStatus = "active";
+  } else {
+    u.vendeurSubscriptionStatus = "pending";
+    u.subscriptionStatus = "pending";
+  }
+  writeJSONFile(USERS_FILE, users);
+  const { passwordHash, ...safeUser } = u;
+  return res.json({ success: true, user: safeUser });
 });
 
 // GET retrieve current user's wallet info (balance and transaction history)
@@ -3157,8 +3682,14 @@ app.get("/api/showcase", (req, res) => {
       }
     ]
   };
-  const data = readJSONFile(SHOWCASE_FILE, defaultShowcase);
-  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  const fileData = readJSONFile(SHOWCASE_FILE, defaultShowcase);
+  const data = {
+    heroCards: Array.isArray(fileData?.heroCards) && fileData.heroCards.length > 0 ? fileData.heroCards : defaultShowcase.heroCards,
+    galleryCards: Array.isArray(fileData?.galleryCards) && fileData.galleryCards.length > 0 ? fileData.galleryCards : defaultShowcase.galleryCards,
+  };
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   res.json(data);
 });
 
@@ -3170,27 +3701,46 @@ app.post("/api/showcase", (req, res) => {
   }
   const current = readJSONFile(SHOWCASE_FILE, { heroCards: [], galleryCards: [] });
   const updated = {
-    heroCards: Array.isArray(heroCards) ? heroCards : current.heroCards,
-    galleryCards: Array.isArray(galleryCards) ? galleryCards : current.galleryCards,
+    heroCards: Array.isArray(heroCards) ? heroCards : (current.heroCards || []),
+    galleryCards: Array.isArray(galleryCards) ? galleryCards : (current.galleryCards || []),
   };
   const success = writeJSONFile(SHOWCASE_FILE, updated);
   if (success) {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.json({ success: true, showcase: updated });
   } else {
-    res.status(500).json({ success: false, error: "Erreur lors de la sauvegarde de la vitrine." });
+    res.status(500).json({ success: false, error: "Erreur lors de la sauvegarde de la vitrine sur le serveur." });
   }
 });
 
 // GET /api/banners - Fetch carousel banners
 app.get("/api/banners", (req, res) => {
-  const banners = readJSONFile(BANNERS_FILE, null);
-  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  let banners = readJSONFile(BANNERS_FILE, null);
+  // Ensure valid array of slides with content
+  if (Array.isArray(banners) && banners.length > 0 && !banners[0].badgeTagFr && banners[0].title) {
+    // If legacy short schema without badgeTagFr, read fresh banners.json from disk
+    try {
+      if (fs.existsSync(BANNERS_FILE)) {
+        const diskContent = fs.readFileSync(BANNERS_FILE, "utf-8");
+        const parsed = JSON.parse(diskContent);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].badgeTagFr) {
+          banners = parsed;
+          memoryStore.set(BANNERS_FILE, parsed);
+        }
+      }
+    } catch (e) {}
+  }
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
   res.json(banners);
 });
 
 // POST /api/banners - Save carousel banners
 app.post("/api/banners", (req, res) => {
-  const { auth, slides } = req.body;
+  const body = req.body;
+  const slides = Array.isArray(body) ? body : (Array.isArray(body?.slides) ? body.slides : null);
+  const auth = body?.auth || req.headers.authorization;
   if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
     return res.status(403).json({ success: false, error: "Accès refusé." });
   }
@@ -3199,6 +3749,9 @@ app.post("/api/banners", (req, res) => {
   }
   const success = writeJSONFile(BANNERS_FILE, slides);
   if (success) {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     res.json({ success: true, slides });
   } else {
     res.status(500).json({ success: false, error: "Erreur sauvegarde bannières." });
@@ -3209,9 +3762,10 @@ app.post("/api/banners", (req, res) => {
 app.get("/api/settings", (req, res) => {
   const defaultSettings = {
     whatsappMerchantNumber: "22890000000",
-    activeLogoId: "monogramme_plume"
+    activeLogoId: "official"
   };
   const settings = readJSONFile(SETTINGS_FILE, defaultSettings);
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
   res.json(settings);
 });
 
@@ -3224,13 +3778,13 @@ app.post("/api/settings", (req, res) => {
 
   const defaultSettings = {
     whatsappMerchantNumber: "22890000000",
-    activeLogoId: "monogramme_plume"
+    activeLogoId: "official"
   };
   const currentSettings = readJSONFile(SETTINGS_FILE, defaultSettings);
 
   const newSettings = {
     whatsappMerchantNumber: whatsappMerchantNumber || currentSettings.whatsappMerchantNumber || "22890000000",
-    activeLogoId: activeLogoId || currentSettings.activeLogoId || "monogramme_plume"
+    activeLogoId: activeLogoId || currentSettings.activeLogoId || "official"
   };
 
   const success = writeJSONFile(SETTINGS_FILE, newSettings);
@@ -3809,7 +4363,10 @@ async function start() {
       { file: WITHDRAWALS_FILE, key: "withdrawals.json" },
       { file: REVIEWS_FILE, key: "reviews.json" },
       { file: MESSAGES_FILE, key: "messages.json" },
-      { file: SETTINGS_FILE, key: "settings.json" }
+      { file: SETTINGS_FILE, key: "settings.json" },
+      { file: SHOWCASE_FILE, key: "showcase.json" },
+      { file: BANNERS_FILE, key: "banners.json" },
+      { file: DELETED_PRODUCTS_FILE, key: "deleted_products.json" }
     ];
 
     const timeoutMs = 4000;
@@ -3892,6 +4449,28 @@ async function start() {
       if (vite) vite.ssrFixStacktrace(e);
       next(e);
     }
+  });
+
+  // Ensure Service Worker is always served fresh and never cached by proxies or browsers
+  app.get("/sw.js", (req, res, next) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
+    res.setHeader("Content-Type", "application/javascript");
+    const swPath = path.join(process.cwd(), "public", "sw.js");
+    if (fs.existsSync(swPath)) {
+      return res.sendFile(swPath);
+    }
+    next();
+  });
+
+  // Ensure Web App Manifest is always served fresh
+  app.get("/manifest.json", (req, res, next) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
+    res.setHeader("Content-Type", "application/manifest+json");
+    const manifestPath = path.join(process.cwd(), "public", "manifest.json");
+    if (fs.existsSync(manifestPath)) {
+      return res.sendFile(manifestPath);
+    }
+    next();
   });
 
   if (vite) {

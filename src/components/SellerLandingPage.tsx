@@ -323,7 +323,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
           <div className="lg:col-span-7 text-left space-y-6">
             <div className="inline-flex items-center gap-2 bg-[#0B4D26]/40 border border-[#0B4D26] px-3.5 py-1.5 rounded-full text-emerald-300 text-[11px] font-bold uppercase tracking-widest">
               <Store className="w-3.5 h-3.5 text-[#d4af37]" />
-              <span>Espace Vendeurs &amp; Artisans Miabé Asi</span>
+              <span>Espace Vendeurs Africains Miabé Asi</span>
             </div>
 
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight text-white leading-[1.1]">
@@ -331,7 +331,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
             </h1>
 
             <p className="text-stone-300 text-base sm:text-lg max-w-xl font-normal leading-relaxed">
-              Créez votre espace vendeur gratuitement et développez votre activité grâce à notre marketplace.
+              Créez votre espace vendeur et développez votre activité sur la première marketplace panafricaine.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-3.5">
@@ -455,7 +455,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
             Les avantages de vendre sur Miabé Asi
           </h2>
           <p className="text-stone-600 text-sm sm:text-base">
-            Une plateforme pensée pour valoriser les artisans, transformateurs et commerçants togolais auprès d'un large public.
+            Une plateforme pensée pour valoriser les vendeurs et commerçants africains auprès d'un large public panafricain.
           </p>
         </div>
 
@@ -465,9 +465,9 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
             <div className="w-11 h-11 rounded-xl bg-emerald-50 text-[#0B4D26] flex items-center justify-center font-bold">
               <Users className="w-5 h-5" />
             </div>
-            <h3 className="text-sm font-bold uppercase text-stone-900">Audience Ciblée Togo &amp; Diaspora</h3>
+            <h3 className="text-sm font-bold uppercase text-stone-900">Audience Panafricaine &amp; Diaspora</h3>
             <p className="text-xs text-stone-600 leading-relaxed font-sans">
-              Touchez des milliers d'acheteurs à Lomé, dans toutes les régions du Togo et auprès de la diaspora à la recherche de produits locaux authentiques.
+              Touchez des acheteurs dans les 7 pays supportés (Togo, Bénin, Burkina Faso, Côte d'Ivoire, Mali, Sénégal, Cameroun) et auprès de la diaspora.
             </p>
           </div>
 
@@ -890,7 +890,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
               Créer votre boutique en quelques clics
             </h2>
             <p className="text-stone-300 text-xs sm:text-sm max-w-lg mx-auto">
-              Rejoignez la plus grande communauté d'artisans et commerçants locaux du Togo.
+              Rejoignez la communauté de vendeurs africains sur Miabé Asi.
             </p>
           </div>
 
@@ -899,24 +899,47 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
               <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-black uppercase text-white">Félicitations ! Votre boutique est prête</h3>
-              <p className="text-sm text-stone-300 max-w-md mx-auto leading-relaxed">
-                Votre compte vendeur pour <strong>« {boutiqueName} »</strong> a été configuré avec succès avec la formule <strong>{selectedPlan}</strong>.
-              </p>
-              {selectedPlan !== "Gratuit" && (
-                <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 font-mono text-xs text-[#d4af37]">
-                  Votre URL : miabeasi.com/boutique/{slugAvailability?.formattedSlug || customSlug}
-                </div>
+              
+              {selectedPlan === "Gratuit" ? (
+                <>
+                  <h3 className="text-xl font-black uppercase text-white">Félicitations ! Votre boutique est prête</h3>
+                  <p className="text-sm text-stone-300 max-w-md mx-auto leading-relaxed">
+                    Votre compte vendeur pour <strong>« {boutiqueName} »</strong> a été activé avec succès en formule <strong>Gratuite</strong>. Vous pouvez dès maintenant publier vos produits.
+                  </p>
+                  <div className="pt-3">
+                    <button
+                      type="button"
+                      onClick={() => onOpenSellerDashboard && onOpenSellerDashboard()}
+                      className="bg-[#0B4D26] hover:bg-[#083a1d] text-white px-8 py-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
+                    >
+                      Accéder immédiatement à mon espace vendeur &rarr;
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Paiement PayDunya Requis
+                  </span>
+                  <h3 className="text-xl font-black uppercase text-white">Compte {selectedPlan} Créé</h3>
+                  <p className="text-sm text-stone-300 max-w-md mx-auto leading-relaxed">
+                    Votre compte pour <strong>« {boutiqueName} »</strong> a été enregistré. Pour débloquer votre espace vendeur <strong>{selectedPlan}</strong> ({selectedPlan === "BUSINESS" ? "3 200 FCFA" : "1 600 FCFA"}/mois), le règlement via PayDunya est requis. L'accès Pro reste bloqué jusqu'à confirmation du paiement.
+                  </p>
+                  <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 font-mono text-xs text-[#d4af37]">
+                    URL réservée : miabeasi.com/boutique/{slugAvailability?.formattedSlug || customSlug}
+                  </div>
+                  <div className="pt-3">
+                    <button
+                      type="button"
+                      onClick={() => onOpenSellerDashboard && onOpenSellerDashboard()}
+                      className="bg-[#10b981] hover:bg-[#059669] text-white px-8 py-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 mx-auto"
+                    >
+                      <Lock className="w-4 h-4" />
+                      <span>Régler l'abonnement &amp; Activer mon espace Pro &rarr;</span>
+                    </button>
+                  </div>
+                </>
               )}
-              <div className="pt-3">
-                <button
-                  type="button"
-                  onClick={() => onOpenSellerDashboard && onOpenSellerDashboard()}
-                  className="bg-[#0B4D26] hover:bg-[#083a1d] text-white px-8 py-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
-                >
-                  Accéder à mon tableau de bord vendeur &rarr;
-                </button>
-              </div>
             </div>
           ) : (
             <div className="bg-stone-900 border border-stone-800 rounded-2xl p-6 sm:p-8 text-left shadow-2xl space-y-6">
@@ -1039,7 +1062,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                   <div className="space-y-4 animate-fade-in">
                     <div className="border-b border-stone-800 pb-2">
                       <h3 className="text-sm font-black text-white uppercase tracking-wider">Étape 2 : Informations de votre Boutique</h3>
-                      <p className="text-xs text-stone-400">Présentez votre enseigne et votre savoir-faire artisanal.</p>
+                      <p className="text-xs text-stone-400">Présentez votre enseigne et votre catalogue de produits.</p>
                     </div>
 
                     <div>
@@ -1049,7 +1072,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                         required
                         value={boutiqueName}
                         onChange={(e) => setBoutiqueName(e.target.value)}
-                        placeholder="Ex: Chez Koffi - Saveurs du Terroir"
+                        placeholder="Ex: Saveurs & Terroirs d'Afrique"
                         className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
                       />
                     </div>
@@ -1061,7 +1084,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                         rows={3}
                         value={boutiqueDescription}
                         onChange={(e) => setBoutiqueDescription(e.target.value)}
-                        placeholder="Décrivez vos créations, produits et méthodes de fabrication locales..."
+                        placeholder="Décrivez vos créations et produits africains authentiques..."
                         className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26] resize-none"
                       />
                     </div>
@@ -1090,7 +1113,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                           required
                           value={quartierVille}
                           onChange={(e) => setQuartierVille(e.target.value)}
-                          placeholder="Ex: Bè-Kpota, Lomé"
+                          placeholder="Ex: Quartier, Ville"
                           className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
                         />
                       </div>
@@ -1283,7 +1306,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                           className="mt-0.5 h-4 w-4 rounded bg-stone-950 border-stone-800 text-[#0B4D26] focus:ring-[#0B4D26]"
                         />
                         <span>
-                          J'accepte les <strong>Conditions Générales de Vente Partenaire</strong> de Miabé Asi et certifie que mes produits sont fabriqués, transformés ou distribués localement au Togo.
+                          J'accepte les <strong>Conditions Générales de Vente Partenaire</strong> de Miabé Asi et certifie l'authenticité et la qualité de mes produits africains.
                         </span>
                       </label>
 

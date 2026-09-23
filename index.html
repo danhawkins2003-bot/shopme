@@ -5,30 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Miabé Asi — Le local, notre fierté</title>
     <!-- Web App Manifest & Branding for PWA -->
-    <link rel="manifest" href="/manifest.json?v=3" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=3" />
+    <link rel="manifest" href="/manifest.json?v=4" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=4" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png?v=4" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=4" />
     <meta name="theme-color" content="#0F5132" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <!-- Force Service Worker unregistration & Cache clearance to ensure instant live updates on mobile -->
+    <meta name="apple-mobile-web-app-title" content="Miabé Asi" />
+
+    <!-- Service Worker registration with graceful update management -->
     <script>
       if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (let registration of registrations) {
-            registration.unregister().then((success) => {
-              if (success) console.log("Service Worker désenregistré pour assurer les mises à jour en direct.");
-            });
-          }
-        });
-      }
-      if ("caches" in window) {
-        caches.keys().then((names) => {
-          for (let name of names) {
-            caches.delete(name).then(() => {
-              console.log("Cache nettoyé :", name);
-            });
-          }
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js?v=4").then((registration) => {
+            // Check for updates on load and periodically
+            registration.update();
+            registration.onupdatefound = () => {
+              const installingWorker = registration.installing;
+              if (installingWorker) {
+                installingWorker.onstatechange = () => {
+                  if (installingWorker.state === "installed" && navigator.serviceWorker.controller) {
+                    console.log("[Miabé Asi PWA] Nouvelle version prête.");
+                  }
+                };
+              }
+            };
+          }).catch((err) => {
+            console.warn("[Miabé Asi PWA] Enregistrement SW:", err);
+          });
         });
       }
     </script>

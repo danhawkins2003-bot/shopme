@@ -145,21 +145,57 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
   }
 
   // --- PRODUCTS PATHS ---
+  if (cleanRoute === "/api/products/deleted-ids" && method === "GET") {
+    try {
+      const res = await originalFetch("/api/products/deleted-ids?t=" + Date.now(), { cache: "no-store" });
+      if (res.ok) {
+        return res;
+      }
+    } catch (e) {}
+    let localDeleted: string[] = [];
+    try {
+      localDeleted = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+    } catch (e) {}
+    return makeResponse({ success: true, deletedIds: localDeleted }, 200, true);
+  }
+
   if (cleanRoute === "/api/products") {
     if (method === "GET") {
-      let prods: any[] = [];
+      let deletedIds: string[] = [];
       try {
-        const cached = localStorage.getItem("asime_emulated_products");
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            prods = parsed;
+        deletedIds = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+      } catch (e) {}
+      const deletedSet = new Set(deletedIds.map(String));
+
+      let prods: any[] = [];
+      let networkSuccess = false;
+      // 1. Try network fetch to server first (server is the single source of truth)
+      try {
+        const netRes = await originalFetch("/api/products?t=" + Date.now(), {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Accept": "application/json"
+          }
+        });
+        const ct = (netRes.headers.get("content-type") || "").toLowerCase();
+        if (netRes.ok && (ct.includes("application/json") || ct.includes("json"))) {
+          const netText = await netRes.text();
+          if (netText && netText.trim().startsWith("[")) {
+            const parsed = JSON.parse(netText);
+            if (Array.isArray(parsed)) {
+              prods = parsed;
+              networkSuccess = true;
+            }
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        // Network error (offline)
+      }
 
-      // If nothing in local cache, try fetching from static /produits.json
-      if (prods.length === 0) {
+      // 2. Fallback to local cache ONLY if network request failed completely
+      if (!networkSuccess) {
+        // Fallback 1: Static /produits.json
         try {
           const staticRes = await originalFetch("/produits.json?t=" + Date.now(), { cache: "no-store" });
           const ct = (staticRes.headers.get("content-type") || "").toLowerCase();
@@ -167,13 +203,28 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
             const staticText = await staticRes.text();
             if (staticText && staticText.trim().startsWith("[")) {
               prods = JSON.parse(staticText);
-              localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
             }
           }
         } catch (e) {}
+
+        // Fallback 2: Cached localStorage
+        if (prods.length === 0) {
+          try {
+            const cached = localStorage.getItem("asime_emulated_products");
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                prods = parsed;
+              }
+            }
+          } catch (e) {}
+        }
       }
 
-      return makeResponse(prods, 200, true);
+      // STRICT FILTERING: Exclude any tombstoned deleted products
+      const cleanProds = prods.filter((p: any) => !deletedSet.has(String(p?.id)));
+      localStorage.setItem("asime_emulated_products", JSON.stringify(cleanProds));
+      return makeResponse(cleanProds, 200, true);
     }
   }
 
@@ -264,19 +315,47 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       prods.unshift(savedProduct);
     }
 
-    localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+    // 1. Send operation to backend server FIRST (server is source of truth)
+    try {
+      const serverRes = await originalFetch("/api/products", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": authHeader || "asime2026"
+        },
+        body: JSON.stringify({ ...savedProduct, auth: "asime2026" })
+      });
 
-    // Replicate to backend server so mobile clients can see it immediately
-    originalFetch("/api/products", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": authHeader || "asime2026"
-      },
-      body: JSON.stringify({ ...savedProduct, auth: "asime2026" })
-    }).catch(() => {});
+      if (serverRes.ok) {
+        const text = await serverRes.text();
+        const serverData = text ? JSON.parse(text) : { success: true, product: savedProduct };
+        const confirmedProduct = serverData.product || savedProduct;
 
-    return makeResponse({ success: true, product: savedProduct }, 200, true);
+        // Server confirmed: update local cache
+        if (existingIndex > -1) {
+          prods[existingIndex] = confirmedProduct;
+        } else {
+          prods.unshift(confirmedProduct);
+        }
+        localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+
+        return makeResponse(serverData, 200, true);
+      } else {
+        const errText = await serverRes.text();
+        let errMsg = "Erreur serveur lors de la création du produit.";
+        try { errMsg = JSON.parse(errText)?.error || errMsg; } catch (e) {}
+        return makeResponse({ success: false, error: errMsg }, serverRes.status, false);
+      }
+    } catch (netErr) {
+      // Offline fallback: save locally only if network is unavailable
+      if (existingIndex > -1) {
+        prods[existingIndex] = savedProduct;
+      } else {
+        prods.unshift(savedProduct);
+      }
+      localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+      return makeResponse({ success: true, product: savedProduct, offline: true }, 200, true);
+    }
   }
 
   if (cleanRoute === "/api/products/save" && method === "POST") {
@@ -288,33 +367,63 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
     let savedProduct = { ...product, phare: typeof product?.phare !== "undefined" ? product.phare : true };
 
-    if (savedProduct.id) {
-      // Edit
-      const index = prods.findIndex((p: any) => p.id === savedProduct.id);
+    // 1. Send operation to backend server FIRST
+    try {
+      const serverRes = await originalFetch("/api/products/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "asime2026"
+        },
+        body: JSON.stringify({ auth: "asime2026", product: savedProduct })
+      });
+
+      if (serverRes.ok) {
+        const text = await serverRes.text();
+        const serverData = text ? JSON.parse(text) : { success: true, product: savedProduct };
+        const confirmedProduct = serverData.product || savedProduct;
+
+        // Server confirmed: update local cache
+        if (confirmedProduct.id) {
+          const index = prods.findIndex((p: any) => String(p.id) === String(confirmedProduct.id));
+          if (index !== -1) {
+            prods[index] = confirmedProduct;
+          } else {
+            prods.unshift(confirmedProduct);
+          }
+        } else {
+          prods.unshift(confirmedProduct);
+        }
+        localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+
+        // If this was previously tombstoned, remove from deleted list
+        try {
+          const delList = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+          const updatedDelList = delList.filter((dId: string) => String(dId) !== String(confirmedProduct.id));
+          localStorage.setItem("asime_deleted_product_ids", JSON.stringify(updatedDelList));
+        } catch (e) {}
+
+        return makeResponse(serverData, 200, true);
+      } else {
+        const errText = await serverRes.text();
+        let errMsg = "Erreur serveur lors de l'enregistrement.";
+        try { errMsg = JSON.parse(errText)?.error || errMsg; } catch (e) {}
+        return makeResponse({ success: false, error: errMsg }, serverRes.status, false);
+      }
+    } catch (netErr) {
+      // Offline fallback
+      if (!savedProduct.id) {
+        savedProduct.id = "prod_" + Date.now();
+      }
+      const index = prods.findIndex((p: any) => String(p.id) === String(savedProduct.id));
       if (index !== -1) {
         prods[index] = savedProduct;
       } else {
         prods.unshift(savedProduct);
       }
-    } else {
-      // New
-      savedProduct.id = "prod_" + Date.now();
-      prods.unshift(savedProduct);
+      localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+      return makeResponse({ success: true, product: savedProduct, offline: true }, 200, true);
     }
-
-    localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
-
-    // Replicate to backend server so mobile clients can see it immediately
-    originalFetch("/api/products/save", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "asime2026"
-      },
-      body: JSON.stringify({ auth: "asime2026", product: savedProduct })
-    }).catch(() => {});
-
-    return makeResponse({ success: true, product: savedProduct }, 200, true);
   }
 
   // Handle DELETE /api/products/:id
@@ -326,15 +435,99 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
 
     // Extract ID from product routing path
     const id = cleanRoute.substring("/api/products/".length);
-    const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
-    const filtered = prods.filter((p: any) => p.id !== id);
+    const idStr = String(id).trim();
 
-    if (prods.length === filtered.length) {
-      return makeResponse({ success: false, error: "Produit non trouvé." }, 404, false);
+    // 1. Send DELETE to backend server FIRST
+    try {
+      const serverRes = await originalFetch(urlPath, init);
+      if (serverRes.ok) {
+        const text = await serverRes.text();
+        const serverData = text ? JSON.parse(text) : { success: true, id: idStr };
+
+        // Server confirmed: update local cache
+        const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+        const filtered = prods.filter((p: any) => String(p.id) !== idStr);
+        localStorage.setItem("asime_emulated_products", JSON.stringify(filtered));
+
+        // Register in tombstone blacklist
+        try {
+          const delList = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+          if (!delList.includes(idStr)) {
+            delList.push(idStr);
+            localStorage.setItem("asime_deleted_product_ids", JSON.stringify(delList));
+          }
+        } catch (e) {}
+
+        return makeResponse(serverData, 200, true);
+      } else {
+        const errText = await serverRes.text();
+        let errMsg = "Erreur serveur lors de la suppression du produit.";
+        try { errMsg = JSON.parse(errText)?.error || errMsg; } catch (e) {}
+        return makeResponse({ success: false, error: errMsg }, serverRes.status, false);
+      }
+    } catch (netErr) {
+      // Offline fallback
+      const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+      const filtered = prods.filter((p: any) => String(p.id) !== idStr);
+      localStorage.setItem("asime_emulated_products", JSON.stringify(filtered));
+
+      try {
+        const delList = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+        if (!delList.includes(idStr)) {
+          delList.push(idStr);
+          localStorage.setItem("asime_deleted_product_ids", JSON.stringify(delList));
+        }
+      } catch (e) {}
+
+      return makeResponse({ success: true, id: idStr, message: "Produit supprimé hors-ligne.", offline: true }, 200, true);
+    }
+  }
+
+  // Handle POST /api/products/sync
+  if (cleanRoute === "/api/products/sync" && method === "POST") {
+    // Try forwarding to real server first!
+    try {
+      const serverRes = await originalFetch(urlPath, init);
+      if (serverRes.ok) {
+        return serverRes;
+      }
+    } catch (e) {}
+
+    // Fallback if server offline: reject any deleted products
+    let deletedIds: string[] = [];
+    try {
+      deletedIds = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+    } catch (e) {}
+    const delSet = new Set(deletedIds.map(String));
+
+    const incoming: any[] = Array.isArray(bodyData?.products) ? bodyData.products : [];
+    const currentProds = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]").filter((p: any) => !delSet.has(String(p?.id)));
+    let addedCount = 0;
+    let rejectedDeletedCount = 0;
+
+    for (const cp of incoming) {
+      if (cp && cp.id) {
+        const idStr = String(cp.id).trim();
+        if (delSet.has(idStr)) {
+          rejectedDeletedCount++;
+          continue;
+        }
+        if (!currentProds.some((p: any) => String(p.id) === idStr)) {
+          currentProds.unshift(cp);
+          addedCount++;
+        }
+      }
     }
 
-    localStorage.setItem("asime_emulated_products", JSON.stringify(filtered));
-    return makeResponse({ success: true }, 200, true);
+    localStorage.setItem("asime_emulated_products", JSON.stringify(currentProds));
+    return makeResponse({ 
+      success: true, 
+      count: currentProds.length, 
+      addedCount, 
+      rejectedDeletedCount, 
+      deletedIds, 
+      products: currentProds 
+    }, 200, true);
   }
 
   // --- BLOGS PATHS ---
@@ -2518,113 +2711,191 @@ function sanitizeUserForResponse(user: any): any {
   }
 
   if (cleanRoute === "/api/showcase") {
+    const defaultShowcase = {
+      heroCards: [
+        {
+          id: "miel_dore",
+          title: "Notre Miel Doré",
+          subtitle: "100% sauvage, récolté à Kpalimé du plateau forestier.",
+          imageUrl: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=600",
+          category: "Made in Togo Premium",
+          searchQuery: "Miel"
+        },
+        {
+          id: "soin_karite",
+          title: "Soin au Karité",
+          subtitle: "Pressé par notre coopérative de femmes solidaires.",
+          imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?auto=format&fit=crop&q=80&w=600",
+          category: "Made in Togo Premium",
+          searchQuery: "Karité"
+        },
+        {
+          id: "paniers_kovie",
+          title: "Paniers de Kovié",
+          subtitle: "Cueillette du matin, fraîcheur livrée sous 24h à Lomé.",
+          imageUrl: "https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&q=80&w=600",
+          category: "Paniers Frais & Épicerie",
+          searchQuery: ""
+        },
+        {
+          id: "hibiscus_epices",
+          title: "Hibiscus & Épices",
+          subtitle: "Pour vos infusions et bienfaits naturels au quotidien.",
+          imageUrl: "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?auto=format&fit=crop&q=80&w=600",
+          category: "Made in Togo Premium",
+          searchQuery: "Thé"
+        }
+      ],
+      galleryCards: [
+        {
+          id: "ceramiques_mandouri",
+          title: "Céramiques de Mandouri",
+          collection: "Terre Cuite & Argile",
+          tag: "Argile Sacrée",
+          subtitle: "Des œuvres façonnées en argile brute issues de gisements sacrés de l'extrême Nord du Togo.",
+          imageUrl: "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&q=80&w=800",
+          category: "Made in Togo Premium",
+          searchQuery: "Argile"
+        },
+        {
+          id: "tissage_aneho",
+          title: "Tissage d'Aného",
+          collection: "Raphia & Fibres Organiques",
+          tag: "100% Organique",
+          subtitle: "Tressage méticuleux des fibres végétales pour concevoir des sacs et paniers de prestige.",
+          imageUrl: "https://images.unsplash.com/photo-1590736704728-f4730bb30770?auto=format&fit=crop&q=80&w=800",
+          category: "Made in Togo Premium",
+          searchQuery: "Raphia"
+        },
+        {
+          id: "miels_kpalime",
+          title: "Miels de Kpalimé",
+          collection: "Nectar Sauvage & Café",
+          tag: "Nectar d'Altitude",
+          subtitle: "Récoltes biologiques au cœur des forêts denses du plateau du Togo.",
+          imageUrl: "https://images.unsplash.com/photo-1471193945509-9ad0617afabf?auto=format&fit=crop&q=80&w=800",
+          category: "Made in Togo Premium",
+          searchQuery: "Miel"
+        },
+        {
+          id: "soin_solidaire",
+          title: "Soin Solidaire",
+          collection: "Karité de Tandjouaré",
+          tag: "100% Brut",
+          subtitle: "L'excellence des huiles pressées à l'état pur par notre collective de femmes solidaires.",
+          imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&q=80&w=800",
+          category: "Made in Togo Premium",
+          searchQuery: "Karité"
+        }
+      ]
+    };
+
     if (method === "GET") {
-      const defaultShowcase = {
-        heroCards: [
-          {
-            id: "miel_dore",
-            title: "Notre Miel Doré",
-            subtitle: "100% sauvage, récolté à Kpalimé du plateau forestier.",
-            imageUrl: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=600",
-            category: "Made in Togo Premium",
-            searchQuery: "Miel"
-          },
-          {
-            id: "soin_karite",
-            title: "Soin au Karité",
-            subtitle: "Pressé par notre coopérative de femmes solidaires.",
-            imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?auto=format&fit=crop&q=80&w=600",
-            category: "Made in Togo Premium",
-            searchQuery: "Karité"
-          },
-          {
-            id: "paniers_kovie",
-            title: "Paniers de Kovié",
-            subtitle: "Cueillette du matin, fraîcheur livrée sous 24h à Lomé.",
-            imageUrl: "https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&q=80&w=600",
-            category: "Paniers Frais & Épicerie",
-            searchQuery: ""
-          },
-          {
-            id: "hibiscus_epices",
-            title: "Hibiscus & Épices",
-            subtitle: "Pour vos infusions et bienfaits naturels au quotidien.",
-            imageUrl: "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?auto=format&fit=crop&q=80&w=600",
-            category: "Made in Togo Premium",
-            searchQuery: "Thé"
+      // 1. Fetch from server FIRST (strict source of truth, no-store)
+      try {
+        const netRes = await originalFetch("/api/showcase?t=" + Date.now(), {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Accept": "application/json"
           }
-        ],
-        galleryCards: [
-          {
-            id: "ceramiques_mandouri",
-            title: "Céramiques de Mandouri",
-            collection: "Terre Cuite & Argile",
-            tag: "Argile Sacrée",
-            subtitle: "Des œuvres façonnées en argile brute issues de gisements sacrés de l'extrême Nord du Togo.",
-            imageUrl: "https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?auto=format&fit=crop&q=80&w=800",
-            category: "Made in Togo Premium",
-            searchQuery: "Argile"
-          },
-          {
-            id: "tissage_aneho",
-            title: "Tissage d'Aného",
-            collection: "Raphia & Fibres Organiques",
-            tag: "100% Organique",
-            subtitle: "Tressage méticuleux des fibres végétales pour concevoir des sacs et paniers de prestige.",
-            imageUrl: "https://images.unsplash.com/photo-1590736704728-f4730bb30770?auto=format&fit=crop&q=80&w=800",
-            category: "Made in Togo Premium",
-            searchQuery: "Raphia"
-          },
-          {
-            id: "miels_kpalime",
-            title: "Miels de Kpalimé",
-            collection: "Nectar Sauvage & Café",
-            tag: "Nectar d'Altitude",
-            subtitle: "Récoltes biologiques au cœur des forêts denses du plateau du Togo.",
-            imageUrl: "https://images.unsplash.com/photo-1471193945509-9ad0617afabf?auto=format&fit=crop&q=80&w=800",
-            category: "Made in Togo Premium",
-            searchQuery: "Miel"
-          },
-          {
-            id: "soin_solidaire",
-            title: "Soin Solidaire",
-            collection: "Karité de Tandjouaré",
-            tag: "100% Brut",
-            subtitle: "L'excellence des huiles pressées à l'état pur par notre collective de femmes solidaires.",
-            imageUrl: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&q=80&w=800",
-            category: "Made in Togo Premium",
-            searchQuery: "Karité"
+        });
+        if (netRes.ok) {
+          const text = await netRes.text();
+          if (text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+            const data = JSON.parse(text);
+            if (data && (Array.isArray(data.heroCards) || Array.isArray(data.galleryCards))) {
+              try {
+                localStorage.setItem("asime_showcase_cards", JSON.stringify(data));
+              } catch (e) {}
+              return makeResponse(data, 200, true);
+            }
           }
-        ]
-      };
+        }
+      } catch (e) {
+        // Network unavailable or server down
+      }
+
+      // 2. Fallback to local cache ONLY if network request failed completely
       try {
         const stored = localStorage.getItem("asime_showcase_cards");
         if (stored) {
-          return makeResponse(JSON.parse(stored), 200, true);
+          const parsed = JSON.parse(stored);
+          if (parsed && (Array.isArray(parsed.heroCards) || Array.isArray(parsed.galleryCards))) {
+            return makeResponse(parsed, 200, true);
+          }
         }
       } catch (e) {}
+
       return makeResponse(defaultShowcase, 200, true);
     }
 
     if (method === "POST") {
+      const payload = {
+        auth: "asime2026-auth-session",
+        heroCards: bodyData?.heroCards,
+        galleryCards: bodyData?.galleryCards
+      };
+
+      // 1. Send to server FIRST and wait for confirmation of persistence
       try {
-        const body = init?.body ? JSON.parse(init.body as string) : {};
-        const stored = localStorage.getItem("asime_showcase_cards");
-        const current = stored ? JSON.parse(stored) : { heroCards: [], galleryCards: [] };
-        const updated = {
-          heroCards: Array.isArray(body.heroCards) ? body.heroCards : current.heroCards,
-          galleryCards: Array.isArray(body.galleryCards) ? body.galleryCards : current.galleryCards,
-        };
-        localStorage.setItem("asime_showcase_cards", JSON.stringify(updated));
-        return makeResponse({ success: true, showcase: updated }, 200, true);
-      } catch (err: any) {
-        return makeResponse({ success: false, error: err.message }, 500, false);
+        const netRes = await originalFetch("/api/showcase", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "asime2026-auth-session"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (netRes.ok) {
+          const text = await netRes.text();
+          const data = text ? JSON.parse(text) : { success: true };
+          const updated = data.showcase || { heroCards: payload.heroCards, galleryCards: payload.galleryCards };
+          try {
+            localStorage.setItem("asime_showcase_cards", JSON.stringify(updated));
+          } catch (e) {}
+          return makeResponse(data, 200, true);
+        } else {
+          const errText = await netRes.text();
+          let errMsg = "Erreur serveur lors de la mise à jour de la vitrine.";
+          try { errMsg = JSON.parse(errText)?.error || errMsg; } catch (e) {}
+          return makeResponse({ success: false, error: errMsg }, netRes.status, false);
+        }
+      } catch (e) {
+        // Server unreachable
+        return makeResponse({ success: false, error: "Impossible de joindre le serveur pour enregistrer la vitrine." }, 503, false);
       }
     }
   }
 
   if (cleanRoute === "/api/banners") {
     if (method === "GET") {
+      // 1. Fetch from server FIRST
+      try {
+        const netRes = await originalFetch("/api/banners?t=" + Date.now(), {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Accept": "application/json"
+          }
+        });
+        if (netRes.ok) {
+          const text = await netRes.text();
+          if (text) {
+            const data = JSON.parse(text);
+            if (Array.isArray(data)) {
+              localStorage.setItem("asime_promo_slides", JSON.stringify(data));
+              return makeResponse(data, 200, true);
+            }
+          }
+        }
+      } catch (e) {
+        // Network unavailable
+      }
+
+      // 2. Fallback to local cache only if network failed
       try {
         const stored = localStorage.getItem("asime_promo_slides");
         if (stored) {
@@ -2633,24 +2904,89 @@ function sanitizeUserForResponse(user: any): any {
       } catch (e) {}
       return makeResponse(null, 200, true);
     }
+
     if (method === "POST") {
+      const slides = Array.isArray(bodyData) ? bodyData : (Array.isArray(bodyData?.slides) ? bodyData.slides : null);
+      if (!Array.isArray(slides)) {
+        return makeResponse({ success: false, error: "Format invalide pour les bannières." }, 400, false);
+      }
+
+      const payload = {
+        auth: "asime2026-auth-session",
+        slides: slides
+      };
+
+      // 1. Send to server FIRST
       try {
-        const body = init?.body ? JSON.parse(init.body as string) : {};
-        if (Array.isArray(body.slides)) {
-          localStorage.setItem("asime_promo_slides", JSON.stringify(body.slides));
-          return makeResponse({ success: true, slides: body.slides }, 200, true);
+        const netRes = await originalFetch("/api/banners", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "asime2026-auth-session"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (netRes.ok) {
+          const text = await netRes.text();
+          const data = text ? JSON.parse(text) : { success: true, slides };
+          localStorage.setItem("asime_promo_slides", JSON.stringify(slides));
+          return makeResponse(data, 200, true);
+        } else {
+          const errText = await netRes.text();
+          let errMsg = "Erreur serveur lors de la sauvegarde des bannières.";
+          try { errMsg = JSON.parse(errText)?.error || errMsg; } catch (e) {}
+          return makeResponse({ success: false, error: errMsg }, netRes.status, false);
         }
-      } catch (e) {}
-      return makeResponse({ success: false }, 400, false);
+      } catch (e) {
+        // Offline fallback
+        localStorage.setItem("asime_promo_slides", JSON.stringify(slides));
+        return makeResponse({ success: true, slides, offline: true }, 200, true);
+      }
     }
   }
 
   if (cleanRoute === "/api/settings") {
+    const defaultSettings = {
+      whatsappMerchantNumber: "22890000000",
+      activeLogoId: "official"
+    };
+
     if (method === "GET") {
-      const defaultSettings = {
-        whatsappMerchantNumber: "22890000000",
-        activeLogoId: "monogramme_plume"
-      };
+      // 1. Fetch from server FIRST
+      try {
+        const netRes = await originalFetch("/api/settings?t=" + Date.now(), {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Accept": "application/json"
+          }
+        });
+        if (netRes.ok) {
+          const text = await netRes.text();
+          if (text && text.trim().startsWith("{")) {
+            const data = JSON.parse(text);
+            if (data) {
+              const merged = {
+                whatsappMerchantNumber: data.whatsappMerchantNumber || defaultSettings.whatsappMerchantNumber,
+                activeLogoId: data.activeLogoId || defaultSettings.activeLogoId
+              };
+              localStorage.setItem("asime_emulated_settings", JSON.stringify(merged));
+              if (merged.activeLogoId) {
+                localStorage.setItem("asime-active-logo-id", merged.activeLogoId);
+              }
+              if (merged.whatsappMerchantNumber) {
+                localStorage.setItem("asime_whatsapp_merchant_number", merged.whatsappMerchantNumber);
+              }
+              return makeResponse(merged, 200, true);
+            }
+          }
+        }
+      } catch (e) {
+        // Network unavailable
+      }
+
+      // 2. Fallback to local cache only if network is down
       try {
         const stored = localStorage.getItem("asime_emulated_settings");
         if (stored) {
@@ -2661,28 +2997,43 @@ function sanitizeUserForResponse(user: any): any {
     }
 
     if (method === "POST") {
+      const payload = {
+        auth: "asime2026-auth-session",
+        whatsappMerchantNumber: bodyData?.whatsappMerchantNumber || "22890000000",
+        activeLogoId: bodyData?.activeLogoId || "official"
+      };
+
+      // 1. Send to server FIRST
       try {
-        const body = init?.body ? JSON.parse(init.body as string) : {};
-        const defaultSettings = {
-          whatsappMerchantNumber: "22890000000",
-          activeLogoId: "monogramme_plume"
-        };
-        const currentStored = localStorage.getItem("asime_emulated_settings");
-        const current = currentStored ? JSON.parse(currentStored) : defaultSettings;
+        const netRes = await originalFetch("/api/settings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "asime2026-auth-session"
+          },
+          body: JSON.stringify(payload)
+        });
 
-        const newSettings = {
-          whatsappMerchantNumber: body.whatsappMerchantNumber || current.whatsappMerchantNumber || "22890000000",
-          activeLogoId: body.activeLogoId || current.activeLogoId || "monogramme_plume"
-        };
-
-        localStorage.setItem("asime_emulated_settings", JSON.stringify(newSettings));
-        
-        localStorage.setItem("asime-active-logo-id", newSettings.activeLogoId);
-        localStorage.setItem("asime_whatsapp_merchant_number", newSettings.whatsappMerchantNumber);
-
-        return makeResponse({ success: true, settings: newSettings }, 200, true);
-      } catch (err: any) {
-        return makeResponse({ success: false, error: err.message }, 500, false);
+        if (netRes.ok) {
+          const text = await netRes.text();
+          const data = text ? JSON.parse(text) : { success: true, settings: payload };
+          const newSettings = data.settings || payload;
+          localStorage.setItem("asime_emulated_settings", JSON.stringify(newSettings));
+          localStorage.setItem("asime-active-logo-id", newSettings.activeLogoId);
+          localStorage.setItem("asime_whatsapp_merchant_number", newSettings.whatsappMerchantNumber);
+          return makeResponse(data, 200, true);
+        } else {
+          const errText = await netRes.text();
+          let errMsg = "Erreur serveur lors de la sauvegarde des paramètres.";
+          try { errMsg = JSON.parse(errText)?.error || errMsg; } catch (e) {}
+          return makeResponse({ success: false, error: errMsg }, netRes.status, false);
+        }
+      } catch (e) {
+        // Offline fallback
+        localStorage.setItem("asime_emulated_settings", JSON.stringify(payload));
+        localStorage.setItem("asime-active-logo-id", payload.activeLogoId);
+        localStorage.setItem("asime_whatsapp_merchant_number", payload.whatsappMerchantNumber);
+        return makeResponse({ success: true, settings: payload, offline: true }, 200, true);
       }
     }
   }

@@ -41,7 +41,10 @@ import {
   Heart,
   Percent,
   History,
-  MapPin
+  MapPin,
+  AlertCircle,
+  CreditCard,
+  RefreshCw
 } from "lucide-react";
 import SellerWorkspace from "./SellerWorkspace";
 import { SellerLandingPage } from "./SellerLandingPage";
@@ -247,7 +250,7 @@ export default function MultiRoleDashboards({
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   // Seller Space Security PIN States
-  const [isVendeurUnlocked, setIsVendeurUnlocked] = useState(false);
+  const [isVendeurUnlocked, setIsVendeurUnlocked] = useState(!user?.vendeurPin);
   const [vendeurPinInput, setVendeurPinInput] = useState("");
   const [pinSetupValue, setPinSetupValue] = useState("");
   const [pinSetupConfirm, setPinSetupConfirm] = useState("");
@@ -256,6 +259,12 @@ export default function MultiRoleDashboards({
   const [resetPasswordInput, setResetPasswordInput] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetStep, setResetStep] = useState<"password" | "new_pin">("password");
+
+  // Pro Subscription Gate States
+  const [isInitiatingProSub, setIsInitiatingProSub] = useState(false);
+  const [isCheckingProSub, setIsCheckingProSub] = useState(false);
+  const [proSubSession, setProSubSession] = useState<any>(null);
+  const [proSubError, setProSubError] = useState("");
   
   // Real-time security state
   const [pinLockSeconds, setPinLockSeconds] = useState<number>(0);
@@ -1816,8 +1825,19 @@ export default function MultiRoleDashboards({
       });
       const data = await res.json();
       if (data.success) {
-        setProducts(prev => prev.filter(p => p.id !== prodId));
-        showToast("Produit supprimé !");
+        setProducts(prev => prev.filter(p => String(p.id) !== String(prodId)));
+        try {
+          const cached = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+          if (Array.isArray(cached)) {
+            localStorage.setItem("asime_emulated_products", JSON.stringify(cached.filter((p: any) => String(p.id) !== String(prodId))));
+          }
+          const delIds = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+          if (!delIds.includes(String(prodId))) {
+            delIds.push(String(prodId));
+            localStorage.setItem("asime_deleted_product_ids", JSON.stringify(delIds));
+          }
+        } catch (e) {}
+        showToast("Produit supprimé définitivement !");
       } else {
         showToast(`Erreur : ${data.error}`);
       }
@@ -2616,6 +2636,239 @@ export default function MultiRoleDashboards({
       </div>
     );
   }
+
+  const renderProSubscriptionGate = () => {
+    const planName = user?.vendeurPlan || "PRO";
+    const amount = planName === "BUSINESS" ? 3200 : 1600;
+    const currentStatus = user?.vendeurSubscriptionStatus || "pending";
+    const country = user?.countryCode || "TG";
+    const currency = user?.currencyCode || (country === "CM" ? "XAF" : "XOF");
+
+    const handleInitiateProPayment = async () => {
+      setIsInitiatingProSub(true);
+      setProSubError("");
+      try {
+        const res = await fetch("/api/subscriptions/initiate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": token || ""
+          },
+          body: JSON.stringify({
+            userId: user?.id,
+            plan: planName,
+            countryCode: country,
+            phone: user?.phone
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.session) {
+          setProSubSession(data.session);
+          if (data.session.redirectUrl) {
+            window.location.href = data.session.redirectUrl;
+          }
+        } else {
+          setProSubError(data.error || "Impossible d'initialiser le paiement.");
+        }
+      } catch (err: any) {
+        setProSubError(err.message || "Erreur de connexion.");
+      } finally {
+        setIsInitiatingProSub(false);
+      }
+    };
+
+    const handleCheckProConfirmation = async () => {
+      setIsCheckingProSub(true);
+      setProSubError("");
+      try {
+        const txId = proSubSession?.transactionId || `SUB-${user?.id}`;
+        const res = await fetch("/api/subscriptions/confirm", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": token || ""
+          },
+          body: JSON.stringify({
+            transactionId: txId,
+            userId: user?.id
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.status === "active") {
+          if (data.user) {
+            setUser(data.user);
+          } else {
+            setUser((prev: any) => ({ ...prev, vendeurSubscriptionStatus: "active", subscriptionStatus: "active" }));
+          }
+          setIsVendeurUnlocked(true);
+          showToast("🎉 Paiement PayDunya validé ! Espace vendeur PRO débloqué.");
+        } else if (data.status === "pending") {
+          showToast("⏳ Paiement PayDunya toujours en attente de validation.");
+        } else if (data.status === "cancelled") {
+          setUser((prev: any) => ({ ...prev, vendeurSubscriptionStatus: "cancelled" }));
+          setProSubError("Le paiement PayDunya a été annulé.");
+          showToast("❌ Paiement annulé.");
+        } else {
+          setUser((prev: any) => ({ ...prev, vendeurSubscriptionStatus: "failed" }));
+          setProSubError(data.error || "Le paiement PayDunya a échoué.");
+          showToast("❌ Échec du paiement.");
+        }
+      } catch (err: any) {
+        setProSubError(err.message || "Erreur lors de la vérification.");
+      } finally {
+        setIsCheckingProSub(false);
+      }
+    };
+
+    const handleDowngradeToFree = async () => {
+      if (!window.confirm("Voulez-vous passer sur l'offre Gratuite (0 FCFA) ? Vous aurez un accès immédiat à votre espace vendeur.")) {
+        return;
+      }
+      try {
+        const res = await fetch("/api/users/change-plan", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": token || ""
+          },
+          body: JSON.stringify({
+            userId: user?.id,
+            plan: "Gratuit"
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.user) {
+          setUser(data.user);
+          setIsVendeurUnlocked(true);
+          showToast("✓ Votre boutique est passée en formule Gratuite. Accès débloqué !");
+        }
+      } catch (err: any) {
+        showToast("Erreur lors du changement d'offre.");
+      }
+    };
+
+    return (
+      <div className="bg-stone-900 border border-stone-800 rounded-2xl p-6 sm:p-8 max-w-lg w-full text-left shadow-2xl space-y-6">
+        <div className="text-center pb-4 border-b border-stone-800">
+          <div className="w-14 h-14 bg-[#d4af37]/20 border border-[#d4af37]/40 text-[#d4af37] rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <Lock className="w-7 h-7" />
+          </div>
+          <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-2">
+            Paiement PayDunya Requis
+          </span>
+          <h3 className="text-lg font-black uppercase text-white tracking-wide">
+            Espace Vendeur {planName} Verrouillé
+          </h3>
+          <p className="text-xs text-stone-400 mt-1 max-w-sm mx-auto">
+            Vous avez sélectionné la formule <strong className="text-white">{planName}</strong> pour la boutique <strong className="text-white">« {user?.boutiqueName || user?.businessName} »</strong>.
+          </p>
+        </div>
+
+        {/* Status banner */}
+        <div className={`p-4 rounded-xl text-xs flex items-start gap-3 border ${
+          currentStatus === "pending"
+            ? "bg-amber-950/40 border-amber-800/60 text-amber-200"
+            : currentStatus === "cancelled"
+            ? "bg-stone-800/80 border-stone-700 text-stone-300"
+            : "bg-red-950/40 border-red-800/60 text-red-200"
+        }`}>
+          {currentStatus === "pending" ? (
+            <Clock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+          )}
+          <div className="space-y-1">
+            <p className="font-bold uppercase text-[11px] tracking-wider">
+              Statut PayDunya : {currentStatus.toUpperCase()}
+            </p>
+            <p className="text-[11px] opacity-90 leading-relaxed">
+              {currentStatus === "pending" && "Paiement en attente. Votre accès Pro reste bloqué jusqu'à confirmation définitive par l'opérateur."}
+              {currentStatus === "cancelled" && "Paiement PayDunya annulé. L'accès à votre espace Pro reste bloqué."}
+              {currentStatus === "failed" && "Le paiement a échoué. L'accès à votre espace Pro reste bloqué."}
+            </p>
+          </div>
+        </div>
+
+        {proSubError && (
+          <div className="bg-red-950/60 border border-red-800 p-3 rounded-xl text-red-200 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <span>{proSubError}</span>
+          </div>
+        )}
+
+        {/* Pricing details */}
+        <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-2 text-xs">
+          <div className="flex justify-between py-1 border-b border-stone-900">
+            <span className="text-stone-500">Formule :</span>
+            <span className="font-bold text-[#d4af37]">Vendeur {planName}</span>
+          </div>
+          <div className="flex justify-between py-1 border-b border-stone-900">
+            <span className="text-stone-500">Montant dû :</span>
+            <span className="font-bold text-white">{amount.toLocaleString()} {currency} / mois</span>
+          </div>
+          <div className="flex justify-between py-1 border-b border-stone-900">
+            <span className="text-stone-500">Passerelle de paiement :</span>
+            <span className="font-bold text-emerald-400">PayDunya (Mobile Money &amp; CB)</span>
+          </div>
+          <div className="flex justify-between py-1">
+            <span className="text-stone-500">Pays émetteur :</span>
+            <span className="font-bold text-white">{country}</span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="space-y-3 pt-2">
+          <button
+            type="button"
+            onClick={handleInitiateProPayment}
+            disabled={isInitiatingProSub}
+            className="w-full bg-[#10b981] hover:bg-[#059669] text-white py-3.5 px-4 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            {isInitiatingProSub ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Connexion à PayDunya...</span>
+              </>
+            ) : (
+              <>
+                <CreditCard className="w-4 h-4" />
+                <span>Payer mon abonnement via PayDunya ({amount.toLocaleString()} {currency})</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleCheckProConfirmation}
+            disabled={isCheckingProSub}
+            className="w-full bg-stone-800 hover:bg-stone-700 text-stone-200 py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            {isCheckingProSub ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-stone-400 border-t-transparent rounded-full animate-spin" />
+                <span>Vérification serveur...</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Vérifier la confirmation de paiement</span>
+              </>
+            )}
+          </button>
+
+          <div className="pt-2 text-center">
+            <button
+              type="button"
+              onClick={handleDowngradeToFree}
+              className="text-stone-400 hover:text-white text-xs underline cursor-pointer transition-colors"
+            >
+              Ou continuer avec l'offre Gratuite (0 FCFA - Accès immédiat)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderVendeurPendingScreen = () => {
     return (
@@ -3480,6 +3733,20 @@ export default function MultiRoleDashboards({
     }
 
 
+    const isSellerPro = user?.vendeurPlan === "PRO" || user?.vendeurPlan === "BUSINESS";
+    const isProPending = isSellerPro && user?.vendeurSubscriptionStatus !== "active";
+
+    if (isProPending) {
+      return (
+        <div className="flex flex-col h-full bg-stone-950 text-white select-none w-full overflow-hidden">
+          {renderEscapeHeader("Abonnement Vendeur " + (user?.vendeurPlan || "PRO"), "Paiement PayDunya Requis")}
+          <div className="flex-grow flex items-center justify-center p-6 overflow-y-auto bg-stone-950/90">
+            {renderProSubscriptionGate()}
+          </div>
+        </div>
+      );
+    }
+
     if (user?.vendeurStatus === "En attente d'activation") {
       return (
         <div className="flex flex-col h-full bg-[#FAF9F5] select-none w-full overflow-hidden">
@@ -3491,7 +3758,7 @@ export default function MultiRoleDashboards({
       );
     }
 
-    if (!isVendeurUnlocked) {
+    if (user?.vendeurPin && !isVendeurUnlocked) {
       return (
         <div className="flex flex-col h-full bg-neutral-950 select-none w-full overflow-hidden">
           {renderEscapeHeader("Double Authentification PIN", "Espace Vendeur Sécurisé")}

@@ -76,39 +76,14 @@ import officialLogoImg from "./assets/images/miabe_asi_official_logo_17875632525
 export default function AdminApp() {
   const [activeTab, setActiveTab] = useState<"catalog" | "banners" | "stats" | "settings" | "requests">("catalog");
   const [bannerSubSection, setBannerSubSection] = useState<"carousel" | "vitrine" | "gallery">("vitrine");
-  const [adminPromoSlides, setAdminPromoSlides] = useState<PromoSlide[]>(() => {
-    try {
-      const saved = localStorage.getItem("asime_promo_slides");
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_PROMO_SLIDES;
-  });
+  // Server is the single source of truth; initialize with canonical slides, localStorage serves only as fallback
+  const [adminPromoSlides, setAdminPromoSlides] = useState<PromoSlide[]>(INITIAL_PROMO_SLIDES);
   const [promoSaveSuccess, setPromoSaveSuccess] = useState(false);
 
   // Homepage Showcase Cards State (Hero 4 cards + Gallery 4 cards)
-  const [adminHeroCards, setAdminHeroCards] = useState<ShowcaseCard[]>(() => {
-    try {
-      const stored = localStorage.getItem("asime_showcase_cards");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed.heroCards) && parsed.heroCards.length > 0) return parsed.heroCards;
-      }
-    } catch (e) {}
-    return DEFAULT_HERO_CARDS;
-  });
-
-  const [adminGalleryCards, setAdminGalleryCards] = useState<ShowcaseCard[]>(() => {
-    try {
-      const stored = localStorage.getItem("asime_showcase_cards");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed.galleryCards) && parsed.galleryCards.length > 0) return parsed.galleryCards;
-      }
-    } catch (e) {}
-    return DEFAULT_GALLERY_CARDS;
-  });
+  // Server is the single source of truth; initialize with clean defaults to prevent stale localStorage override
+  const [adminHeroCards, setAdminHeroCards] = useState<ShowcaseCard[]>(DEFAULT_HERO_CARDS);
+  const [adminGalleryCards, setAdminGalleryCards] = useState<ShowcaseCard[]>(DEFAULT_GALLERY_CARDS);
 
   // Modal for direct device photo upload in admin
   const [activeAdminUploadModal, setActiveAdminUploadModal] = useState<{
@@ -220,8 +195,15 @@ export default function AdminApp() {
 
   // Sync showcase from API on mount
   useEffect(() => {
-    fetch("/api/showcase")
-      .then(res => res.json())
+    fetch("/api/showcase?t=" + Date.now(), {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Accept": "application/json"
+      }
+    })
+      .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data) {
           if (Array.isArray(data.heroCards) && data.heroCards.length > 0) {
@@ -230,43 +212,105 @@ export default function AdminApp() {
           if (Array.isArray(data.galleryCards) && data.galleryCards.length > 0) {
             setAdminGalleryCards(data.galleryCards);
           }
+          try {
+            localStorage.setItem("asime_showcase_cards", JSON.stringify(data));
+          } catch (e) {}
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        try {
+          const stored = localStorage.getItem("asime_showcase_cards");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed.heroCards) && parsed.heroCards.length > 0) {
+              setAdminHeroCards(parsed.heroCards);
+            }
+            if (Array.isArray(parsed.galleryCards) && parsed.galleryCards.length > 0) {
+              setAdminGalleryCards(parsed.galleryCards);
+            }
+          }
+        } catch (e) {}
+      });
+
+    fetch("/api/banners?t=" + Date.now(), { 
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Accept": "application/json"
+      }
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setAdminPromoSlides(data);
+          try {
+            localStorage.setItem("asime_promo_slides", JSON.stringify(data));
+          } catch (e) {}
+        } else {
+          try {
+            const saved = localStorage.getItem("asime_promo_slides");
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed) && parsed.length > 0) setAdminPromoSlides(parsed);
+            }
+          } catch (e) {}
+        }
+      })
+      .catch(() => {
+        try {
+          const saved = localStorage.getItem("asime_promo_slides");
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) setAdminPromoSlides(parsed);
+          }
+        } catch (e) {}
+      });
   }, []);
 
   const saveAdminShowcaseCards = async (newHero: ShowcaseCard[], newGallery: ShowcaseCard[]) => {
-    setAdminHeroCards(newHero);
-    setAdminGalleryCards(newGallery);
-    const payload = { heroCards: newHero, galleryCards: newGallery };
+    const payload = { auth: "asime2026-auth-session", heroCards: newHero, galleryCards: newGallery };
     try {
-      localStorage.setItem("asime_showcase_cards", JSON.stringify(payload));
-      await fetch("/api/showcase", {
+      const res = await fetch("/api/showcase", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "asime2026-auth-session" },
         body: JSON.stringify(payload)
       });
+      if (res.ok) {
+        setAdminHeroCards(newHero);
+        setAdminGalleryCards(newGallery);
+        try {
+          localStorage.setItem("asime_showcase_cards", JSON.stringify({ heroCards: newHero, galleryCards: newGallery }));
+        } catch (e) {}
+        setPromoSaveSuccess(true);
+        setTimeout(() => setPromoSaveSuccess(false), 3000);
+      } else {
+        alert("Erreur lors de l'enregistrement de la vitrine sur le serveur.");
+      }
     } catch (e) {
       console.error("Failed to save showcase cards", e);
+      alert("Erreur réseau : impossible de joindre le serveur.");
     }
-    setPromoSaveSuccess(true);
-    setTimeout(() => setPromoSaveSuccess(false), 3000);
   };
 
-  const saveAdminPromoSlides = (newSlides: PromoSlide[]) => {
-    setAdminPromoSlides(newSlides);
+  const saveAdminPromoSlides = async (newSlides: PromoSlide[]) => {
     try {
-      localStorage.setItem("asime_promo_slides", JSON.stringify(newSlides));
-      fetch("/api/banners", {
+      const res = await fetch("/api/banners", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newSlides)
-      }).catch(() => {});
+        headers: { "Content-Type": "application/json", "Authorization": "asime2026-auth-session" },
+        body: JSON.stringify({ auth: "asime2026-auth-session", slides: newSlides })
+      });
+      if (res.ok) {
+        setAdminPromoSlides(newSlides);
+        localStorage.setItem("asime_promo_slides", JSON.stringify(newSlides));
+        setPromoSaveSuccess(true);
+        setTimeout(() => setPromoSaveSuccess(false), 3000);
+      } else {
+        alert("Erreur lors de l'enregistrement des bannières sur le serveur.");
+      }
     } catch (e) {
-      console.error("Failed to save promo slides to localStorage", e);
+      console.error("Failed to save promo slides", e);
+      alert("Erreur réseau : impossible de joindre le serveur.");
     }
-    setPromoSaveSuccess(true);
-    setTimeout(() => setPromoSaveSuccess(false), 3000);
   };
 
   const handleSlideImageUpload = async (index: number, file: File) => {
@@ -351,7 +395,13 @@ export default function AdminApp() {
   const [adminPartnerFilter, setAdminPartnerFilter] = useState("Tous");
 
   const [whatsappDisplaySetting, setWhatsappDisplaySetting] = useState("22890000000");
-  const [activeLogoId, setActiveLogoId] = useState("monogramme_plume");
+  const [activeLogoId, setActiveLogoId] = useState(() => {
+    try {
+      return localStorage.getItem("asime-active-logo-id") || "official";
+    } catch {
+      return "official";
+    }
+  });
   const [saveConfigSuccess, setSaveConfigSuccess] = useState(false);
 
   // Real-time admin operational states
@@ -533,6 +583,12 @@ export default function AdminApp() {
   // Fetch all products
   const fetchProducts = async () => {
     try {
+      let deletedIds: string[] = [];
+      try {
+        deletedIds = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+      } catch (e) {}
+      const delSet = new Set(deletedIds.map(String));
+
       const res = await fetch("/api/products?t=" + Date.now(), {
         headers: { "Accept": "application/json" }
       });
@@ -541,8 +597,11 @@ export default function AdminApp() {
         const text = await res.text();
         if (text && text.trim().startsWith("[")) {
           const data = JSON.parse(text);
-          setProducts(data);
-          return;
+          if (Array.isArray(data)) {
+            const clean = data.filter((p: any) => !delSet.has(String(p?.id)));
+            setProducts(clean);
+            return;
+          }
         }
       }
       // Fallback
@@ -550,7 +609,10 @@ export default function AdminApp() {
       if (staticRes.ok) {
         const staticText = await staticRes.text();
         if (staticText && staticText.trim().startsWith("[")) {
-          setProducts(JSON.parse(staticText));
+          const raw = JSON.parse(staticText);
+          if (Array.isArray(raw)) {
+            setProducts(raw.filter((p: any) => !delSet.has(String(p?.id))));
+          }
         }
       }
     } catch (err) {
@@ -795,12 +857,15 @@ export default function AdminApp() {
     }
     
     // Fetch global server-side settings
-    fetch("/api/settings?t=" + Date.now())
+    fetch("/api/settings?t=" + Date.now(), { cache: "no-store" })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data) {
           if (data.whatsappMerchantNumber) setWhatsappDisplaySetting(data.whatsappMerchantNumber);
-          if (data.activeLogoId) setActiveLogoId(data.activeLogoId);
+          if (data.activeLogoId) {
+            setActiveLogoId(data.activeLogoId);
+            try { localStorage.setItem("asime-active-logo-id", data.activeLogoId); } catch {}
+          }
         }
       })
       .catch(err => console.error("Error fetching settings:", err));
@@ -1018,7 +1083,26 @@ export default function AdminApp() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        fetchProducts();
+        // Immediate local state update
+        setProducts(prev => prev.filter(p => String(p.id) !== String(id)));
+        
+        // Immediate cache cleanup in localStorage
+        try {
+          const stored = localStorage.getItem("asime_emulated_products");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              localStorage.setItem("asime_emulated_products", JSON.stringify(parsed.filter((p: any) => String(p.id) !== String(id))));
+            }
+          }
+          const delIds = JSON.parse(localStorage.getItem("asime_deleted_product_ids") || "[]");
+          if (!delIds.includes(String(id))) {
+            delIds.push(String(id));
+            localStorage.setItem("asime_deleted_product_ids", JSON.stringify(delIds));
+          }
+        } catch (e) {}
+
+        await fetchProducts();
       } else {
         alert(data.error || "Une erreur est survenue.");
       }

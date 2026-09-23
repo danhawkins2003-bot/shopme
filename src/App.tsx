@@ -224,7 +224,7 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
             rel="noopener noreferrer"
             className="bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 px-4 py-2 rounded-sm text-[10px] font-bold tracking-widest uppercase transition-all whitespace-nowrap"
           >
-            {language === "fr" ? "S'équiper à Lomé" : "Kpɔ nudradra le Lomé"}
+            {language === "fr" ? "Acheter & Vendre" : "Kpɔ nudradra"}
           </a>
         </>
       )}
@@ -281,51 +281,51 @@ function GoogleAdSenseBanner({ format }: { format: "leaderboard" | "square" | "h
 
 const ANNOUNCEMENT_MESSAGES = [
   {
-    id: "official",
-    icon: Sparkles,
-    frPrefix: "🇹🇬 Boutique Officielle :",
-    frHighlight: "Miabé Asi",
-    frText: "Le meilleur du Consommer Local Togolais & Terroir Authentique",
-    eePrefix: "🇹🇬 Miabé Asi Fiase :",
-    eeHighlight: "Togo-tɔwo ƒe Asime",
-    eeText: "Míaƒe Dekɔnuwo kple Terroir Vavã",
-    badge: "100% TOGOLAIS",
+    id: "pan-africa",
+    icon: Globe,
+    frPrefix: "🌍 7 Pays Africains :",
+    frHighlight: "Marketplace Panafricaine",
+    frText: "Togo, Bénin, Burkina Faso, Côte d'Ivoire, Mali, Sénégal, Cameroun",
+    eePrefix: "🌍 Dukɔ 7 le Afrika :",
+    eeHighlight: "Asime Panafricaine",
+    eeText: "Togo, Bénin, Burkina, Côte d'Ivoire, Mali, Sénégal, Cameroun",
+    badge: "7 PAYS",
     categoryTarget: "Tous"
   },
   {
     id: "delivery",
     icon: Truck,
-    frPrefix: "🚀 Expédition & Livraison :",
-    frHighlight: "Express Lomé",
-    frText: "Livraison rapide à domicile à Lomé et dans tout le Togo",
+    frPrefix: "🚀 Vendeurs & Clients :",
+    frHighlight: "Livraison Directe",
+    frText: "Organisation directe entre vendeur et acheteur dans toute la région",
     eePrefix: "🚀 Nudɔdɔ Kaba :",
-    eeHighlight: "Lomé & Togo Katã",
-    eeText: "Adzɔnuwo tsɔtsɔ vɛ kaba le wò aƒeme dedie",
-    badge: "LIVRAISON RAPIDE",
+    eeHighlight: "Kadodo Tẽe",
+    eeText: "Adzɔnuwo tsɔtsɔ vɛ kaba le dukɔwo me",
+    badge: "LIVRAISON DIRECTE",
     categoryTarget: "Tous"
   },
   {
     id: "payment",
     icon: ShieldCheck,
-    frPrefix: "💳 Paiements Sécurisés :",
-    frHighlight: "T-Money & Flooz",
-    frText: "Réglez directement via Mobile Money et Cartes Bancaires",
+    frPrefix: "💳 Paiements PayDunya :",
+    frHighlight: "Mobile Money & Carte",
+    frText: "Transactions sécurisées en XOF & XAF dans 7 pays",
     eePrefix: "💳 Fefe Dedie :",
-    eeHighlight: "T-Money & Flooz",
+    eeHighlight: "PayDunya",
     eeText: "Fe bɔbɔe to asitsamɔnu dediewo dzi",
-    badge: "SÉCURISÉ SSL",
+    badge: "PAYDUNYA 100%",
     categoryTarget: "Tous"
   },
   {
-    id: "artisans",
+    id: "vendeurs",
     icon: Store,
-    frPrefix: "🌿 Circuit Court :",
-    frHighlight: "+90% aux Producteurs",
-    frText: "Vos achats soutiennent directement les coopératives et artisans togolais",
-    eePrefix: "🌿 Agbledelawo Gbɔ :",
+    frPrefix: "🌿 Vendeurs Africains :",
+    frHighlight: "90% au Vendeur",
+    frText: "Achetez et vendez sur la première marketplace africaine solidaire",
+    eePrefix: "🌿 Asitsalawo :",
     eeHighlight: "Kpekpeɖeŋu Vavã",
-    eeText: "Nudɔdɔwo kpena ɖe míaƒe asitsalawo kple agbledelawo ŋu",
-    badge: "ÉQUITABLE",
+    eeText: "Nudɔdɔwo kpena ɖe míaƒe asitsalawo ŋu",
+    badge: "90% VENDEUR",
     categoryTarget: "Tous"
   }
 ];
@@ -334,7 +334,12 @@ export default function App() {
   const { language, setLanguage, t } = useLanguage();
   const { countryCode: currentCountryCode, setCountryCode } = useCountry();
   const [activeLogoId, setActiveLogoId] = useState(() => {
-    return safeLocalStorage.getItem("asime-active-logo-id") || "monogram";
+    const saved = safeLocalStorage.getItem("asime-active-logo-id");
+    if (saved && saved !== "official") {
+      safeLocalStorage.setItem("asime-active-logo-id", "official");
+      return "official";
+    }
+    return saved || "official";
   });
 
   // Top Announcement Bar Animated State
@@ -351,8 +356,8 @@ export default function App() {
 
   // Fetch settings from server to sync logo and config across devices
   useEffect(() => {
-    fetch("/api/settings")
-      .then((res) => res.json())
+    fetch("/api/settings?t=" + Date.now(), { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
       .then((data) => {
         if (data) {
           if (data.activeLogoId) {
@@ -475,18 +480,51 @@ export default function App() {
 
   const [currentPromoSlide, setCurrentPromoSlide] = useState(0);
   const [loadedPromoImages, setLoadedPromoImages] = useState<Record<string, boolean>>({});
-  const [promoSlides, setPromoSlides] = useState<PromoSlide[]>(() => {
-    try {
-      const saved = localStorage.getItem("asime_promo_slides");
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_PROMO_SLIDES;
-  });
+  // Server is the single source of truth; initialize with canonical slides, localStorage serves only as fallback if offline
+  const [promoSlides, setPromoSlides] = useState<PromoSlide[]>(INITIAL_PROMO_SLIDES);
 
-  // Automatically sync promo slides when updated from Admin space
+  // Automatically sync promo slides from server on mount and when updated
   useEffect(() => {
+    fetch("/api/banners?t=" + Date.now(), { 
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Accept": "application/json"
+      }
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setPromoSlides(data);
+          try {
+            localStorage.setItem("asime_promo_slides", JSON.stringify(data));
+          } catch (e) {}
+        } else {
+          // If offline and server response empty, check offline fallback
+          try {
+            const saved = localStorage.getItem("asime_promo_slides");
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setPromoSlides(parsed);
+              }
+            }
+          } catch (e) {}
+        }
+      })
+      .catch(() => {
+        // Network unavailable, fallback to local storage
+        try {
+          const saved = localStorage.getItem("asime_promo_slides");
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setPromoSlides(parsed);
+            }
+          }
+        } catch (e) {}
+      });
+
     const handleStorageChange = () => {
       try {
         const saved = localStorage.getItem("asime_promo_slides");
@@ -504,32 +542,21 @@ export default function App() {
   }, []);
 
   // Homepage Showcase Cards State (Terroir Vitrine + Galerie Lookbook)
-  const [heroCards, setHeroCards] = useState<ShowcaseCard[]>(() => {
-    try {
-      const stored = localStorage.getItem("asime_showcase_cards");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed.heroCards) && parsed.heroCards.length > 0) return parsed.heroCards;
-      }
-    } catch (e) {}
-    return DEFAULT_HERO_CARDS;
-  });
+  // Server is the single source of truth; initialize with clean defaults to prevent stale localStorage override
+  const [heroCards, setHeroCards] = useState<ShowcaseCard[]>(DEFAULT_HERO_CARDS);
+  const [galleryCards, setGalleryCards] = useState<ShowcaseCard[]>(DEFAULT_GALLERY_CARDS);
 
-  const [galleryCards, setGalleryCards] = useState<ShowcaseCard[]>(() => {
-    try {
-      const stored = localStorage.getItem("asime_showcase_cards");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed.galleryCards) && parsed.galleryCards.length > 0) return parsed.galleryCards;
-      }
-    } catch (e) {}
-    return DEFAULT_GALLERY_CARDS;
-  });
-
-  // Fetch showcase cards from server
+  // Fetch showcase cards from server (strict server source of truth, no-store)
   useEffect(() => {
-    fetch("/api/showcase")
-      .then(res => res.json())
+    fetch("/api/showcase?t=" + Date.now(), {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Accept": "application/json"
+      }
+    })
+      .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data) {
           if (Array.isArray(data.heroCards) && data.heroCards.length > 0) {
@@ -538,9 +565,26 @@ export default function App() {
           if (Array.isArray(data.galleryCards) && data.galleryCards.length > 0) {
             setGalleryCards(data.galleryCards);
           }
+          try {
+            localStorage.setItem("asime_showcase_cards", JSON.stringify(data));
+          } catch (e) {}
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        // Fallback to local backup ONLY if server request failed completely
+        try {
+          const stored = localStorage.getItem("asime_showcase_cards");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed.heroCards) && parsed.heroCards.length > 0) {
+              setHeroCards(parsed.heroCards);
+            }
+            if (Array.isArray(parsed.galleryCards) && parsed.galleryCards.length > 0) {
+              setGalleryCards(parsed.galleryCards);
+            }
+          }
+        } catch (e) {}
+      });
   }, []);
 
   // Save showcase cards changes helper
@@ -550,22 +594,31 @@ export default function App() {
 
     if (isHero) {
       newHero = newHero.map(c => c.id === cardId ? { ...c, imageUrl: newImageUrl } : c);
-      setHeroCards(newHero);
     } else {
       newGallery = newGallery.map(c => c.id === cardId ? { ...c, imageUrl: newImageUrl } : c);
-      setGalleryCards(newGallery);
     }
 
-    const payload = { heroCards: newHero, galleryCards: newGallery };
+    const payload = { auth: "asime2026-auth-session", heroCards: newHero, galleryCards: newGallery };
     try {
-      localStorage.setItem("asime_showcase_cards", JSON.stringify(payload));
-      await fetch("/api/showcase", {
+      const res = await fetch("/api/showcase", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "asime2026-auth-session"
+        },
         body: JSON.stringify(payload)
       });
+      if (res.ok) {
+        if (isHero) setHeroCards(newHero);
+        else setGalleryCards(newGallery);
+        try {
+          localStorage.setItem("asime_showcase_cards", JSON.stringify({ heroCards: newHero, galleryCards: newGallery }));
+        } catch (e) {}
+      } else {
+        console.error("Server error saving showcase card");
+      }
     } catch (e) {
-      console.error("Failed to save showcase card", e);
+      console.error("Failed to save showcase card to server", e);
     }
   };
 
@@ -987,7 +1040,7 @@ export default function App() {
 
   const startConversationWithSeller = async (sellerId: string, sellerName: string, productName: string) => {
     if (!user) {
-      showToast("🔑 Veuillez vous connecter pour discuter avec l'artisan.");
+      showToast("🔑 Veuillez vous connecter pour discuter avec le vendeur.");
       setIsAuthOpen(true);
       return;
     }
@@ -1142,7 +1195,7 @@ export default function App() {
       <div className={`relative ${sizeClass} flex items-center justify-center shrink-0 bg-white rounded-lg p-0.5 border border-[#C88A24]/40 shadow-xs overflow-hidden`}>
         {!logoImgError ? (
           <img 
-            src={officialLogoImg || "/official-logo.png"} 
+            src={officialLogoImg || "/official-logo.png?v=4"} 
             alt="Miabé Asi Logo Officiel" 
             className="w-full h-full object-contain"
             referrerPolicy="no-referrer"
@@ -1499,8 +1552,8 @@ export default function App() {
   const handleShareApp = async () => {
     const origin = window.location.origin || "https://miabeasi.tg";
     const shareUrl = `${origin}${window.location.pathname}`;
-    const shareTitle = `✨ Miabé Asi | Le local, notre fierté`;
-    const shareText = `Explorez la mode togolaise, l'artisanat local et de sublimes créations sur Miabé Asi !`;
+    const shareTitle = `✨ Miabé Asi | Marketplace Africaine`;
+    const shareText = `Explorez la marketplace africaine, découvrez les produits de nos vendeurs sur Miabé Asi !`;
 
     if (navigator.share) {
       try {
@@ -1649,14 +1702,10 @@ export default function App() {
 
   const syncLocalDataWithServer = async () => {
     try {
-      // 1. Sync Logo and Settings
-      const localLogoId = safeLocalStorage.getItem("asime-active-logo-id");
-      const localWhatsapp = safeLocalStorage.getItem("asime_whatsapp_merchant_number");
-      
-      // Load server settings first
-      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "monogramme_plume" };
+      // 1. Sync Logo and Settings (Server is the sole authority)
+      let serverSettings = { whatsappMerchantNumber: "22890000000", activeLogoId: "official" };
       try {
-        const settingsRes = await fetch("/api/settings?t=" + Date.now());
+        const settingsRes = await fetch("/api/settings?t=" + Date.now(), { cache: "no-store" });
         if (settingsRes.ok) {
           serverSettings = await settingsRes.json();
         }
@@ -1664,35 +1713,9 @@ export default function App() {
         console.error("Failed to fetch server settings:", err);
       }
       
-      // Self-healing check: If the server settings are default values, but the user has custom settings
-      // cached in their browser, synchronize the local settings to the server so they aren't lost on redeployment!
-      const isServerDefault = serverSettings.whatsappMerchantNumber === "22890000000" && serverSettings.activeLogoId === "monogramme_plume";
-      const hasCustomLocalSettings = (localLogoId && localLogoId !== "monogramme_plume") || (localWhatsapp && localWhatsapp !== "22890000000");
-      
-      if (isServerDefault && hasCustomLocalSettings) {
-        console.log("🔄 Self-healing: restoring custom browser settings to the restarted server container...");
-        try {
-          await fetch("/api/settings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              auth: "asime2026",
-              whatsappMerchantNumber: localWhatsapp || "22890000000",
-              activeLogoId: localLogoId || "monogramme_plume"
-            })
-          });
-          // Update the serverSettings representation so we use it
-          serverSettings.activeLogoId = localLogoId || "monogramme_plume";
-          serverSettings.whatsappMerchantNumber = localWhatsapp || "22890000000";
-        } catch (postErr) {
-          console.error("Failed to restore settings to server:", postErr);
-        }
-      }
-      
-      // Update our local state and configuration with the server settings
+      // Update our local state and configuration strictly with the server settings
       if (serverSettings.activeLogoId) {
         setActiveLogoId(serverSettings.activeLogoId);
-        // Ensure local storage is kept in sync as cache
         safeLocalStorage.setItem("asime-active-logo-id", serverSettings.activeLogoId);
       }
       if (serverSettings.whatsappMerchantNumber) {
@@ -1704,25 +1727,36 @@ export default function App() {
       safeLocalStorage.removeItem("asime_emulated_partners");
       safeLocalStorage.removeItem("asime_emulated_blogs");
 
-      // Sync any local offline/emulated products to the server so mobile devices can access them
+      // 1. Synchronize deleted products blacklist from server first to prevent resurrecting deleted products
+      let deletedLocally: string[] = [];
       try {
-        const localProdsStr = safeLocalStorage.getItem("asime_emulated_products");
-        if (localProdsStr) {
-          const localProds = JSON.parse(localProdsStr);
-          if (Array.isArray(localProds) && localProds.length > 0) {
-            const userProducts = localProds.filter((p: any) => p && p.id && !String(p.id).startsWith("prod_pop_"));
-            if (userProducts.length > 0) {
-              fetch("/api/products/sync", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ products: userProducts })
-              }).catch(() => {});
+        deletedLocally = JSON.parse(safeLocalStorage.getItem("asime_deleted_product_ids") || "[]");
+      } catch (e) {}
+
+      try {
+        const delRes = await fetch("/api/products/deleted-ids?t=" + Date.now(), { cache: "no-store" });
+        if (delRes.ok) {
+          const delData = await delRes.json();
+          if (delData?.success && Array.isArray(delData.deletedIds)) {
+            const combined = Array.from(new Set([...deletedLocally, ...delData.deletedIds.map(String)]));
+            deletedLocally = combined;
+            safeLocalStorage.setItem("asime_deleted_product_ids", JSON.stringify(combined));
+
+            const delSet = new Set(combined);
+            // Invalidate any deleted products in local cache
+            const cachedStr = safeLocalStorage.getItem("asime_emulated_products");
+            if (cachedStr) {
+              try {
+                const parsed = JSON.parse(cachedStr);
+                if (Array.isArray(parsed)) {
+                  const cleaned = parsed.filter((p: any) => !delSet.has(String(p.id)));
+                  safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(cleaned));
+                }
+              } catch (e) {}
             }
           }
         }
-      } catch (syncErr) {
-        console.warn("Product background sync skipped", syncErr);
-      }
+      } catch (e) {}
     } catch (e) {
       console.error("Error in syncLocalDataWithServer:", e);
     }
@@ -1821,6 +1855,12 @@ export default function App() {
       setLoadingProducts(true);
     }
     try {
+      let deletedLocally: string[] = [];
+      try {
+        deletedLocally = JSON.parse(safeLocalStorage.getItem("asime_deleted_product_ids") || "[]");
+      } catch (e) {}
+      const delSet = new Set(deletedLocally.map(String));
+
       const res = await fetch("/api/products?t=" + Date.now(), {
         cache: "no-store",
         headers: {
@@ -1833,25 +1873,28 @@ export default function App() {
       if (res.ok && (contentType.includes("application/json") || contentType.includes("json"))) {
         const text = await res.text();
         if (text && text.trim().startsWith("[")) {
-          const data = JSON.parse(text);
-          if (Array.isArray(data) && data.length > 0) {
-            setProducts(prev => {
-              // If background sync and product IDs, prices and stocks are identical, keep existing reference
-              if (isBackground && prev.length === data.length) {
-                const isIdentical = prev.every((p, i) => 
-                  p.id === data[i]?.id && 
-                  p.stock === data[i]?.stock && 
-                  p.prix === data[i]?.prix && 
-                  p.nom === data[i]?.nom
-                );
-                if (isIdentical) return prev;
-              }
-              return data;
-            });
-            safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(data));
-            const maxP = Math.max(...data.map((p: any) => Number(p.prix) || 0), 150000);
-            setPriceRange(prev => Math.max(prev, maxP));
-            return;
+          const rawData = JSON.parse(text);
+          if (Array.isArray(rawData)) {
+            const data = rawData.filter((p: any) => !delSet.has(String(p?.id)));
+            if (data.length > 0) {
+              setProducts(prev => {
+                // If background sync and product IDs, prices and stocks are identical, keep existing reference
+                if (isBackground && prev.length === data.length) {
+                  const isIdentical = prev.every((p, i) => 
+                    p.id === data[i]?.id && 
+                    p.stock === data[i]?.stock && 
+                    p.prix === data[i]?.prix && 
+                    p.nom === data[i]?.nom
+                  );
+                  if (isIdentical) return prev;
+                }
+                return data;
+              });
+              safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(data));
+              const maxP = Math.max(...data.map((p: any) => Number(p.prix) || 0), 150000);
+              setPriceRange(prev => Math.max(prev, maxP));
+              return;
+            }
           }
         }
       }
@@ -1862,23 +1905,26 @@ export default function App() {
       if (staticRes.ok && (staticCt.includes("application/json") || staticCt.includes("json"))) {
         const staticText = await staticRes.text();
         if (staticText && staticText.trim().startsWith("[")) {
-          const staticData = JSON.parse(staticText);
-          if (Array.isArray(staticData) && staticData.length > 0) {
-            setProducts(prev => {
-              if (isBackground && prev.length === staticData.length) {
-                const isIdentical = prev.every((p, i) => 
-                  p.id === staticData[i]?.id && 
-                  p.stock === staticData[i]?.stock && 
-                  p.prix === staticData[i]?.prix
-                );
-                if (isIdentical) return prev;
-              }
-              return staticData;
-            });
-            safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(staticData));
-            const maxP = Math.max(...staticData.map((p: any) => Number(p.prix) || 0), 150000);
-            setPriceRange(prev => Math.max(prev, maxP));
-            return;
+          const rawStaticData = JSON.parse(staticText);
+          if (Array.isArray(rawStaticData)) {
+            const staticData = rawStaticData.filter((p: any) => !delSet.has(String(p?.id)));
+            if (staticData.length > 0) {
+              setProducts(prev => {
+                if (isBackground && prev.length === staticData.length) {
+                  const isIdentical = prev.every((p, i) => 
+                    p.id === staticData[i]?.id && 
+                    p.stock === staticData[i]?.stock && 
+                    p.prix === staticData[i]?.prix
+                  );
+                  if (isIdentical) return prev;
+                }
+                return staticData;
+              });
+              safeLocalStorage.setItem("asime_emulated_products", JSON.stringify(staticData));
+              const maxP = Math.max(...staticData.map((p: any) => Number(p.prix) || 0), 150000);
+              setPriceRange(prev => Math.max(prev, maxP));
+              return;
+            }
           }
         }
       }
@@ -1886,11 +1932,14 @@ export default function App() {
       // Fallback to local storage if available
       const cached = safeLocalStorage.getItem("asime_emulated_products");
       if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setProducts(prev => (prev.length > 0 ? prev : parsed));
-          const maxP = Math.max(...parsed.map((p: any) => Number(p.prix) || 0), 150000);
-          setPriceRange(prev => Math.max(prev, maxP));
+        const rawParsed = JSON.parse(cached);
+        if (Array.isArray(rawParsed)) {
+          const parsed = rawParsed.filter((p: any) => !delSet.has(String(p?.id)));
+          if (parsed.length > 0) {
+            setProducts(prev => (prev.length > 0 ? prev : parsed));
+            const maxP = Math.max(...parsed.map((p: any) => Number(p.prix) || 0), 150000);
+            setPriceRange(prev => Math.max(prev, maxP));
+          }
         }
       }
     } catch (e) {
@@ -2866,21 +2915,23 @@ export default function App() {
                   <div className="lg:col-span-7 space-y-6 text-left">
                     <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 rounded-full shadow-xs">
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                      <p className="text-[11px] sm:text-xs tracking-wider text-emerald-800 font-bold uppercase">{language === "fr" ? "Terroir Solidaire du Togo 🇹🇬" : "Togo-tɔwo ƒe Dzesi Kple Anyigba 🇹🇬"}</p>
+                      <p className="text-[11px] sm:text-xs tracking-wider text-emerald-800 font-bold uppercase">
+                        {language === "fr" ? "Marketplace Panafricaine • 7 Pays Supportés" : "Marketplace Panafricaine • 7 Dukɔwo le Afrika"}
+                      </p>
                     </div>
 
                     <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight text-neutral-900">
                       {language === "fr" ? (
-                        <>Le Meilleur de Nos <span className="text-emerald-850 underline decoration-emerald-200 decoration-wavy block sm:inline">Producteurs Locaux</span> chez Vous.</>
+                        <>Le Meilleur des <span className="text-emerald-850 underline decoration-emerald-200 decoration-wavy block sm:inline">Vendeurs Africains</span> à Portée de Clic.</>
                       ) : (
-                        <>Mía dɔwɔlawo ƒe <span className="text-emerald-850 underline decoration-emerald-200 decoration-wavy block sm:inline">Adzɔnu Nyuitɔwo</span> le wò Aƒeme.</>
+                        <>Afrika ƒe <span className="text-emerald-850 underline decoration-emerald-200 decoration-wavy block sm:inline">Asitsala Nyuitɔwo</span> le wò Aƒeme.</>
                       )}
                     </h1>
                     
                     <p className="text-sm sm:text-base text-neutral-600 max-w-xl leading-relaxed font-sans">
                       {language === "fr" 
-                        ? "Savourez le miel brut sauvage des forêts de Kpalimé, offrez à votre corps l’hydratation pure du beurre de karité de Tandjouaré, et garnissez votre table de nos paniers maraîchers ultra-frais cueillis le jour-même à Lomé et Kovié." 
-                        : "Kpɔ kpeɖodzi tso Kpalimé ƒe anyitsi nyuitɔ me, Tandjouaré ƒe karité ami kple Lomé / Kovié ƒe nududu fafɛwo katã gbesiagbe."
+                        ? "Achetez et vendez sur la marketplace africaine de référence. Découvrez des produits africains authentiques directement auprès de vendeurs vérifiés au Togo, Bénin, Burkina Faso, Côte d'Ivoire, Mali, Sénégal et Cameroun." 
+                        : "Ƒle eye nàdzra adzɔnuwo to kɔmputazi dzi le Afrika katã me. Kpɔ adzɔnu nyuitɔwo tso asitsala dediewo gbɔ le Togo, Bénin, Burkina Faso, Côte d'Ivoire, Mali, Sénégal kple Cameroun."
                       }
                     </p>
 
@@ -3402,22 +3453,22 @@ export default function App() {
                   <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(52,211,153,0.05),transparent_40%)] pointer-events-none"></div>
                   <div className="relative z-10 space-y-1 sm:space-y-2 text-center sm:text-left">
                     <span className="bg-emerald-50 text-emerald-800 text-[8px] sm:text-[9px] font-bold uppercase tracking-widest px-2 sm:px-2.5 py-0.5 sm:py-1 border border-emerald-250 inline-block">
-                      {language === "fr" ? "Soutien aux Paysans" : "Kpekpeɖeŋu na Agbledelawo"}
+                      {language === "fr" ? "Soutien aux Vendeurs Africains" : "Kpekpeɖeŋu na Asitsalawo"}
                     </span>
                     <h4 className="font-display font-black text-sm sm:text-xl uppercase tracking-wider text-neutral-900">
                       {language === "fr" ? "Chaque commande soutient le commerce de proximité" : "Nudɔdɔ ɖesiaɖe kpena ɖe asitsala suewo ŋu"}
                     </h4>
                     <p className="text-[11px] sm:text-xs text-neutral-550 font-sans max-w-2xl">
                       {language === "fr" 
-                        ? "Chez Miabé Asi, plus de 90% du prix des produits de la Coopérative est directement versé aux apiculteurs, horticulteurs et artisans locaux du Togo."
-                        : "Le Miabé Asi la, asixɔme si wotsɔ nɔa adzɔnuwo ƒlem la ƒe alafa me 90 dzea agbledelawo kple aɖaŋudɔwɔlawo si tẽe le Togo."}
+                        ? "Chez Miabé Asi, 90% du prix des produits vendus est directement reversé aux vendeurs et producteurs africains."
+                        : "Le Miabé Asi la, asixɔme si wotsɔ nɔa adzɔnuwo ƒlem la ƒe alafa me 90 dzea asitsalawo kple dɔwɔlawo si tẽe."}
                     </p>
                   </div>
                   <button 
-                    onClick={() => { setSelectedCategory("Made in Togo Premium"); setSearchQuery(""); setActiveTab("catalogue"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    onClick={() => { setSelectedCategory("Tous"); setSearchQuery(""); setActiveTab("catalogue"); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                     className="relative z-10 bg-emerald-800 text-white hover:bg-emerald-900 font-extrabold text-[8px] sm:text-[10px] tracking-widest uppercase px-4 py-2.5 sm:px-6 sm:py-3.5 transition-colors shrink-0 cursor-pointer"
                   >
-                    {language === "fr" ? "Découvrir le Terroir" : "Kpɔ Anyigba ƒe Kesinɔnuwo"}
+                    {language === "fr" ? "Découvrir les Produits" : "Kpɔ Adzɔnuwo Katã"}
                   </button>
                 </div>
 
@@ -3452,10 +3503,10 @@ export default function App() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 md:gap-8">
                   {[
                     {
-                      title: language === "fr" ? "Filières Directes" : "Mɔ Tẽe Kadodowo",
+                      title: language === "fr" ? "Vendeurs Vérifiés" : "Mɔ Tẽe Kadodowo",
                       desc: language === "fr" 
-                        ? "Liaison directe avec les groupements agricoles de Kpalimé et de Notsé pour valoriser l'artisanat togolais en circuit court."
-                        : "Kadodo tẽe kple Kpalimé kple Notsé dɔwɔlawo be woado Togo-tɔwo ƒe aɖaŋudɔwo ɖe gã.",
+                        ? "Circuit direct avec les vendeurs africains et groupements de producteurs pour valoriser les produits locaux."
+                        : "Kadodo tẽe kple asitsalawo kple dɔwɔlawo be woado Afrika ƒe adzɔnuwo ɖe gã.",
                       icon: <Sparkles className="w-4 h-4 sm:w-6 sm:h-6 text-[#d4af37]" />
                     },
                     {
@@ -3466,10 +3517,10 @@ export default function App() {
                       icon: <Check className="w-4 h-4 sm:w-6 sm:h-6 text-[#d4af37]" />
                     },
                     {
-                      title: language === "fr" ? "Livraison Omniprésente" : "Nutsɔtsɔ vɛ Afiɖesiaɖe",
+                      title: language === "fr" ? "7 Pays d'Afrique" : "Nutsɔtsɔ vɛ Afiɖesiaɖe",
                       desc: language === "fr"
-                        ? "Service de livraison réactif à domicile sur Lomé sous 24h à 48h, etexpédition sécurisée dans l'ensemble des préfectures."
-                        : "Nudɔdɔ kaba yi aƒeme le Lomé le gaƒoƒo 24 vaseɖe 48 me, eye míedɔna adzɔnuwo dedie yi dɔwɔƒewo katã.",
+                        ? "Couverture complète : Togo, Bénin, Burkina Faso, Côte d'Ivoire, Mali, Sénégal, Cameroun avec paiement PayDunya."
+                        : "Dukɔ 7 le Afrika : Togo, Bénin, Burkina Faso, Côte d'Ivoire, Mali, Sénégal kple Cameroun.",
                       icon: <Globe className="w-4 h-4 sm:w-6 sm:h-6 text-[#d4af37]" />
                     },
                     {
@@ -3508,15 +3559,15 @@ export default function App() {
                 </div>
                 <div className="flex-grow">
                   <h3 className="font-display font-medium text-lg text-[#d4af37] uppercase tracking-wider mb-2">
-                    {language === "fr" ? "Notre engagement pour Lomé" : "Míaƒe kpeɖodzi na Lomé"}
+                    {language === "fr" ? "Notre engagement panafricain" : "Míaƒe kpeɖodzi na Afrika"}
                   </h3>
                   <h2 className="font-display font-extrabold text-2xl sm:text-3xl uppercase tracking-tight mb-4 text-white">
-                    {language === "fr" ? "Consommer togolais n'a jamais été aussi simple" : "Anyigbadzinu Togo-tɔwo ɖuɖu sɔbɔ fifia kaba"}
+                    {language === "fr" ? "Acheter et vendre des produits africains n'a jamais été aussi simple" : "Adzɔnuwo ƒlele kple dzadzra le Afrika sɔbɔ kaba"}
                   </h2>
                   <p className="text-neutral-300 text-xs sm:text-sm leading-relaxed mb-6">
                     {language === "fr" 
-                      ? "Faites votre marché en ligne ! Les paniers maraîchers frais sont achetés à flux tendu au marché national pour vous garantir des vitamines et des saveurs incomparables, tandis que nos cosmétiques soutiennent directement des coopératives de femmes rurales au Togo." 
-                      : "Wɔ wò asitsatsa le kɔmputazi dzi ! Míatsɔ nuku gbeme tɔwo tẽe tso anyigba gã la dzi be wòasɔ na wò, eye míaƒe ami kple adzɔnuwo kpena ɖe nyɔnu dɔwɔla siwo le Togo dɔwɔƒewo ŋu."}
+                      ? "Faites vos achats et développez vos ventes en ligne ! Découvrez des produits africains authentiques directement auprès de vendeurs vérifiés, tandis que vos commandes soutiennent directement l'économie locale et les créateurs du continent." 
+                      : "Wɔ wò asitsatsa le kɔmputazi dzi ! Kpɔ adzɔnu nyuitɔwo tso asitsalawo gbɔ be wòasɔ na wò, eye nàdo alɔ dukɔwo ƒe asitsalawo."}
                   </p>
                   <div className="flex gap-4">
                     <button 
@@ -5834,10 +5885,10 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <h3 className="font-display font-black text-lg uppercase tracking-wider text-white">{selectedSellerName}</h3>
                     <span className="bg-[#0B4D26] text-white font-mono text-[8px] font-black px-1.5 py-0.5 uppercase tracking-widest rounded-sm">
-                      Artisan Certifié
+                      Vendeur Vérifié
                     </span>
                   </div>
-                  <p className="text-stone-300 text-[11px] font-sans mt-0.5">Boutique Togolaise Authentique • Créations artisanales éthiques</p>
+                  <p className="text-stone-300 text-[11px] font-sans mt-0.5">Boutique Africaine Authentique • Produits éthiques</p>
                 </div>
               </div>
             </div>
@@ -5848,9 +5899,9 @@ export default function App() {
               {/* Left sidebar: Info and contact */}
               <div className="md:col-span-4 space-y-4 border-b md:border-b-0 md:border-r border-stone-100 pb-4 md:pb-0 md:pr-6 text-left">
                 <div>
-                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">À propos de l'artisan</h4>
+                  <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">À propos du vendeur</h4>
                   <p className="text-xs text-stone-600 leading-relaxed font-sans">
-                    Cette boutique vous propose des créations faites main inspirées de la tradition et de l'artisanat du Togo. Chaque pièce achetée soutient directement notre coopérative locale et favorise l'emploi éthique et durable de nos couturiers et artisans togolais.
+                    Cette boutique vous propose des produits authentiques et de qualité. Chaque commande soutient directement ce vendeur et favorise le commerce local en Afrique.
                   </p>
                 </div>
 
@@ -5858,8 +5909,8 @@ export default function App() {
                   <h4 className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-2">Modes de Livraison</h4>
                   <div className="space-y-1 text-[11px] font-sans text-stone-600">
                     <p className="flex items-center gap-1.5">📦 • Envoi sécurisé par le réseau Miabé Asi</p>
-                    <p className="flex items-center gap-1.5">🛵 • Livraison express à Lomé (24h)</p>
-                    <p className="flex items-center gap-1.5">🌍 • Expédition diaspora Europe & Amérique</p>
+                    <p className="flex items-center gap-1.5">🤝 • Livraison directe organisée avec le vendeur</p>
+                    <p className="flex items-center gap-1.5">🌍 • Expédition sous-régionale &amp; diaspora</p>
                   </div>
                 </div>
 
@@ -5872,7 +5923,7 @@ export default function App() {
                     className="w-full py-2.5 bg-[#0B4D26] hover:bg-neutral-950 text-white font-extrabold uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-1.5 cursor-pointer border-0"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>Discuter avec l'artisan</span>
+                    <span>Discuter avec le vendeur</span>
                   </button>
                 </div>
               </div>
@@ -5929,7 +5980,7 @@ export default function App() {
             <div className="p-4 bg-stone-900 text-white border-b border-stone-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MessageCircle className="w-5 h-5 text-[#d4af37]" />
-                <h3 className="font-display font-black uppercase text-xs tracking-wider">Mes Discussions Artisans</h3>
+                <h3 className="font-display font-black uppercase text-xs tracking-wider">Mes Discussions Vendeurs</h3>
               </div>
               <button 
                 type="button" 
@@ -5945,7 +5996,7 @@ export default function App() {
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-stone-400">
                 <MessageCircle className="w-12 h-12 stroke-1 text-stone-300 mb-2" />
                 <h4 className="text-xs font-bold uppercase text-stone-600">Aucune discussion en cours</h4>
-                <p className="text-[11px] text-stone-400 max-w-xs mt-1">Visitez une boutique ou ouvrez la fiche d'un produit pour démarrer une discussion personnalisée avec un créateur togolais.</p>
+                <p className="text-[11px] text-stone-400 max-w-xs mt-1">Visitez une boutique ou ouvrez la fiche d'un produit pour démarrer une discussion personnalisée avec un vendeur africain.</p>
               </div>
             ) : (
               <div className="flex-1 flex overflow-hidden">
@@ -6020,7 +6071,7 @@ export default function App() {
                             type="text"
                             value={chatDrawerMessage}
                             onChange={(e) => setChatDrawerMessage(e.target.value)}
-                            placeholder="Votre message à l'artisan..."
+                            placeholder="Votre message au vendeur..."
                             className="flex-grow px-3 py-2 border border-stone-200 rounded-lg text-xs focus:outline-none focus:border-[#0B4D26]"
                           />
                           <button
@@ -6779,10 +6830,10 @@ export default function App() {
                     >
                       <div className="flex items-center gap-1.5">
                         <Store className="w-3.5 h-3.5 text-[#b8901c]" />
-                        <span className="text-[11px] font-bold uppercase tracking-wider">Artisan / Vendeur</span>
+                        <span className="text-[11px] font-bold uppercase tracking-wider">Vendeur</span>
                       </div>
                       <span className="text-[9px] text-neutral-500 leading-tight font-sans">
-                        Vendre mes produits du terroir
+                        Vendre mes produits sur la marketplace
                       </span>
                     </button>
                   </div>
@@ -7140,9 +7191,9 @@ export default function App() {
               { label: language === "fr" ? "Accueil du site" : "Aƒeme dzesi", value: "accueil" as const, desc: language === "fr" ? "Découvrir nos sélections phares et histoire" : "Kpɔ míaƒe adzɔnu dzesiwo kple ŋutinya" },
               { label: language === "fr" ? "Catalogue de Produits" : "Adzɔnuwo kpeɖodzi", value: "catalogue" as const, desc: language === "fr" ? "Explorer l'ensemble de nos collections" : "Kpɔ míaƒe adzɔnu hame hamewo katã" },
               { label: language === "fr" ? "Notifications & Suivi" : "Dzesiwo & Kpɔkplɔ", value: "notifications" as const, desc: language === "fr" ? "Suivi des commandes en temps réel" : "Dɔwɔwɔ ƒe dzesiwo" },
-              { label: language === "fr" ? "Vendre sur Miabé Asi" : "Dzra nu le Miabé Asi", value: "vendre" as const, desc: language === "fr" ? "Espace dédié aux producteurs, artisans et créateurs togolais" : "Teƒe tɔxɛ na asinɔlawo kple aɖaŋudɔwɔlawo" },
-              { label: language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils de terroir et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
-              { label: language === "fr" ? "Nous Contacter" : "Mía Kadodowo", value: "contact" as const, desc: language === "fr" ? "Support client, WhatsApp et localisation physique" : "WhatsApp kple afisi míele le Lomé" }
+              { label: language === "fr" ? "Vendre sur Miabé Asi" : "Dzra nu le Miabé Asi", value: "vendre" as const, desc: language === "fr" ? "Espace dédié aux vendeurs et créateurs africains" : "Teƒe tɔxɛ na asinɔlawo" },
+              { label: language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
+              { label: language === "fr" ? "Nous Contacter" : "Mía Kadodowo", value: "contact" as const, desc: language === "fr" ? "Support client, WhatsApp et assistance" : "WhatsApp kple kadodo" }
             ].map((link) => (
               <button
                 key={link.value}
@@ -7213,9 +7264,9 @@ export default function App() {
 
               {/* Offline mode indicator of the app */}
               <div className="mt-6 p-4 bg-emerald-50 text-emerald-950 text-center rounded-sm border border-emerald-100">
-                <p className="text-[10.5px] font-bold uppercase tracking-wide">🌿 Terroir Solidaire du Togo 🇹🇬</p>
+                <p className="text-[10.5px] font-bold uppercase tracking-wide">🌍 Marketplace Panafricaine</p>
                 <p className="text-[9.5px] text-emerald-700 mt-1 leading-normal font-sans">
-                  Plus de 90% des revenus des produits du terroir sont directement reversés aux coopératives agricoles et artisans d'art locaux du Togo.
+                  90% des revenus des ventes sont directement reversés aux vendeurs et producteurs africains.
                 </p>
               </div>
             </div>
