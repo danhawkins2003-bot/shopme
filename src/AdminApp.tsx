@@ -71,6 +71,7 @@ import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
 import { DEFAULT_HERO_CARDS, DEFAULT_GALLERY_CARDS, ShowcaseCard } from "./data/showcaseCards";
 import { fileToOptimizedDataUrl } from "./lib/imageUtils";
 import { ImageUploadModal } from "./components/ImageUploadModal";
+import { uploadImageToServer } from "./lib/imageUploadHelper";
 import officialLogoImg from "./assets/images/miabe_asi_official_logo_1787563252544.jpg";
 
 export default function AdminApp() {
@@ -328,24 +329,36 @@ export default function AdminApp() {
   const handleHeroCardImageUpload = async (index: number, file: File) => {
     if (!file) return;
     try {
-      const dataUrl = await fileToOptimizedDataUrl(file, 1200, 1200, 0.88);
-      const updatedHero = [...adminHeroCards];
-      updatedHero[index] = { ...updatedHero[index], imageUrl: dataUrl };
-      saveAdminShowcaseCards(updatedHero, adminGalleryCards);
-    } catch (e) {
-      console.error("Error optimizing hero card image", e);
+      const prevUrl = adminHeroCards[index]?.imageUrl;
+      const res = await uploadImageToServer(file, prevUrl, `hero_${index}_${file.name}`);
+      if (res.success && res.url) {
+        const updatedHero = [...adminHeroCards];
+        updatedHero[index] = { ...updatedHero[index], imageUrl: res.url };
+        await saveAdminShowcaseCards(updatedHero, adminGalleryCards);
+      } else {
+        alert(res.error || "Erreur lors du téléversement de l'image.");
+      }
+    } catch (e: any) {
+      console.error("Error uploading hero card image", e);
+      alert("Erreur lors du téléversement : " + (e.message || String(e)));
     }
   };
 
   const handleGalleryCardImageUpload = async (index: number, file: File) => {
     if (!file) return;
     try {
-      const dataUrl = await fileToOptimizedDataUrl(file, 1200, 1200, 0.88);
-      const updatedGallery = [...adminGalleryCards];
-      updatedGallery[index] = { ...updatedGallery[index], imageUrl: dataUrl };
-      saveAdminShowcaseCards(adminHeroCards, updatedGallery);
-    } catch (e) {
-      console.error("Error optimizing gallery card image", e);
+      const prevUrl = adminGalleryCards[index]?.imageUrl;
+      const res = await uploadImageToServer(file, prevUrl, `gallery_${index}_${file.name}`);
+      if (res.success && res.url) {
+        const updatedGallery = [...adminGalleryCards];
+        updatedGallery[index] = { ...updatedGallery[index], imageUrl: res.url };
+        await saveAdminShowcaseCards(adminHeroCards, updatedGallery);
+      } else {
+        alert(res.error || "Erreur lors du téléversement de l'image.");
+      }
+    } catch (e: any) {
+      console.error("Error uploading gallery card image", e);
+      alert("Erreur lors du téléversement : " + (e.message || String(e)));
     }
   };
 
@@ -850,10 +863,24 @@ export default function AdminApp() {
   useEffect(() => {
     fetchProducts();
     fetchPartners();
-    // Check local session token
+    // Check and verify admin session token with server
     const token = sessionStorage.getItem("asime_admin_token");
-    if (token === "asime2026-auth-session") {
-      setIsAdminAuthenticated(true);
+    if (token) {
+      fetch("/api/admin/verify", {
+        headers: { "Authorization": token }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.success && data.role === "admin") {
+            setIsAdminAuthenticated(true);
+          } else {
+            sessionStorage.removeItem("asime_admin_token");
+            setIsAdminAuthenticated(false);
+          }
+        })
+        .catch(() => {
+          setIsAdminAuthenticated(false);
+        });
     }
     
     // Fetch global server-side settings
@@ -972,9 +999,9 @@ export default function AdminApp() {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
 
     const remainingSlots = 4 - formImages.length;
     if (remainingSlots <= 0) {
@@ -983,18 +1010,20 @@ export default function AdminApp() {
     }
 
     const filesToProcess = Array.from(files).slice(0, remainingSlots) as File[];
+    setFormError("");
 
-    filesToProcess.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64String = reader.result as string;
-        setFormImages(prev => [...prev, base64String].slice(0, 4));
-      };
-      reader.onerror = () => {
-        setFormError("Erreur lors de la lecture d'un fichier image.");
-      };
-      reader.readAsDataURL(file);
-    });
+    for (const file of filesToProcess) {
+      try {
+        const uploadRes = await uploadImageToServer(file, undefined, file.name);
+        if (uploadRes.success && uploadRes.url) {
+          setFormImages(prev => [...prev, uploadRes.url!].slice(0, 4));
+        } else {
+          setFormError(uploadRes.error || "Erreur de téléversement vers Supabase Storage.");
+        }
+      } catch (err: any) {
+        setFormError("Erreur lors de l'envoi de l'image : " + (err.message || String(err)));
+      }
+    }
 
     e.target.value = "";
   };
@@ -1030,13 +1059,30 @@ export default function AdminApp() {
       return;
     }
 
+    // Ensure any remaining base64 images are uploaded to Supabase Storage first
+    const cleanImages: string[] = [];
+    for (let i = 0; i < formImages.length; i++) {
+      const img = formImages[i];
+      if (img.startsWith("data:")) {
+        const upRes = await uploadImageToServer(img, editingProduct?.images?.[i]);
+        if (upRes.success && upRes.url) {
+          cleanImages.push(upRes.url);
+        } else {
+          setFormError(upRes.error || "Échec du téléversement de l'image sur Supabase Storage.");
+          return;
+        }
+      } else {
+        cleanImages.push(img);
+      }
+    }
+
     const payload = {
       id: editingProduct?.id || null,
       nom: formName,
       description: formDescription,
       prix: parsedPrix,
       prixBarre: parsedPrixBarre,
-      images: formImages.length > 0 ? formImages : ["https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600"],
+      images: cleanImages.length > 0 ? cleanImages : ["https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600"],
       categorie: formCategory,
       phare: formPhare,
       stock: parsedStock,
@@ -1056,16 +1102,16 @@ export default function AdminApp() {
 
       const responseData = await res.json();
       if (res.ok && responseData.success) {
-        setFormSuccess(editingProduct ? "Produit mis à jour avec succès !" : "Nouveau produit enregistré avec succès !");
-        fetchProducts();
+        setFormSuccess(editingProduct ? "Produit mis à jour avec succès dans Supabase !" : "Nouveau produit enregistré avec succès dans Supabase !");
+        await fetchProducts();
         setTimeout(() => {
           resetForm();
-        }, 1500);
+        }, 1200);
       } else {
-        setFormError(responseData.error || "Erreur de sauvegarde.");
+        setFormError(responseData.error || "Erreur de sauvegarde sur le serveur.");
       }
-    } catch (err) {
-      setFormError("Erreur réseau. Impossible de sauvegarder.");
+    } catch (err: any) {
+      setFormError("Erreur réseau : " + (err.message || "Impossible de sauvegarder."));
     }
   };
 
@@ -1104,10 +1150,10 @@ export default function AdminApp() {
 
         await fetchProducts();
       } else {
-        alert(data.error || "Une erreur est survenue.");
+        alert(data.error || "Une erreur est survenue lors de la suppression.");
       }
-    } catch (e) {
-      alert("Impossible de supprimer le produit.");
+    } catch (e: any) {
+      alert("Impossible de supprimer le produit : " + (e.message || String(e)));
     }
   };
 
@@ -2724,25 +2770,33 @@ PAYDUNYA_MODE=live`}
           defaultImageUrl={activeAdminUploadModal.defaultImageUrl}
           aspectRatio={activeAdminUploadModal.aspectRatio}
           onSaveImage={async (newImageDataUrl) => {
+            let finalUrl = newImageDataUrl;
+            if (newImageDataUrl.startsWith("data:")) {
+              const up = await uploadImageToServer(newImageDataUrl, activeAdminUploadModal.imageUrl);
+              if (up.success && up.url) {
+                finalUrl = up.url;
+              }
+            }
+
             if (activeAdminUploadModal.categoryType === "hero" && activeAdminUploadModal.index !== undefined) {
               const updatedHero = [...adminHeroCards];
               updatedHero[activeAdminUploadModal.index] = {
                 ...updatedHero[activeAdminUploadModal.index],
-                imageUrl: newImageDataUrl
+                imageUrl: finalUrl
               };
               await saveAdminShowcaseCards(updatedHero, adminGalleryCards);
             } else if (activeAdminUploadModal.categoryType === "gallery" && activeAdminUploadModal.index !== undefined) {
               const updatedGallery = [...adminGalleryCards];
               updatedGallery[activeAdminUploadModal.index] = {
                 ...updatedGallery[activeAdminUploadModal.index],
-                imageUrl: newImageDataUrl
+                imageUrl: finalUrl
               };
               await saveAdminShowcaseCards(adminHeroCards, updatedGallery);
             } else if (activeAdminUploadModal.categoryType === "banner" && activeAdminUploadModal.index !== undefined) {
               const updatedSlides = [...adminPromoSlides];
               updatedSlides[activeAdminUploadModal.index] = {
                 ...updatedSlides[activeAdminUploadModal.index],
-                imageUrl: newImageDataUrl
+                imageUrl: finalUrl
               };
               saveAdminPromoSlides(updatedSlides);
             }

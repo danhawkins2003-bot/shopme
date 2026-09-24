@@ -1393,9 +1393,10 @@ function sanitizeUserForResponse(user: any): any {
       const resolvedCurrencyCode = currencyCode || order.currencyCode || (resolvedCountryCode === "CM" ? "XAF" : "XOF");
       const resolvedSellerCountry = (order.sellerCountryCode || order.items?.[0]?.product?.countryCode || "TG").toUpperCase();
       const isCrossBorder = order.isCrossBorder !== undefined ? order.isCrossBorder : (resolvedCountryCode !== resolvedSellerCountry);
-      const transactionId = "TX-PD-MOCK-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
+      const token = "PD-TOK-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
+      const redirectUrl = `/checkout/paydunya-test?token=${token}&orderId=${encodeURIComponent(orderId)}`;
 
-      order.paymentGatewayTxId = transactionId;
+      order.paymentGatewayTxId = token;
       order.paymentGatewayProvider = providerId || "paydunya";
       order.paymentGatewayCurrencyCode = resolvedCurrencyCode;
       order.paymentGatewayCountryCode = resolvedCountryCode;
@@ -1411,7 +1412,7 @@ function sanitizeUserForResponse(user: any): any {
         success: true,
         session: {
           success: true,
-          transactionId,
+          transactionId: token,
           providerId: providerId || "paydunya",
           amount: order.totalAmount,
           currencyCode: resolvedCurrencyCode,
@@ -1420,7 +1421,8 @@ function sanitizeUserForResponse(user: any): any {
           sellerCountryCode: resolvedSellerCountry,
           isCrossBorder,
           status: "pending",
-          instructions: `Veuillez finaliser votre paiement sécurisé de ${order.totalAmount} ${resolvedCurrencyCode}.`
+          redirectUrl,
+          instructions: `Veuillez finaliser votre paiement sécurisé de ${order.totalAmount} ${resolvedCurrencyCode} via PayDunya.`
         }
       }, 200, true);
     }

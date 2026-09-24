@@ -44,7 +44,8 @@ import {
   MapPin,
   AlertCircle,
   CreditCard,
-  RefreshCw
+  RefreshCw,
+  PhoneCall
 } from "lucide-react";
 import SellerWorkspace from "./SellerWorkspace";
 import { SellerLandingPage } from "./SellerLandingPage";
@@ -62,7 +63,7 @@ interface MultiRoleDashboardsProps {
   onSelectProduct: (product: any) => void;
   onLogout?: () => void;
   onTabChange?: (tab: string) => void;
-  initialView?: "vendeur" | "client" | "menu";
+  initialView?: "vendeur" | "client" | "affilie" | "livreur" | "menu";
   onTrackOrder?: (orderId: string) => void;
 }
 
@@ -223,14 +224,67 @@ export default function MultiRoleDashboards({
   initialView,
   onTrackOrder
 }: MultiRoleDashboardsProps) {
-  const [currentView, setCurrentView] = useState<"menu" | "client" | "vendeur" | "affilie" | "notifications" | "help" | "profile_settings" | "promos" | "favorites">(initialView === "vendeur" ? "vendeur" : "menu");
-  const [activeTab, setActiveTab] = useState<"client" | "vendeur" | "affilie" | "notifications">(initialView === "vendeur" ? "vendeur" : "client");
+  const [currentView, setCurrentView] = useState<"menu" | "client" | "vendeur" | "affilie" | "livreur" | "notifications" | "help" | "profile_settings" | "promos" | "favorites">(
+    initialView === "vendeur" ? "vendeur" : initialView === "livreur" ? "livreur" : initialView === "affilie" ? "affilie" : "menu"
+  );
+  const [activeTab, setActiveTab] = useState<"client" | "vendeur" | "affilie" | "livreur" | "notifications">(
+    initialView === "vendeur" ? "vendeur" : initialView === "livreur" ? "livreur" : "client"
+  );
+
+  // Delivery orders state
+  const [deliveryOrders, setDeliveryOrders] = useState<any[]>([]);
+  const [isLoadingDeliveries, setIsLoadingDeliveries] = useState(false);
+
+  const fetchDeliveryOrders = async () => {
+    setIsLoadingDeliveries(true);
+    try {
+      const res = await fetch("/api/delivery/orders", {
+        headers: { "Authorization": token || "" }
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.deliveries)) {
+        setDeliveryOrders(data.deliveries);
+      }
+    } catch (err) {
+      console.error("Error fetching deliveries:", err);
+    } finally {
+      setIsLoadingDeliveries(false);
+    }
+  };
+
+  const handleUpdateDeliveryStatus = async (orderId: string, newStatus: string) => {
+    try {
+      const res = await fetch(`/api/delivery/orders/${orderId}/update-status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": token || ""
+        },
+        body: JSON.stringify({ orderStatus: newStatus })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Statut de la commande #${orderId} mis à jour : ${newStatus}`);
+        setDeliveryOrders(prev => prev.map(o => o.id === orderId ? { ...o, orderStatus: newStatus } : o));
+      } else {
+        showToast(data.error || "Impossible de mettre à jour le statut.");
+      }
+    } catch (e) {
+      showToast("Erreur de connexion avec le serveur.");
+    }
+  };
+
+  useEffect(() => {
+    if (currentView === "livreur" || user?.role === "livreur") {
+      fetchDeliveryOrders();
+    }
+  }, [currentView, user?.role]);
 
   useEffect(() => {
     if (initialView && initialView !== "menu") {
-      setCurrentView(initialView);
-      if (initialView === "vendeur" || initialView === "client" || initialView === "affilie" || initialView === "notifications") {
-        setActiveTab(initialView);
+      setCurrentView(initialView as any);
+      if (initialView === "vendeur" || initialView === "client" || initialView === "affilie" || initialView === "livreur" || initialView === "notifications") {
+        setActiveTab(initialView as any);
       }
     } else if (initialView === "menu") {
       setCurrentView("menu");
@@ -2570,20 +2624,45 @@ export default function MultiRoleDashboards({
           </button>
 
           {/* Row 6: Vendre sur Miabé Asi */}
-          <button
-            type="button"
-            onClick={() => {
-              setCurrentView("vendeur");
-              setActiveTab("vendeur");
-            }}
-            className="w-full py-3.5 px-3 flex items-center gap-3.5 hover:bg-neutral-50 transition-colors border-b border-neutral-100/75 cursor-pointer text-left bg-transparent rounded-none"
-          >
-            <ShoppingBag className="w-5 h-5 text-neutral-800 shrink-0" />
-            <span className="text-xs font-bold text-neutral-800 tracking-wide font-sans">
-              {user?.role === "vendeur" ? "Tableau de bord Vendeur" : "Vendre sur Miabé Asi"}
-            </span>
-            <ChevronRight className="w-4 h-4 text-neutral-400 ml-auto" />
-          </button>
+          {user?.role !== "livreur" && (
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentView("vendeur");
+                setActiveTab("vendeur");
+              }}
+              className="w-full py-3.5 px-3 flex items-center gap-3.5 hover:bg-neutral-50 transition-colors border-b border-neutral-100/75 cursor-pointer text-left bg-transparent rounded-none"
+            >
+              <ShoppingBag className="w-5 h-5 text-neutral-800 shrink-0" />
+              <span className="text-xs font-bold text-neutral-800 tracking-wide font-sans">
+                {user?.role === "vendeur" ? "Tableau de bord Vendeur" : "Vendre sur Miabé Asi"}
+              </span>
+              <ChevronRight className="w-4 h-4 text-neutral-400 ml-auto" />
+            </button>
+          )}
+
+          {/* Row 6b: Espace Livreur */}
+          {(user?.role === "livreur" || user?.role === "admin") && (
+            <button
+              type="button"
+              onClick={() => {
+                setCurrentView("livreur");
+                setActiveTab("livreur");
+              }}
+              className="w-full py-3.5 px-3 flex items-center gap-3.5 hover:bg-emerald-50/60 transition-colors border-b border-neutral-100/75 cursor-pointer text-left bg-transparent rounded-none"
+            >
+              <Truck className="w-5 h-5 text-emerald-700 shrink-0" />
+              <div className="flex-grow flex items-center gap-2">
+                <span className="text-xs font-bold text-neutral-800 tracking-wide font-sans">
+                  Missions de Livraison
+                </span>
+                <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-sm">
+                  Agent Livreur
+                </span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />
+            </button>
+          )}
 
           {/* Section Divider */}
           <div className="h-[1px] bg-neutral-200/80 my-3"></div>
@@ -3685,45 +3764,70 @@ export default function MultiRoleDashboards({
             }}
             onDirectRegisterSeller={async (formData: any) => {
               try {
-                const updatedUser = {
-                  ...user,
-                  name: formData.fullName || user?.name || "Vendeur",
-                  phone: formData.phone || user?.phone || "",
-                  businessName: formData.shopName,
-                  boutiqueName: formData.shopName,
-                  boutiqueSlug: formData.slug || formData.shopName.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-                  vendeurSlug: formData.slug || formData.shopName.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-                  vendeurPlan: formData.plan || "Gratuit",
-                  plan: formData.plan || "Gratuit",
-                  vendeurSubscription: formData.plan === "BUSINESS" ? "Offre 3" : formData.plan === "PRO" ? "Offre 2" : "Offre 1",
-                  role: "vendeur",
-                  vendeurStatus: "Actif",
-                  category: formData.category || "Artisanat & Terroir",
-                  boutiqueBio: formData.bio || "Artisan & Vendeur partenaire officiel Miabé Asi au Togo.",
-                  boutiqueWhatsapp: formData.whatsapp || formData.phone || "",
-                  createdAt: new Date().toISOString()
-                };
-
-                setUser(updatedUser);
-                setIsVendeurUnlocked(true);
-
-                // Update users database
-                try {
-                  const usersStr = localStorage.getItem("asime_emulated_users");
-                  const allUsers = usersStr ? JSON.parse(usersStr) : [];
-                  const existingIdx = allUsers.findIndex((u: any) => u.id === updatedUser.id);
-                  if (existingIdx !== -1) {
-                    allUsers[existingIdx] = updatedUser;
-                  } else {
-                    allUsers.push(updatedUser);
+                let res;
+                const chosenPlan = formData.plan || formData.vendeurPlan || "Gratuit";
+                if (token) {
+                  res = await fetch("/api/auth/role-upgrade", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": token
+                    },
+                    body: JSON.stringify({
+                      role: "vendeur",
+                      vendeurPlan: chosenPlan,
+                      plan: chosenPlan,
+                      boutiqueName: formData.shopName,
+                      businessName: formData.shopName,
+                      boutiqueSlug: formData.slug || formData.shopName.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                      category: formData.category || "Artisanat & Terroir",
+                      boutiqueBio: formData.bio || "Artisan & Vendeur partenaire officiel Miabé Asi au Togo.",
+                      boutiqueWhatsapp: formData.whatsapp || formData.phone || user?.phone || "",
+                      phone: formData.phone || user?.phone || "",
+                      fullName: formData.fullName || user?.name || "Vendeur",
+                      name: formData.fullName || user?.name || "Vendeur"
+                    })
+                  });
+                } else {
+                  res = await fetch("/api/auth/register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      name: formData.fullName || formData.shopName,
+                      email: formData.email || `vendeur_${Date.now()}@miabeasi.tg`,
+                      password: formData.password || "asime_temp_pwd_2026",
+                      phone: formData.phone || "",
+                      role: "vendeur",
+                      vendeurPlan: chosenPlan,
+                      plan: chosenPlan,
+                      boutiqueName: formData.shopName,
+                      businessName: formData.shopName,
+                      boutiqueSlug: formData.slug || formData.shopName.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                      category: formData.category || "Artisanat & Terroir",
+                      boutiqueDescription: formData.bio,
+                      boutiqueWhatsapp: formData.whatsapp || formData.phone || ""
+                    })
+                  });
+                }
+                const data = await res.json();
+                if (data.success && data.user) {
+                  if (data.token) {
+                    localStorage.setItem("asime-user-token", data.token);
                   }
-                  localStorage.setItem("asime_emulated_users", JSON.stringify(allUsers));
-                } catch (e) {}
-
-                showToast(`Félicitations ! Votre boutique « ${formData.shopName} » a été activée en formule ${formData.plan}.`);
-                return true;
+                  setUser(data.user);
+                  setIsVendeurUnlocked(true);
+                  if (data.user.vendeurPlan === "Gratuit") {
+                    showToast(`Félicitations ! Votre boutique « ${formData.shopName} » est active en formule Gratuite.`);
+                  } else {
+                    showToast(`Boutique créée en formule ${data.user.vendeurPlan}. Veuillez procéder au règlement PayDunya pour activer votre boutique.`);
+                  }
+                  return true;
+                } else {
+                  showToast(data.error || "Erreur lors de l'enregistrement de la boutique.");
+                  return false;
+                }
               } catch (e) {
-                showToast("Erreur lors de la création de la boutique.");
+                showToast("Erreur de communication avec le serveur.");
                 return false;
               }
             }}
@@ -4014,6 +4118,168 @@ export default function MultiRoleDashboards({
             </form>
           </div>
 
+        </div>
+      </div>
+    );
+  }
+
+  const isLivreurActive = currentView === "livreur";
+
+  if (isLivreurActive) {
+    if (user?.role !== "livreur" && user?.role !== "admin") {
+      return (
+        <div className="flex flex-col h-full bg-[#FAF9F5] select-none w-full overflow-hidden">
+          {renderEscapeHeader("Accès Restreint", "Espace Livreur Partenaire")}
+          <div className="flex-grow overflow-y-auto p-4 md:p-10 max-w-md mx-auto w-full flex items-center justify-center">
+            <div className="bg-white border border-neutral-200 p-8 shadow-sm space-y-6 text-center rounded-2xl animate-fade-in">
+              <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto mb-2">
+                <Truck className="w-8 h-8 text-amber-600" />
+              </div>
+              <h4 className="text-base font-black text-neutral-950 uppercase tracking-wider">Espace Réservé aux Livreurs</h4>
+              <p className="text-xs text-neutral-500 leading-relaxed font-sans">
+                Cet espace de gestion logistique est exclusivement réservé aux livreurs partenaires agréés Miabé Asi.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentView("menu");
+                  setActiveTab("client");
+                }}
+                className="w-full bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white font-black uppercase tracking-widest py-3 text-xs transition-all cursor-pointer rounded-xl"
+              >
+                Retour à mon espace
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-col h-full bg-stone-50 select-none w-full overflow-hidden">
+        {renderEscapeHeader("Espace Livreur Partenaire", `Agent: ${user.name} • Zone: ${user.livreurZone || user.countryCode || "Togo"}`)}
+        <div className="flex-grow overflow-y-auto p-4 md:p-8 w-full space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
+            <div>
+              <h4 className="font-display font-black text-sm uppercase tracking-wider text-neutral-950 flex items-center gap-2">
+                <Truck className="w-5 h-5 text-emerald-600" />
+                <span>Missions de Livraison en Cours</span>
+              </h4>
+              <p className="text-xs text-neutral-500 font-sans mt-0.5">
+                Consultez vos colis à récupérer, contactez le destinataire et confirmez la remise en main propre.
+              </p>
+            </div>
+            <button
+              onClick={fetchDeliveryOrders}
+              disabled={isLoadingDeliveries}
+              className="bg-neutral-950 hover:bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDeliveries ? "animate-spin" : ""}`} />
+              <span>Actualiser</span>
+            </button>
+          </div>
+
+          {deliveryOrders.length === 0 ? (
+            <div className="bg-white border border-stone-200 p-12 text-center rounded-2xl space-y-3">
+              <Package className="w-10 h-10 text-neutral-300 mx-auto" />
+              <p className="text-xs font-bold text-neutral-700">Aucun colis en attente de livraison pour l'instant.</p>
+              <p className="text-[11px] text-neutral-400">Les nouvelles commandes assignées apparaîtront ici automatiquement.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {deliveryOrders.map((delivery: any) => (
+                <div key={delivery.id} className="bg-white border border-stone-200 rounded-2xl p-5 shadow-xs text-left space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-100 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-neutral-950 uppercase">COMMANDE #{delivery.id}</span>
+                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                          delivery.orderStatus === "Livré"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : delivery.orderStatus === "En cours de livraison"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}>
+                          {delivery.orderStatus}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-neutral-400 font-mono block mt-0.5">
+                        {delivery.date ? new Date(delivery.date).toLocaleDateString("fr-FR") : ""}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="font-mono font-black text-sm text-emerald-700">
+                        {formatFCFA(delivery.totalAmount)}
+                      </span>
+                      <span className="block text-[9px] font-bold text-neutral-500 uppercase">
+                        {delivery.paymentStatus === "Payé" ? "Payé (PayDunya)" : "Paiement à la livraison"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Client info & Address */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs bg-stone-50 p-3.5 rounded-xl border border-stone-200/80">
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block">Destinataire</span>
+                      <p className="font-bold text-neutral-900">{delivery.clientName}</p>
+                      <p className="font-mono text-neutral-600">{delivery.clientPhone || "Téléphone non renseigné"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block">Adresse de livraison</span>
+                      <p className="font-bold text-neutral-900">{delivery.destinationCity} {delivery.quartier ? `(${delivery.quartier})` : ""}</p>
+                      <p className="text-neutral-500 text-[11px]">{delivery.itemsCount} article(s) à livrer</p>
+                    </div>
+                  </div>
+
+                  {/* Actions for delivery person */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {delivery.clientPhone && (
+                      <a
+                        href={`tel:${delivery.clientPhone}`}
+                        className="bg-stone-100 hover:bg-stone-200 text-neutral-800 text-[11px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+                      >
+                        <PhoneCall className="w-3.5 h-3.5 text-neutral-700" />
+                        <span>Appeler</span>
+                      </a>
+                    )}
+                    {delivery.clientPhone && (
+                      <a
+                        href={`https://wa.me/${delivery.clientPhone.replace(/[^0-9]/g, "")}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>WhatsApp</span>
+                      </a>
+                    )}
+
+                    <div className="ml-auto flex items-center gap-2">
+                      {delivery.orderStatus !== "Livré" && (
+                        <>
+                          {delivery.orderStatus !== "En cours de livraison" && (
+                            <button
+                              onClick={() => handleUpdateDeliveryStatus(delivery.id, "En cours de livraison")}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-lg cursor-pointer transition-colors"
+                            >
+                              Prendre en charge
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleUpdateDeliveryStatus(delivery.id, "Livré")}
+                            className="bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold uppercase tracking-wider px-4 py-2 rounded-lg cursor-pointer transition-colors"
+                          >
+                            Confirmer Livré
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );

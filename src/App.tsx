@@ -907,7 +907,7 @@ export default function App() {
   const [isPaymentSuccess, setIsPaymentSuccess] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<any>(null);
   const [sellerDashboardActive, setSellerDashboardActive] = useState(false);
-  const [initialDashboardView, setInitialDashboardView] = useState<"vendeur" | "client" | "menu">("menu");
+  const [initialDashboardView, setInitialDashboardView] = useState<"vendeur" | "client" | "affilie" | "livreur" | "menu">("menu");
 
   // Automatic payment simulation states
   const [autoPaymentStep, setAutoPaymentStep] = useState<number>(0);
@@ -2498,6 +2498,8 @@ export default function App() {
             {user ? (
               <button
                 onClick={() => {
+                  setIsCartOpen(false);
+                  setIsMobileMenuOpen(false);
                   setEditName(user.name);
                   setEditPhone(user.phone || "");
                   setEditQuartier(user.quartier || "");
@@ -2513,6 +2515,8 @@ export default function App() {
             ) : (
               <button
                 onClick={() => {
+                  setIsCartOpen(false);
+                  setIsMobileMenuOpen(false);
                   setAuthMode("login");
                   setAuthError("");
                   setIsAuthOpen(true);
@@ -2530,7 +2534,11 @@ export default function App() {
             <motion.button 
               animate={isCartBouncing ? { scale: [1, 1.25, 0.9, 1.1, 1] } : {}}
               transition={{ duration: 0.4 }}
-              onClick={() => setIsCartOpen(true)}
+              onClick={() => {
+                setIsProfileOpen(false);
+                setIsMobileMenuOpen(false);
+                setIsCartOpen(true);
+              }}
               className="hidden sm:flex relative bg-neutral-950 hover:bg-neutral-900 text-[#D4AF37] w-9 h-9 sm:w-11 sm:h-11 rounded-full items-center justify-center transition-all duration-300 shadow-md border border-neutral-800 cursor-pointer shrink-0"
               title="Mon Panier"
               id="header-cart-btn"
@@ -7107,6 +7115,8 @@ export default function App() {
         {/* Profil / Connexion */}
         <button 
           onClick={() => {
+            setIsMobileMenuOpen(false);
+            setIsCartOpen(false);
             if (user) {
               setEditName(user.name);
               setEditPhone(user.phone || "");
@@ -7126,7 +7136,11 @@ export default function App() {
 
         {/* Panier */}
         <button 
-          onClick={() => setIsCartOpen(true)}
+          onClick={() => {
+            setIsMobileMenuOpen(false);
+            setIsProfileOpen(false);
+            setIsCartOpen(true);
+          }}
           className={`flex flex-col items-center gap-1 bg-transparent border-0 p-1 cursor-pointer transition-colors relative ${isCartOpen ? "text-[#d4af37]" : "text-neutral-500 hover:text-neutral-905"}`}
         >
           <div className="relative">
@@ -7142,7 +7156,11 @@ export default function App() {
 
         {/* Menu (Hamburger) */}
         <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          onClick={() => {
+            setIsCartOpen(false);
+            setIsProfileOpen(false);
+            setIsMobileMenuOpen(!isMobileMenuOpen);
+          }}
           className={`flex flex-col items-center gap-1 bg-transparent border-0 p-1 cursor-pointer transition-colors ${isMobileMenuOpen ? "text-[#d4af37]" : "text-neutral-500 hover:text-neutral-905"}`}
         >
           <Menu className="w-5 h-5" />

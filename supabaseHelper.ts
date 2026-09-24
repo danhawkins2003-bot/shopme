@@ -312,9 +312,9 @@ export function mapOrderToSupabaseRow(o: any) {
 /**
  * Sync single product to relational `public.products` table in Supabase
  */
-export async function syncProductToSupabaseTable(product: any): Promise<boolean> {
+export async function syncProductToSupabaseTable(product: any): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return false;
+  if (!client) return { success: false, error: "Client Supabase non initialisé." };
 
   const allowedCols = await getProductTableColumns(client);
   const row = mapProductToSupabaseRow(product, allowedCols);
@@ -326,23 +326,23 @@ export async function syncProductToSupabaseTable(product: any): Promise<boolean>
 
     if (error) {
       console.warn(`⚠️ [Supabase Relational] Erreur d'enregistrement produit "${row.nom}":`, error.message);
-      return false;
+      return { success: false, error: error.message };
     }
 
     console.log(`✨ [Supabase Relational] Produit synchronisé avec succès : ${row.nom} (ID: ${row.id})`);
-    return true;
+    return { success: true };
   } catch (err: any) {
     console.warn(`⚠️ [Supabase Relational] Exception lors de la sauvegarde produit:`, err.message || err);
-    return false;
+    return { success: false, error: err.message || String(err) };
   }
 }
 
 /**
  * Delete product from relational `public.products` table in Supabase
  */
-export async function deleteProductFromSupabaseTable(productId: string): Promise<boolean> {
+export async function deleteProductFromSupabaseTable(productId: string): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient();
-  if (!client) return false;
+  if (!client) return { success: false, error: "Client Supabase non initialisé." };
 
   try {
     const { error } = await client
@@ -352,14 +352,14 @@ export async function deleteProductFromSupabaseTable(productId: string): Promise
 
     if (error) {
       console.warn(`⚠️ [Supabase Relational] Erreur de suppression produit ${productId}:`, error.message);
-      return false;
+      return { success: false, error: error.message };
     }
 
     console.log(`🗑️ [Supabase Relational] Produit supprimé avec succès : ${productId}`);
-    return true;
+    return { success: true };
   } catch (err: any) {
     console.warn(`⚠️ [Supabase Relational] Exception lors de la suppression produit:`, err.message || err);
-    return false;
+    return { success: false, error: err.message || String(err) };
   }
 }
 
@@ -500,8 +500,203 @@ export async function loadProductsFromSupabaseTable(): Promise<any[] | null> {
   }
 }
 
+let storageBucketsEnsured = false;
+
 /**
- * Save a document key-value pair to the `asime_store` table in Supabase (Backup storage).
+ * Ensures required storage buckets ('products' and 'app-data') exist in Supabase Storage.
+ */
+export async function ensureStorageBuckets(): Promise<void> {
+  if (storageBucketsEnsured) return;
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  try {
+    const { data: buckets } = await client.storage.listBuckets();
+    const existing = new Set((buckets || []).map((b: any) => b.name));
+
+    if (!existing.has("products")) {
+      await client.storage.createBucket("products", {
+        public: true,
+        fileSizeLimit: 15728640, // 15MB
+        allowedMimeTypes: ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"]
+      });
+      console.log("📦 [Supabase Storage] Bucket 'products' créé avec succès.");
+    }
+
+    if (!existing.has("app-data")) {
+      await client.storage.createBucket("app-data", {
+        public: true
+      });
+      console.log("📦 [Supabase Storage] Bucket 'app-data' créé avec succès.");
+    }
+
+    storageBucketsEnsured = true;
+  } catch (err) {
+    console.warn("⚠️ [Supabase Storage] Vérification buckets:", err);
+  }
+}
+
+/**
+ * Upload an image buffer to the public 'products' Supabase Storage bucket.
+ */
+export async function uploadImageToSupabaseStorage(
+  buffer: Buffer,
+  fileName: string,
+  contentType: string
+): Promise<{ success: boolean; url?: string; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { success: false, error: "Client Supabase non initialisé." };
+  }
+
+  try {
+    await ensureStorageBuckets();
+
+    const safeExt = (contentType.split("/")[1] || "jpg").replace(/[^a-zA-Z0-9]/g, "");
+    const safeBaseName = (fileName || "image")
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[^a-zA-Z0-9_-]/g, "_")
+      .slice(0, 30);
+    const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${safeBaseName}.${safeExt}`;
+
+    const { error } = await client.storage.from("products").upload(uniqueFileName, buffer, {
+      contentType: contentType || "image/jpeg",
+      upsert: true
+    });
+
+    if (error) {
+      console.error("🔴 [Supabase Storage Upload] Erreur:", error.message);
+      return { success: false, error: error.message };
+    }
+
+    const { data: pubData } = client.storage.from("products").getPublicUrl(uniqueFileName);
+    const publicUrl = pubData.publicUrl;
+
+    console.log(`📸 [Supabase Storage] Image téléversée avec succès: ${publicUrl}`);
+    return { success: true, url: publicUrl };
+  } catch (err: any) {
+    console.error("🔴 [Supabase Storage Upload] Exception:", err);
+    return { success: false, error: err.message || "Erreur de téléversement vers Supabase Storage." };
+  }
+}
+
+/**
+ * Delete an image from 'products' bucket if it resides on Supabase Storage.
+ */
+export async function deleteImageFromSupabaseStorage(imageUrl: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client || !imageUrl) return false;
+
+  try {
+    if (!imageUrl.includes("/products/")) {
+      return false;
+    }
+    const parts = imageUrl.split("/products/");
+    const filePath = parts[1]?.split("?")[0];
+    if (!filePath) return false;
+
+    const { error } = await client.storage.from("products").remove([filePath]);
+    if (error) {
+      console.warn("⚠️ [Supabase Storage Delete] Erreur:", error.message);
+      return false;
+    }
+    console.log(`🗑️ [Supabase Storage] Ancienne image supprimée: ${filePath}`);
+    return true;
+  } catch (e) {
+    console.warn("⚠️ [Supabase Storage Delete] Exception:", e);
+    return false;
+  }
+}
+
+/**
+ * Persist app data document to Supabase Storage 'app-data' bucket (single source of truth on Vercel).
+ */
+export async function saveAppData(key: string, data: any): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+
+  const cleanKey = key.replace(/\\/g, "/").split("/").pop() || key;
+  try {
+    await ensureStorageBuckets();
+    const jsonStr = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+    const buffer = Buffer.from(jsonStr, "utf-8");
+
+    const { error } = await client.storage.from("app-data").upload(cleanKey, buffer, {
+      contentType: "application/json",
+      upsert: true
+    });
+
+    if (error) {
+      console.warn(`⚠️ [Supabase app-data] Erreur sauvegarde "${cleanKey}":`, error.message);
+      return false;
+    }
+    return true;
+  } catch (e: any) {
+    console.warn(`⚠️ [Supabase app-data] Exception sauvegarde "${cleanKey}":`, e.message || e);
+    return false;
+  }
+}
+
+/**
+ * Load app data document from Supabase Storage 'app-data' bucket.
+ */
+export async function loadAppData<T>(key: string, fallback: T): Promise<T> {
+  const client = getSupabaseClient();
+  if (!client) return fallback;
+
+  const cleanKey = key.replace(/\\/g, "/").split("/").pop() || key;
+  try {
+    const { data, error } = await client.storage.from("app-data").download(cleanKey);
+    if (error || !data) {
+      return fallback;
+    }
+    const text = await data.text();
+    return JSON.parse(text) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Record a deleted product ID into persistent tombstone blacklist in Supabase.
+ */
+export async function recordTombstoneInSupabase(productId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  const idStr = String(productId).trim();
+  if (!idStr) return;
+
+  try {
+    const list = await loadAppData<any[]>("deleted_products.json", []);
+    const existing = new Set(list.map((item: any) => typeof item === "string" ? item : (item?.id ? String(item.id) : "")).filter(Boolean));
+    if (!existing.has(idStr)) {
+      list.push({ id: idStr, deletedAt: new Date().toISOString() });
+      await saveAppData("deleted_products.json", list);
+      console.log(`🛡️ [Tombstone Supabase] Produit "${idStr}" enregistré dans la blacklist persistante (total: ${list.length}).`);
+    }
+  } catch (e) {
+    console.warn("⚠️ [Tombstone Supabase] Erreur:", e);
+  }
+}
+
+/**
+ * Load tombstone blacklist IDs from Supabase.
+ */
+export async function loadTombstonesFromSupabase(): Promise<string[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+
+  try {
+    const list = await loadAppData<any[]>("deleted_products.json", []);
+    return list.map((item: any) => typeof item === "string" ? item : (item?.id ? String(item.id) : "")).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Save a document key-value pair to Supabase (uses 'app-data' bucket & asime_store if present).
  */
 export async function saveToSupabaseStore(key: string, value: any): Promise<boolean> {
   const client = getSupabaseClient();
@@ -509,13 +704,10 @@ export async function saveToSupabaseStore(key: string, value: any): Promise<bool
 
   const cleanKey = key.replace(/\\/g, "/").split("/").pop() || key;
 
-  // Also sync relational products table if the key is products
-  if (cleanKey.toLowerCase().includes("produit") || cleanKey.toLowerCase().includes("product")) {
-    if (Array.isArray(value)) {
-      syncAllProductsToSupabaseTable(value).catch(() => {});
-    }
-  }
+  // Persist to app-data bucket
+  await saveAppData(cleanKey, value);
 
+  // Also try relational / asime_store if table exists
   try {
     let { error } = await client
       .from("asime_store")
@@ -525,29 +717,21 @@ export async function saveToSupabaseStore(key: string, value: any): Promise<bool
       );
 
     if (error && error.message?.includes("column \"value\"")) {
-      const retryRes = await client
+      await client
         .from("asime_store")
         .upsert(
           { key: cleanKey, data: value, updated_at: new Date().toISOString() },
           { onConflict: "key" }
         );
-      error = retryRes.error;
     }
-
-    if (error) {
-      console.warn(`⚠️ [Supabase Store] Info pour clé "${cleanKey}":`, error.message);
-      return false;
-    }
-
     return true;
-  } catch (err: any) {
-    console.warn(`⚠️ [Supabase Store] Exception pour "${cleanKey}":`, err.message || err);
-    return false;
+  } catch {
+    return true;
   }
 }
 
 /**
- * Load a document from the `asime_store` table in Supabase.
+ * Load a document from Supabase (checks app-data bucket first, then relational products, then asime_store).
  */
 export async function loadFromSupabaseStore(key: string): Promise<any | null> {
   const client = getSupabaseClient();
@@ -563,6 +747,12 @@ export async function loadFromSupabaseStore(key: string): Promise<any | null> {
     }
   }
 
+  // Load from app-data bucket
+  const appData = await loadAppData<any>(cleanKey, null);
+  if (appData !== null) {
+    return appData;
+  }
+
   try {
     const { data, error } = await client
       .from("asime_store")
@@ -570,21 +760,15 @@ export async function loadFromSupabaseStore(key: string): Promise<any | null> {
       .eq("key", cleanKey)
       .maybeSingle();
 
-    if (error) {
-      return null;
-    }
-
-    if (data) {
+    if (!error && data) {
       const storeVal = data.value !== undefined ? data.value : data.data;
       if (storeVal !== undefined && storeVal !== null) {
         return storeVal;
       }
     }
+  } catch {}
 
-    return null;
-  } catch (err: any) {
-    return null;
-  }
+  return null;
 }
 
 export async function checkSupabaseHealth(): Promise<{

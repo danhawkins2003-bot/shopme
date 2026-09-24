@@ -70,7 +70,7 @@ export const translations: TranslationDictionary = {
     ee: "Togo-tɔwo ƒe Adzɔnu Dzesiwo",
   },
   featured_subtitle: {
-    fr: "Une sélection exclusive d'articles artisanaux de haute qualité issus de nos régions.",
+    fr: "Une sélection exclusive de produits et créations africaines de haute qualité issus de nos régions.",
     ee: "Adzɔnu dzesi siwo fia míaƒe nutowo me aɖaŋudɔ xɔŋgɔwo.",
   },
   all_categories: {
@@ -78,7 +78,7 @@ export const translations: TranslationDictionary = {
     ee: "Hame Dzesiwo",
   },
   all_categories_sub: {
-    fr: "Explorez la richesse de l'artisanat et des saveurs locales du Togo.",
+    fr: "Explorez la richesse des terroirs et des produits africains des 7 pays partenaires.",
     ee: "Kpɔ aɖaŋudɔ siwo le Togo la ƒe kesinɔnuwo.",
   },
   blog_latest: {
@@ -86,7 +86,7 @@ export const translations: TranslationDictionary = {
     ee: "Nyadzɔdzɔ & Aɖaŋuɖoɖo Yeyewo",
   },
   blog_latest_sub: {
-    fr: "Découvrez les histoires fascinantes derrière nos artisans et nos guides de consommation.",
+    fr: "Découvrez les histoires fascinantes derrière nos vendeurs africains et nos guides de consommation.",
     ee: "Kpɔ míaƒe aɖaŋudɔwɔlawo ƒe ŋutinya dzesiwo.",
   },
   newsletter_title: {
@@ -94,7 +94,7 @@ export const translations: TranslationDictionary = {
     ee: "Yi edzi nànɔ kadodo me kple Afitɔnuwo",
   },
   newsletter_sub: {
-    fr: "Inscrivez-vous pour recevoir les nouveautés, les promotions de saison et l'actualité de nos artisans.",
+    fr: "Inscrivez-vous pour recevoir les nouveautés, les promotions de saison et l'actualité de nos vendeurs africains.",
     ee: "De ŋkɔ wòagbɔ dzesi be nàxɔ nu yeyewo kple asitsalawo ƒe nyadzɔdzɔwo.",
   },
   newsletter_btn: {
@@ -286,12 +286,12 @@ export const translations: TranslationDictionary = {
 
   // Blog Page
   blog_title: {
-    fr: "Blog, Conseils & Artisans",
-    ee: "Nyadzɔdzɔwo, Aɖaŋu & Aɖaŋudɔwɔlawo",
+    fr: "Blog, Conseils & Vendeurs Africains",
+    ee: "Nyadzɔdzɔwo, Aɖaŋu & Asitsalawo",
   },
   blog_sub: {
-    fr: "L'actualité du consommer local au Togo, portraits d'artisans d'exception et recettes traditionnelles.",
-    ee: "Nyadzɔdzɔwo tso afitɔnuwo ŋu le Togo kple aɖaŋudɔwɔlawo ƒe ŋutinyawo.",
+    fr: "L'actualité du consommer local africain, portraits de vendeurs et créateurs d'exception et recettes traditionnelles.",
+    ee: "Nyadzɔdzɔwo tso afitɔnuwo ŋu le Afrika kple asitsalawo ƒe ŋutinyawo.",
   },
   read_more: {
     fr: "Lire la suite",
@@ -358,8 +358,8 @@ export const translations: TranslationDictionary = {
     ee: "Míekpɔ agbegbɔkpɔnuwo katã dzi.",
   },
   footer_slogan: {
-    fr: "Miabé Asi - Le local, notre fierté. Valoriser nos artisans et producteurs locaux pour bâtir une économie togolaise forte et souveraine.",
-    ee: "Miabé Asi - Le local, notre fierté. Kpekpeɖeŋu nana míaƒe aɖaŋudɔwɔlawo kple afitɔwo be Togo ƒe ganyawo gasẽ ɖe edzi.",
+    fr: "Miabé Asi - Le panafricain, notre fierté. Valoriser nos vendeurs et producteurs africains pour bâtir une économie forte et souveraine à travers les 7 pays partenaires.",
+    ee: "Miabé Asi - Le panafricain, notre fierté. Kpekpeɖeŋu nana míaƒe asitsalawo kple afitɔwo be Afrika ƒe ganyawo gasẽ ɖe edzi.",
   },
 
   // Toasts / Notifications

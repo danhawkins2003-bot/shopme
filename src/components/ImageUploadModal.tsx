@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { Upload, X, Check, Image as ImageIcon, Camera, RotateCcw, Sparkles } from "lucide-react";
 import { fileToOptimizedDataUrl } from "../lib/imageUtils";
+import { uploadImageToServer } from "../lib/imageUploadHelper";
 
 interface ImageUploadModalProps {
   isOpen: boolean;
@@ -62,11 +63,26 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
 
   const handleConfirm = async () => {
     setIsProcessing(true);
+    setErrorMessage(null);
     try {
-      await onSaveImage(selectedImage);
+      let finalUrl = selectedImage;
+
+      // If the user selected a new local image, upload it to Supabase Storage
+      if (selectedImage.startsWith("data:")) {
+        const uploadResult = await uploadImageToServer(selectedImage, currentImageUrl);
+        if (!uploadResult.success || !uploadResult.url) {
+          setErrorMessage(uploadResult.error || "Échec du téléversement sur Supabase Storage.");
+          setIsProcessing(false);
+          return;
+        }
+        finalUrl = uploadResult.url;
+      }
+
+      await onSaveImage(finalUrl);
       onClose();
     } catch (e: any) {
-      setErrorMessage("Erreur lors de l'enregistrement de l'image.");
+      console.error("Erreur enregistrement image:", e);
+      setErrorMessage(e.message || "Erreur lors de l'enregistrement de l'image.");
     } finally {
       setIsProcessing(false);
     }

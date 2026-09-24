@@ -51,7 +51,26 @@ for (const envFile of possibleEnvPaths) {
 import { GoogleGenAI } from "@google/genai";
 import { PaymentGateway, updatePayDunyaInvoiceStatus, getPayDunyaInvoice, recordPayDunyaInvoice, loadPayDunyaInvoices } from "./paymentGateway";
 import { WalletManager } from "./walletHelper";
-import { saveToSupabaseStore, loadFromSupabaseStore, isSupabaseConfigured, printSetupInstructions, getSupabaseClient, checkSupabaseHealth, syncProductToSupabaseTable, deleteProductFromSupabaseTable, syncAllProductsToSupabaseTable, loadProductsFromSupabaseTable, migrateProductsFileToSupabase } from "./supabaseHelper";
+import { 
+  saveToSupabaseStore, 
+  loadFromSupabaseStore, 
+  isSupabaseConfigured, 
+  printSetupInstructions, 
+  getSupabaseClient, 
+  checkSupabaseHealth, 
+  syncProductToSupabaseTable, 
+  deleteProductFromSupabaseTable, 
+  syncAllProductsToSupabaseTable, 
+  loadProductsFromSupabaseTable, 
+  migrateProductsFileToSupabase,
+  ensureStorageBuckets,
+  uploadImageToSupabaseStorage,
+  deleteImageFromSupabaseStorage,
+  saveAppData,
+  loadAppData,
+  recordTombstoneInSupabase,
+  loadTombstonesFromSupabase
+} from "./supabaseHelper";
 
 const app = express();
 const PORT = 3000;
@@ -107,15 +126,29 @@ const BANNER_REQUESTS_FILE = path.join(process.cwd(), "banner_requests.json");
 const PRODUCTS_BACKUP_FILE = path.join(process.cwd(), "products.json");
 const DELETED_PRODUCTS_FILE = path.join(process.cwd(), "deleted_products.json");
 
+// In-memory set for fast, consistent tombstone tracking across requests
+const inMemoryDeletedIds = new Set<string>();
+
+// Asynchronously hydrate tombstones from Supabase on start
+if (isSupabaseConfigured()) {
+  loadTombstonesFromSupabase().then((ids) => {
+    ids.forEach((id) => inMemoryDeletedIds.add(id));
+    console.log(`🛡️ [Tombstones] ${ids.length} tombstones chargés depuis Supabase.`);
+  }).catch(() => {});
+}
+
 // Helper to retrieve all permanently deleted product IDs
 function getDeletedProductIds(): string[] {
   try {
     const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
-    if (!Array.isArray(list)) return [];
-    return list.map(item => typeof item === "string" ? item : (item?.id ? String(item.id) : "")).filter(Boolean);
-  } catch (e) {
-    return [];
-  }
+    if (Array.isArray(list)) {
+      list.forEach((item) => {
+        const id = typeof item === "string" ? item : (item?.id ? String(item.id) : "");
+        if (id) inMemoryDeletedIds.add(id);
+      });
+    }
+  } catch (e) {}
+  return Array.from(inMemoryDeletedIds);
 }
 
 // Helper to record a product ID in the persistent tombstone blacklist
@@ -123,18 +156,26 @@ function recordDeletedProductId(id: string): void {
   try {
     const idStr = String(id).trim();
     if (!idStr) return;
-    const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
-    const existingIds = new Set(list.map(item => typeof item === "string" ? item : (item?.id ? String(item.id) : "")).filter(Boolean));
-    if (!existingIds.has(idStr)) {
-      list.push({ id: idStr, deletedAt: new Date().toISOString() });
-      writeJSONFile(DELETED_PRODUCTS_FILE, list);
-      console.log(`🛡️ [Tombstone] Produit "${idStr}" enregistré dans la blacklist persistante (total: ${list.length}).`);
-      if (isSupabaseConfigured()) {
-        saveToSupabaseStore("deleted_products.json", list).catch(err => {
-          console.warn("⚠️ [Tombstone Supabase] Erreur enregistrement deleted_products:", err);
-        });
-      }
+    inMemoryDeletedIds.add(idStr);
+    
+    // Persist to Supabase Storage app-data bucket
+    if (isSupabaseConfigured()) {
+      recordTombstoneInSupabase(idStr).catch((err) => {
+        console.warn("⚠️ [Tombstone Supabase] Erreur enregistrement deleted_products:", err);
+      });
     }
+
+    if (process.env.VERCEL !== "1") {
+      try {
+        const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
+        const existingIds = new Set(list.map(item => typeof item === "string" ? item : (item?.id ? String(item.id) : "")).filter(Boolean));
+        if (!existingIds.has(idStr)) {
+          list.push({ id: idStr, deletedAt: new Date().toISOString() });
+          fs.writeFileSync(DELETED_PRODUCTS_FILE, JSON.stringify(list, null, 2), "utf-8");
+        }
+      } catch {}
+    }
+    console.log(`🛡️ [Tombstone] Produit "${idStr}" enregistré dans la blacklist.`);
   } catch (e) {
     console.error("Erreur enregistrement produit supprimé:", e);
   }
@@ -145,16 +186,31 @@ function removeDeletedProductId(id: string): void {
   try {
     const idStr = String(id).trim();
     if (!idStr) return;
-    const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
-    const filtered = list.filter(item => {
-      const existingId = typeof item === "string" ? item : (item?.id ? String(item.id) : "");
-      return existingId !== idStr;
-    });
-    if (filtered.length !== list.length) {
-      writeJSONFile(DELETED_PRODUCTS_FILE, filtered);
-      if (isSupabaseConfigured()) {
-        saveToSupabaseStore("deleted_products.json", filtered).catch(() => {});
-      }
+    inMemoryDeletedIds.delete(idStr);
+
+    if (isSupabaseConfigured()) {
+      loadAppData<any[]>("deleted_products.json", []).then((list) => {
+        const filtered = list.filter(item => {
+          const existingId = typeof item === "string" ? item : (item?.id ? String(item.id) : "");
+          return existingId !== idStr;
+        });
+        if (filtered.length !== list.length) {
+          saveAppData("deleted_products.json", filtered).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+
+    if (process.env.VERCEL !== "1") {
+      try {
+        const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
+        const filtered = list.filter(item => {
+          const existingId = typeof item === "string" ? item : (item?.id ? String(item.id) : "");
+          return existingId !== idStr;
+        });
+        if (filtered.length !== list.length) {
+          fs.writeFileSync(DELETED_PRODUCTS_FILE, JSON.stringify(filtered, null, 2), "utf-8");
+        }
+      } catch {}
     }
   } catch (e) {}
 }
@@ -616,19 +672,9 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
     if (!loadedFromDisk || !content) {
       if (filePath === PRODUCTS_FILE) {
         memoryStore.set(filePath, []);
-        try {
-          fs.writeFileSync(filePath, JSON.stringify([], null, 2), "utf-8");
-        } catch (e) {
-          try {
-            fs.writeFileSync(getTmpFilePath(filePath), JSON.stringify([], null, 2), "utf-8");
-          } catch (e2) {}
-        }
         return [] as unknown as T;
       }
       memoryStore.set(filePath, defaultData);
-      try {
-        fs.writeFileSync(getTmpFilePath(filePath), JSON.stringify(defaultData, null, 2), "utf-8");
-      } catch (e) {}
       return defaultData;
     }
 
@@ -638,13 +684,6 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
         if (match === "SHOPME") return "MIABÉ ASI";
         return "asime";
       });
-      try {
-        fs.writeFileSync(filePath, content, "utf-8");
-      } catch (e) {
-        try {
-          fs.writeFileSync(getTmpFilePath(filePath), content, "utf-8");
-        } catch (e2) {}
-      }
     }
 
     const parsed = JSON.parse(content);
@@ -671,26 +710,31 @@ function readJSONFile<T>(filePath: string, defaultData: T): T {
   }
 }
 
-// Helper to write JSON files safely
+// Helper to write JSON files safely without crashing in serverless/read-only environments
 function writeJSONFile<T>(filePath: string, data: T): boolean {
   memoryStore.set(filePath, data);
 
-  try {
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-  } catch (primaryErr) {
+  if (process.env.VERCEL !== "1") {
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    } catch (primaryErr) {
+      try {
+        const tmpPath = getTmpFilePath(filePath);
+        fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+      } catch (tmpErr) {}
+    }
+  } else {
     try {
       const tmpPath = getTmpFilePath(filePath);
       fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), "utf-8");
-    } catch (tmpErr) {
-      console.warn(`[Storage] Disk write failed for ${filePath}, preserved in server memory:`, tmpErr);
-    }
+    } catch {}
   }
 
   // Background replication to Supabase cloud if active
   if (isSupabaseConfigured()) {
     const keyName = path.basename(filePath);
     saveToSupabaseStore(keyName, data).catch((err) => {
-      console.error(`🔴 [Supabase Sync Error] Could not replicate "${keyName}":`, err.message || err);
+      console.warn(`⚠️ [Supabase Sync] Non-blocking backup for "${keyName}":`, err.message || err);
     });
 
     // Directly sync relational table if data is products
@@ -714,6 +758,69 @@ app.get(["/api/products/deleted-ids", "/api/products/deleted-ids/"], (req, res) 
   res.json({ success: true, deletedIds });
 });
 
+// POST /api/upload - Direct upload to Supabase Storage products bucket
+app.post(["/api/upload", "/api/upload/image"], async (req, res) => {
+  try {
+    const { image, previousUrl, fileName, contentType } = req.body || {};
+    if (!image) {
+      return res.status(400).json({ success: false, error: "Image requise sous forme de chaîne base64 ou data URL." });
+    }
+
+    let buffer: Buffer;
+    let mimeType = contentType || "image/jpeg";
+
+    if (typeof image === "string" && image.startsWith("data:")) {
+      const match = image.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        buffer = Buffer.from(match[2], "base64");
+      } else {
+        buffer = Buffer.from(image, "base64");
+      }
+    } else if (typeof image === "string") {
+      buffer = Buffer.from(image, "base64");
+    } else {
+      buffer = Buffer.from(image);
+    }
+
+    if (buffer.length > 20 * 1024 * 1024) {
+      return res.status(413).json({ success: false, error: "L'image ne doit pas dépasser 20 Mo." });
+    }
+
+    // If an old image is being replaced, clean it up from Supabase Storage
+    if (previousUrl && typeof previousUrl === "string" && previousUrl.includes("supabase.co/storage")) {
+      deleteImageFromSupabaseStorage(previousUrl).catch((err) => {
+        console.warn("⚠️ [Upload] Erreur suppression ancienne image:", err);
+      });
+    }
+
+    const safeFileName = (fileName || `img_${Date.now()}`).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const result = await uploadImageToSupabaseStorage(buffer, safeFileName, mimeType);
+
+    if (!result.success || !result.url) {
+      console.error("🔴 [Upload API] Échec téléversement:", result.error);
+      return res.status(500).json({
+        success: false,
+        error: `Échec du téléversement sur Supabase Storage : ${result.error || "Erreur inconnue"}`
+      });
+    }
+
+    console.log(`📸 [Upload API] Image uploadée avec succès dans Supabase Storage: ${result.url}`);
+    return res.json({
+      success: true,
+      url: result.url,
+      path: result.path,
+      message: "Image téléversée et persistée avec succès."
+    });
+  } catch (err: any) {
+    console.error("🔴 [Upload API] Exception:", err);
+    return res.status(500).json({
+      success: false,
+      error: `Erreur serveur lors du téléversement de l'image : ${err.message || String(err)}`
+    });
+  }
+});
+
 // GET products (Supabase public.products as primary source of truth, with local JSON fallback and tombstone filtering)
 app.get(["/api/products", "/api/products/"], async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -734,13 +841,15 @@ app.get(["/api/products", "/api/products/"], async (req, res) => {
 
   if (Array.isArray(supabaseProducts) && supabaseProducts.length > 0) {
     const cleanSupabase = supabaseProducts.filter((p: any) => !deletedIds.has(String(p?.id)));
-    // Keep local cache file updated as offline fallback
-    try {
-      writeJSONFile(PRODUCTS_FILE, cleanSupabase);
-      if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
-        writeJSONFile(PRODUCTS_BACKUP_FILE, cleanSupabase);
-      }
-    } catch (e) {}
+    memoryStore.set(PRODUCTS_FILE, cleanSupabase);
+    if (process.env.VERCEL !== "1") {
+      try {
+        fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(cleanSupabase, null, 2), "utf-8");
+        if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
+          fs.writeFileSync(PRODUCTS_BACKUP_FILE, JSON.stringify(cleanSupabase, null, 2), "utf-8");
+        }
+      } catch (e) {}
+    }
     return res.json(cleanSupabase);
   }
 
@@ -764,6 +873,23 @@ app.post("/api/admin/auth", (req, res) => {
   } else {
     res.status(401).json({ success: false, error: "Mot de passe incorrect" });
   }
+});
+
+// Admin verification check
+app.get("/api/admin/verify", (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader === "asime2026" || authHeader === "asime2026-auth-session" || authHeader === "shopme2026" || authHeader === "shopme2026-auth-session") {
+    return res.json({ success: true, authorized: true, role: "admin" });
+  }
+  const userId = authHeader ? getUserIdFromToken(authHeader) : null;
+  if (userId) {
+    const users = readJSONFile<any[]>(USERS_FILE, []);
+    const user = users.find(u => u.id === userId);
+    if (user && user.role === "admin") {
+      return res.json({ success: true, authorized: true, role: "admin" });
+    }
+  }
+  return res.status(403).json({ success: false, authorized: false, error: "Non autorisé. Session administrateur requise." });
 });
 
 // --- CUSTOMER AUTHENTICATION ENDPOINTS ---
@@ -800,7 +926,8 @@ app.post(["/api/auth/register", "/auth/register"], (req, res) => {
       : "TG";
     const userCurrencyCode = currencyCode || (userCountryCode === "CM" ? "XAF" : "XOF");
 
-    const effectiveRole = role === "vendeur" ? "vendeur" : (role === "admin" ? "admin" : (role === "affilie" ? "affilie" : "client"));
+    // Strictly forbid self-assignment of "admin" role during registration
+    const effectiveRole = role === "vendeur" ? "vendeur" : (role === "affilie" ? "affilie" : (role === "livreur" ? "livreur" : "client"));
     const isVendeur = effectiveRole === "vendeur";
     
     // Resolve seller plan: "Gratuit" | "PRO" | "BUSINESS"
@@ -927,7 +1054,12 @@ app.post("/api/auth/update-profile", (req, res) => {
     return res.status(401).json({ success: false, error: "Session non valide." });
   }
 
-  const { name, phone, quartier, vendeurPin, affiliatePin, countryCode, country, currencyCode, businessName, boutiqueName, boutiqueDescription, boutiqueBio, boutiqueSlug, vendeurSlug, boutiqueLogo, boutiqueBanner, boutiqueWhatsapp } = req.body;
+  const { 
+    name, phone, quartier, city, vendeurPin, affiliatePin, 
+    countryCode, country, currencyCode, businessName, boutiqueName, 
+    boutiqueDescription, boutiqueBio, boutiqueSlug, vendeurSlug, 
+    boutiqueLogo, boutiqueBanner, boutiqueWhatsapp, livreurZone, livreurVehicle 
+  } = req.body;
   const users = readJSONFile<any[]>(USERS_FILE, []);
   const userIndex = users.findIndex(u => u.id === userId);
 
@@ -938,8 +1070,11 @@ app.post("/api/auth/update-profile", (req, res) => {
   if (name) users[userIndex].name = String(name).trim();
   if (typeof phone !== "undefined") users[userIndex].phone = String(phone).trim();
   if (typeof quartier !== "undefined") users[userIndex].quartier = String(quartier).trim();
+  if (typeof city !== "undefined") users[userIndex].city = String(city).trim();
   if (typeof vendeurPin !== "undefined") users[userIndex].vendeurPin = String(vendeurPin).trim();
   if (typeof affiliatePin !== "undefined") users[userIndex].affiliatePin = String(affiliatePin).trim();
+  if (typeof livreurZone !== "undefined") users[userIndex].livreurZone = String(livreurZone).trim();
+  if (typeof livreurVehicle !== "undefined") users[userIndex].livreurVehicle = String(livreurVehicle).trim();
 
   // Country & Currency support (7 authorized countries)
   const supportedCountryCodes = ["TG", "BJ", "BF", "CI", "ML", "SN", "CM"];
@@ -1044,82 +1179,92 @@ app.post("/api/auth/favorites/toggle", (req, res) => {
   }
 });
 
-// POST save/update product with security validation
+// POST save/update product with security validation (Supabase public.products as primary source of truth)
 app.post("/api/products/save", async (req, res) => {
-  const { auth, product } = req.body;
+  try {
+    const { auth, product } = req.body;
 
-  // Security Check: Verify admin password
-  if (auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
-    return res.status(403).json({ success: false, error: "Accès refusé. Non autorisé." });
-  }
-
-  if (!product || !product.nom || typeof product.prix === "undefined") {
-    return res.status(400).json({ success: false, error: "Données de produit manquantes ou invalides." });
-  }
-
-  const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
-  const prix = Math.max(0, Number(product.prix));
-  const prixBarre = product.prixBarre ? Math.max(0, Number(product.prixBarre)) : (product.prix_barre ? Math.max(0, Number(product.prix_barre)) : null);
-  const images = Array.isArray(product.images) && product.images.length > 0 
-    ? product.images 
-    : (product.image ? [product.image] : []);
-  const affiliateLink = product.lienAffilie ? String(product.lienAffilie).trim() : (product.lien_affilie ? String(product.lien_affilie).trim() : "");
-
-  // Format and validate data types
-  const validatedProduct = {
-    id: product.id ? String(product.id) : "prod_" + Date.now().toString(),
-    nom: String(product.nom).trim(),
-    description: String(product.description || "").trim(),
-    prix: prix,
-    prixBarre: prixBarre,
-    prix_barre: prixBarre,
-    images: images,
-    image: images.length > 0 ? images[0] : "",
-    categorie: String(product.categorie || "Général").trim(),
-    phare: !!product.phare,
-    stock: typeof product.stock !== "undefined" ? Math.max(0, Math.floor(Number(product.stock))) : 10,
-    partenaire: product.partenaire ? String(product.partenaire).trim() : "Boutique en Direct",
-    lienAffilie: affiliateLink,
-    lien_affilie: affiliateLink,
-    valide: typeof product.valide !== "undefined" ? !!product.valide : true,
-    status: product.status || "actif"
-  };
-
-  const existingIndex = products.findIndex((p) => String(p.id) === String(validatedProduct.id));
-
-  if (existingIndex > -1) {
-    // Update existing product
-    products[existingIndex] = { ...products[existingIndex], ...validatedProduct };
-  } else {
-    // Add new product to top of catalog
-    products.unshift(validatedProduct);
-  }
-
-  const success = writeJSONFile(PRODUCTS_FILE, products);
-  if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
-    try {
-      writeJSONFile(PRODUCTS_BACKUP_FILE, products);
-    } catch (e) {}
-  }
-
-  // Remove from deleted products tombstone blacklist in case it was previously deleted
-  removeDeletedProductId(String(validatedProduct.id));
-
-  // Synchronize immediately to Supabase public.products table
-  if (isSupabaseConfigured()) {
-    try {
-      await syncProductToSupabaseTable(validatedProduct);
-      console.log(`✨ [Supabase] Produit "${validatedProduct.nom}" (${validatedProduct.id}) synchronisé avec succès dans public.products`);
-    } catch (sbErr) {
-      console.warn(`⚠️ [Supabase] Erreur d'enregistrement immédiat dans public.products:`, sbErr);
+    // Security Check: Verify admin password
+    if (auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+      return res.status(403).json({ success: false, error: "Accès refusé. Non autorisé." });
     }
-  }
 
-  if (success) {
+    if (!product || !product.nom || typeof product.prix === "undefined") {
+      return res.status(400).json({ success: false, error: "Données de produit manquantes ou invalides (nom et prix requis)." });
+    }
+
+    const prix = Math.max(0, Number(product.prix));
+    const prixBarre = product.prixBarre ? Math.max(0, Number(product.prixBarre)) : (product.prix_barre ? Math.max(0, Number(product.prix_barre)) : null);
+    const images = Array.isArray(product.images) && product.images.length > 0 
+      ? product.images 
+      : (product.image ? [product.image] : ["https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600"]);
+    const affiliateLink = product.lienAffilie ? String(product.lienAffilie).trim() : (product.lien_affilie ? String(product.lien_affilie).trim() : "");
+
+    // Format and validate data types
+    const validatedProduct = {
+      id: product.id ? String(product.id) : "prod_" + Date.now().toString(),
+      nom: String(product.nom).trim(),
+      description: String(product.description || "").trim(),
+      prix: prix,
+      prixBarre: prixBarre,
+      prix_barre: prixBarre,
+      images: images,
+      image: images.length > 0 ? images[0] : "",
+      categorie: String(product.categorie || "Général").trim(),
+      phare: typeof product.phare !== "undefined" ? !!product.phare : true,
+      stock: typeof product.stock !== "undefined" ? Math.max(0, Math.floor(Number(product.stock))) : 10,
+      partenaire: product.partenaire ? String(product.partenaire).trim() : "Boutique en Direct",
+      lienAffilie: affiliateLink,
+      lien_affilie: affiliateLink,
+      countryOrigin: product.countryOrigin || product.countryCode || "TG",
+      countryCode: product.countryCode || product.countryOrigin || "TG",
+      currencyCode: product.currencyCode || (product.countryCode === "CM" ? "XAF" : "XOF"),
+      isCrossBorderEligible: product.isCrossBorderEligible !== undefined ? !!product.isCrossBorderEligible : true,
+      weightKg: Number(product.weightKg || product.weight_kg) || 0.5,
+      valide: typeof product.valide !== "undefined" ? !!product.valide : true,
+      status: product.status || "actif"
+    };
+
+    // Remove from deleted products tombstone blacklist in case it was previously deleted
+    removeDeletedProductId(String(validatedProduct.id));
+
+    // 1. Primary Source of Truth: Synchronize to Supabase public.products table
+    if (isSupabaseConfigured()) {
+      const sbResult = await syncProductToSupabaseTable(validatedProduct);
+      if (!sbResult.success) {
+        console.error(`🔴 [POST /api/products/save] Échec Supabase:`, sbResult.error);
+        return res.status(500).json({
+          success: false,
+          error: `Erreur d'enregistrement Supabase : ${sbResult.error || "Erreur de base de données"}`
+        });
+      }
+      console.log(`✨ [Supabase] Produit "${validatedProduct.nom}" (${validatedProduct.id}) synchronisé avec succès dans public.products`);
+    }
+
+    // 2. Non-blocking update of in-memory cache and local file
+    const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+    const existingIndex = products.findIndex((p) => String(p.id) === String(validatedProduct.id));
+    if (existingIndex > -1) {
+      products[existingIndex] = { ...products[existingIndex], ...validatedProduct };
+    } else {
+      products.unshift(validatedProduct);
+    }
+    memoryStore.set(PRODUCTS_FILE, products);
+
+    if (process.env.VERCEL !== "1") {
+      try {
+        fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2), "utf-8");
+        if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
+          fs.writeFileSync(PRODUCTS_BACKUP_FILE, JSON.stringify(products, null, 2), "utf-8");
+        }
+      } catch (e) {}
+    }
+
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.json({ success: true, product: validatedProduct });
-  } else {
-    res.status(500).json({ success: false, error: "Impossible d'écrire dans la base de données." });
+    return res.json({ success: true, product: validatedProduct });
+  } catch (err: any) {
+    console.error("🔴 [POST /api/products/save] Exception inattendue:", err);
+    return res.status(500).json({ success: false, error: "Erreur serveur lors de la sauvegarde : " + (err.message || String(err)) });
   }
 });
 
@@ -1310,7 +1455,7 @@ app.post("/api/admin/sync-products", async (req, res) => {
   }
 });
 
-// DELETE product (Secure - deletes from Supabase public.products, local file, backup products.json, and adds to tombstone)
+// DELETE product (Secure - deletes from Supabase public.products, persists tombstone, non-blocking cache update)
 app.delete("/api/products/:id", async (req, res) => {
   const { id } = req.params;
   const idStr = String(id).trim();
@@ -1337,50 +1482,52 @@ app.delete("/api/products/:id", async (req, res) => {
     return res.status(403).json({ success: false, error: "Accès refusé. Non autorisé." });
   }
 
-  // 1. Delete from Supabase public.products table
-  let supabaseDeleted = false;
-  if (isSupabaseConfigured()) {
-    try {
-      supabaseDeleted = await deleteProductFromSupabaseTable(idStr);
-      console.log(`🗑️ [Supabase] Produit ${idStr} supprimé de public.products (résultat: ${supabaseDeleted})`);
-    } catch (sbErr) {
-      console.warn(`⚠️ [Supabase] Erreur de suppression produit ${idStr}:`, sbErr);
-    }
-  }
-
-  // 2. Delete from produits.json
-  const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
-  const filtered = products.filter((p) => String(p.id) !== idStr);
-  const wasInLocalFile = products.length !== filtered.length;
-
-  if (wasInLocalFile) {
-    writeJSONFile(PRODUCTS_FILE, filtered);
-  }
-
-  // 3. Delete from backup products.json if present
-  if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
-    try {
-      const backupProducts = readJSONFile<any[]>(PRODUCTS_BACKUP_FILE, []);
-      const filteredBackup = backupProducts.filter((p) => String(p.id) !== idStr);
-      if (backupProducts.length !== filteredBackup.length) {
-        writeJSONFile(PRODUCTS_BACKUP_FILE, filteredBackup);
+  try {
+    // 1. Delete from Supabase public.products table (Primary Source of Truth)
+    if (isSupabaseConfigured()) {
+      const sbResult = await deleteProductFromSupabaseTable(idStr);
+      if (!sbResult.success) {
+        console.error(`🔴 [DELETE /api/products/:id] Échec Supabase:`, sbResult.error);
+        return res.status(500).json({
+          success: false,
+          error: `Erreur de suppression Supabase : ${sbResult.error || "Impossible de supprimer le produit de la base de données."}`
+        });
       }
-    } catch (e) {
-      console.warn("⚠️ [Backup] Erreur suppression dans products.json:", e);
+      console.log(`🗑️ [Supabase] Produit ${idStr} supprimé avec succès de public.products`);
     }
+
+    // 2. Persist tombstone in Supabase Storage app-data and in-memory set (Anti-resurrection)
+    recordDeletedProductId(idStr);
+
+    // 3. Update memory store and safe local file cache (non-blocking, never fails on Vercel)
+    const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+    const filtered = products.filter((p) => String(p.id) !== idStr);
+    memoryStore.set(PRODUCTS_FILE, filtered);
+
+    if (process.env.VERCEL !== "1") {
+      try {
+        fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(filtered, null, 2), "utf-8");
+        if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
+          fs.writeFileSync(PRODUCTS_BACKUP_FILE, JSON.stringify(filtered, null, 2), "utf-8");
+        }
+      } catch (e) {}
+    }
+
+    console.log(`🗑️ [Products DELETE] Produit ${idStr} supprimé définitivement et enregistré dans la blacklist tombstone.`);
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    return res.json({ 
+      success: true, 
+      id: idStr, 
+      deletedId: idStr, 
+      message: "Produit supprimé définitivement." 
+    });
+  } catch (err: any) {
+    console.error(`🔴 [DELETE /api/products/:id] Exception inattendue:`, err);
+    return res.status(500).json({
+      success: false,
+      error: `Erreur serveur lors de la suppression : ${err.message || String(err)}`
+    });
   }
-
-  // 4. Record the deleted ID in persistent tombstone blacklist
-  recordDeletedProductId(idStr);
-
-  console.log(`🗑️ [Products DELETE] Produit ${idStr} supprimé définitivement et enregistré dans la blacklist tombstone.`);
-  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  res.json({ 
-    success: true, 
-    id: idStr, 
-    deletedId: idStr, 
-    message: "Produit supprimé définitivement." 
-  });
 });
 
 // --- NEW WORKSPACE APIs FOR CLIENTS, SELLERS, AFFILIATES & ADMINS ---
@@ -1424,15 +1571,24 @@ app.post("/api/auth/role-upgrade", (req, res) => {
     return res.json({ success: true, user: userResponse });
   }
 
-  if (!role || !["client", "vendeur", "affilie", "admin"].includes(role)) {
-    return res.status(400).json({ success: false, error: "Rôle invalide." });
+  if (!role || !["client", "vendeur", "affilie", "livreur"].includes(role)) {
+    return res.status(400).json({ success: false, error: "Rôle invalide ou non autorisé pour cette opération." });
   }
+
+  const { plan: chosenPlan, vendeurPlan: chosenVendeurPlan, boutiqueName, boutiqueSlug, category, boutiqueBio, boutiqueWhatsapp, quartier: chosenQuartier, city: chosenCity } = req.body;
+  const targetPlan = chosenVendeurPlan || chosenPlan || user.vendeurPlan || "Gratuit";
 
   user.role = role;
 
   if (role === "vendeur") {
     user.vendeurMode = vendeurMode || "autonome"; // autonome vs assiste
-    user.businessName = businessName || user.name;
+    user.businessName = boutiqueName || businessName || user.name;
+    user.boutiqueName = boutiqueName || businessName || user.name;
+    user.boutiqueSlug = boutiqueSlug || user.boutiqueSlug || user.businessName.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    user.vendeurSlug = user.boutiqueSlug;
+    user.category = category || user.category || "Artisanat & Terroir";
+    user.boutiqueBio = boutiqueBio || user.boutiqueBio || "Artisan & Vendeur partenaire officiel Miabé Asi.";
+    user.boutiqueWhatsapp = boutiqueWhatsapp || user.boutiqueWhatsapp || contactPhone || sellerPhone || user.phone || "";
     user.vendeurStats = user.vendeurStats || {
       produitsPublies: 0,
       produitsVendus: 0,
@@ -1440,10 +1596,25 @@ app.post("/api/auth/role-upgrade", (req, res) => {
       stockRestant: 0
     };
     user.contactPhone = contactPhone || sellerPhone || user.phone || "";
-    user.vendeurSubscription = vendeurSubscription || "Offre 1";
-    user.vendeurPaymentMethod = vendeurPaymentMethod || "Miabé Asi Pay";
+    
+    // FREE -> immediate access. PRO/BUSINESS -> pending payment
+    if (targetPlan === "Gratuit") {
+      user.vendeurPlan = "Gratuit";
+      user.plan = "Gratuit";
+      user.vendeurSubscription = "Offre 1";
+      user.vendeurSubscriptionStatus = "active";
+      user.subscriptionStatus = "active";
+      user.vendeurStatus = "Actif";
+    } else {
+      user.vendeurPlan = targetPlan === "BUSINESS" ? "BUSINESS" : "PRO";
+      user.plan = user.vendeurPlan;
+      user.vendeurSubscription = targetPlan === "BUSINESS" ? "Offre 3" : "Offre 2";
+      user.vendeurSubscriptionStatus = "pending";
+      user.subscriptionStatus = "pending";
+      user.vendeurStatus = "Actif";
+    }
+    user.vendeurPaymentMethod = vendeurPaymentMethod || "PayDunya";
     user.vendeurPaymentTxId = vendeurPaymentTxId || "";
-    user.vendeurStatus = "En attente d'activation";
 
     // Set country and currency
     const supportedCountryCodes = ["TG", "BJ", "BF", "CI", "ML", "SN", "CM"];
@@ -1453,17 +1624,35 @@ app.post("/api/auth/role-upgrade", (req, res) => {
     user.countryCode = sanitizedCountryCode;
     user.country = country || (sanitizedCountryCode === "TG" ? "Togo" : sanitizedCountryCode);
     user.currencyCode = currencyCode || (sanitizedCountryCode === "CM" ? "XAF" : "XOF");
+    if (chosenQuartier || chosenCity) {
+      user.quartier = chosenQuartier || chosenCity;
+      user.city = chosenCity || chosenQuartier;
+    }
     
     // Add a system notification
     user.notifications = user.notifications || [];
     user.notifications.unshift({
       id: "notif_" + Date.now().toString() + Math.floor(Math.random() * 100).toString(),
-      text: `Votre inscription en tant que vendeur (${user.vendeurMode === "autonome" ? "Autonome" : "Assisté"}) est reçue. En attente d'activation après validation de votre abonnement (${user.vendeurSubscription}).`,
+      text: targetPlan === "Gratuit" 
+        ? "Votre boutique en formule Gratuite est active ! Accès immédiat à votre espace vendeur."
+        : `Votre inscription en formule ${user.vendeurPlan} est enregistrée. L'accès sera débloqué après confirmation du paiement PayDunya.`,
+      type: "system",
+      read: false,
+      date: new Date().toISOString()
+    });
+  } else if (role === "livreur") {
+    user.role = "livreur";
+    user.livreurZone = countryCode || user.countryCode || "TG";
+    user.notifications = user.notifications || [];
+    user.notifications.unshift({
+      id: "notif_" + Date.now().toString(),
+      text: "Votre profil Livreur Partenaire Miabé Asi a été configuré avec succès !",
       type: "system",
       read: false,
       date: new Date().toISOString()
     });
   } else if (role === "affilie") {
+    user.role = "affilie";
     if (!user.affiliateCode) {
       user.affiliateCode = "asime_" + user.name.toLowerCase().replace(/[^a-z0-9]/g, "") + "_" + Math.floor(100 + Math.random() * 900).toString();
     }
@@ -1485,6 +1674,8 @@ app.post("/api/auth/role-upgrade", (req, res) => {
       read: false,
       date: new Date().toISOString()
     });
+  } else if (role === "client") {
+    user.role = "client";
   }
 
   const success = writeJSONFile(USERS_FILE, users);
@@ -1494,6 +1685,165 @@ app.post("/api/auth/role-upgrade", (req, res) => {
   } else {
     res.status(500).json({ success: false, error: "Erreur lors de la mise à jour du rôle." });
   }
+});
+
+// GET or POST /api/auth/verify-role - Strictly verify role server-side for protected spaces
+app.all(["/api/auth/verify-role"], (req, res) => {
+  const space = req.query.space || req.body?.space || req.body?.requiredRole;
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, authorized: false, error: "Non connecté. Veuillez vous identifier." });
+  }
+
+  // Admin space verification
+  if (space === "admin") {
+    if (authHeader === "asime2026" || authHeader === "asime2026-auth-session" || authHeader === "shopme2026" || authHeader === "shopme2026-auth-session") {
+      return res.json({ success: true, authorized: true, role: "admin" });
+    }
+    const userId = getUserIdFromToken(authHeader);
+    const users = readJSONFile<any[]>(USERS_FILE, []);
+    const user = users.find(u => u.id === userId);
+    if (user && user.role === "admin") {
+      return res.json({ success: true, authorized: true, role: "admin" });
+    }
+    return res.status(403).json({ success: false, authorized: false, error: "Accès refusé. Espace réservé aux administrateurs." });
+  }
+
+  const userId = getUserIdFromToken(authHeader);
+  if (!userId) {
+    return res.status(401).json({ success: false, authorized: false, error: "Session non valide ou expirée." });
+  }
+
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const user = users.find(u => u.id === userId);
+  if (!user) {
+    return res.status(404).json({ success: false, authorized: false, error: "Utilisateur non trouvé." });
+  }
+
+  if (space && user.role !== space && user.role !== "admin") {
+    return res.status(403).json({ 
+      success: false, 
+      authorized: false, 
+      role: user.role,
+      error: `Accès non autorisé à l'espace ${space} pour le rôle ${user.role}.` 
+    });
+  }
+
+  // If vendor space requested, verify subscription status for PRO / BUSINESS
+  if (space === "vendeur") {
+    const plan = user.vendeurPlan || user.plan;
+    if ((plan === "PRO" || plan === "BUSINESS") && user.vendeurSubscriptionStatus !== "active") {
+      return res.json({
+        success: true,
+        authorized: true,
+        role: user.role,
+        subscriptionRequired: true,
+        subscriptionStatus: user.vendeurSubscriptionStatus || "pending",
+        message: "Abonnement PRO/BUSINESS requis pour débloquer l'espace vendeur."
+      });
+    }
+  }
+
+  return res.json({ success: true, authorized: true, role: user.role });
+});
+
+// GET /api/delivery/orders - Strictly delivery agents and admins
+app.get("/api/delivery/orders", (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: "Non connecté." });
+  }
+  const isAdmin = authHeader === "asime2026" || authHeader === "asime2026-auth-session" || authHeader === "shopme2026" || authHeader === "shopme2026-auth-session";
+  const userId = getUserIdFromToken(authHeader);
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const user = users.find(u => u.id === userId);
+
+  if (!isAdmin && (!user || (user.role !== "livreur" && user.role !== "admin"))) {
+    return res.status(403).json({ success: false, error: "Accès refusé. Espace réservé aux livreurs partenaires." });
+  }
+
+  const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+  const deliveries = orders.map(o => ({
+    id: o.id,
+    date: o.date || o.createdAt,
+    totalAmount: o.totalAmount,
+    currencyCode: o.currencyCode || "XOF",
+    paymentStatus: o.paymentStatus || "En attente",
+    paymentMethod: o.paymentMethod || "COD",
+    orderStatus: o.orderStatus || o.status || "En attente",
+    destinationCity: o.destinationCity || o.shippingDetails?.city || o.shippingDetails?.quartier || "Lomé",
+    destinationCountryCode: o.destinationCountryCode || o.shippingDetails?.countryCode || "TG",
+    clientName: o.shippingDetails?.name || o.clientName || "Client",
+    clientPhone: o.shippingDetails?.phoneWithCountryCode || o.shippingDetails?.phone || o.clientPhone || "",
+    quartier: o.shippingDetails?.quartier || "",
+    itemsCount: Array.isArray(o.items) ? o.items.reduce((s: number, i: any) => s + (i.quantity || 1), 0) : 1,
+    items: (o.items || []).map((i: any) => ({
+      nom: i.product?.nom || i.nom,
+      quantity: i.quantity,
+      prix: i.product?.prix || i.prix
+    }))
+  }));
+
+  return res.json({ success: true, deliveries });
+});
+
+// POST /api/delivery/orders/:id/update-status & /api/orders/:id/update-status - Update delivery status
+app.post(["/api/delivery/orders/:id/update-status", "/api/orders/:id/update-status"], (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ success: false, error: "Non connecté." });
+  }
+  const isAdmin = authHeader === "asime2026" || authHeader === "asime2026-auth-session" || authHeader === "shopme2026" || authHeader === "shopme2026-auth-session";
+  const userId = getUserIdFromToken(authHeader);
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  const user = users.find(u => u.id === userId);
+
+  if (!isAdmin && (!user || (user.role !== "livreur" && user.role !== "vendeur" && user.role !== "admin"))) {
+    return res.status(403).json({ success: false, error: "Accès refusé. Non autorisé à modifier les livraisons." });
+  }
+
+  const { id } = req.params;
+  const { orderStatus, deliveryNotes } = req.body;
+  if (!orderStatus) {
+    return res.status(400).json({ success: false, error: "Nouveau statut requis." });
+  }
+
+  const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+  const orderIndex = orders.findIndex(o => o.id === id);
+  if (orderIndex === -1) {
+    return res.status(404).json({ success: false, error: "Commande non trouvée." });
+  }
+
+  orders[orderIndex].orderStatus = orderStatus;
+  orders[orderIndex].status = orderStatus;
+  if (deliveryNotes) {
+    orders[orderIndex].deliveryNotes = deliveryNotes;
+  }
+  orders[orderIndex].lastDeliveryUpdate = new Date().toISOString();
+  if (user) {
+    orders[orderIndex].updatedByRole = user.role;
+    orders[orderIndex].updatedByName = user.name;
+  }
+  writeJSONFile(ORDERS_FILE, orders);
+
+  // Notify client
+  const clientUserId = orders[orderIndex].userId;
+  if (clientUserId && !clientUserId.startsWith("guest_")) {
+    const clientIndex = users.findIndex(u => u.id === clientUserId);
+    if (clientIndex > -1) {
+      users[clientIndex].notifications = users[clientIndex].notifications || [];
+      users[clientIndex].notifications.unshift({
+        id: "notif_delivery_" + Date.now().toString(),
+        text: `Mise à jour livraison commande #${id} : Le statut est désormais "${orderStatus}".`,
+        type: "order",
+        read: false,
+        date: new Date().toISOString()
+      });
+      writeJSONFile(USERS_FILE, users);
+    }
+  }
+
+  return res.json({ success: true, order: orders[orderIndex] });
 });
 
 // Create/Update Product from Vendor (with pricing limit validation based on subscription)
@@ -1547,11 +1897,29 @@ app.post(["/api/products", "/api/products/:id"], async (req, res, next) => {
       role: "vendeur",
       name: req.body?.partenaire || "Vendeur Miabé Asi",
       businessName: req.body?.partenaire || "Boutique Partenaire",
-      vendeurSubscription: "Offre 3"
+      vendeurSubscription: "Offre 3",
+      vendeurSubscriptionStatus: "active"
     };
   }
 
+  // Strict role check: Only sellers and admins can publish products
+  if (!isAdminAuth && user.role !== "vendeur" && user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      error: "Accès refusé. La publication ou modification de produits est strictement réservée aux vendeurs enregistrés."
+    });
+  }
+
+  // Strict subscription check: If seller is on PRO or BUSINESS, subscription must be active!
   const isSeller = user.role === "vendeur";
+  const userPlan = user.vendeurPlan || user.plan || "Gratuit";
+  if (!isAdminAuth && isSeller && (userPlan === "PRO" || userPlan === "BUSINESS") && user.vendeurSubscriptionStatus !== "active") {
+    return res.status(403).json({
+      success: false,
+      error: `Accès bloqué : votre abonnement ${userPlan} n'est pas actif (statut actuel: ${user.vendeurSubscriptionStatus || "pending"}). Veuillez confirmer le règlement PayDunya.`
+    });
+  }
+
   const userSubscription = user.vendeurSubscription || "";
   const prodDetails = req.body;
   const prix = Number(prodDetails.prix || 0);
@@ -1615,32 +1983,39 @@ app.post(["/api/products", "/api/products/:id"], async (req, res, next) => {
     status: prodDetails.status || "actif"
   };
 
-  if (existingIndex > -1) {
-    products[existingIndex] = savedProduct;
-  } else {
-    // Insert at beginning of catalog so newly created products are immediately prominent everywhere
-    products.unshift(savedProduct);
-  }
-
-  const success = writeJSONFile(PRODUCTS_FILE, products);
-
-  // Synchronize immediately to Supabase public.products table
-  if (isSupabaseConfigured()) {
-    try {
-      await syncProductToSupabaseTable(savedProduct);
-      console.log(`✨ [Supabase] Produit "${savedProduct.nom}" (${savedProduct.id}) synchronisé avec succès dans public.products`);
-    } catch (sbErr) {
-      console.warn(`⚠️ [Supabase] Erreur d'enregistrement immédiat vendeur dans public.products:`, sbErr);
+    // 1. Primary Source of Truth: Synchronize immediately to Supabase public.products table
+    if (isSupabaseConfigured()) {
+      const sbResult = await syncProductToSupabaseTable(savedProduct);
+      if (!sbResult.success) {
+        console.error(`🔴 [Vendor Product Save] Échec Supabase:`, sbResult.error);
+        return res.status(500).json({
+          success: false,
+          error: `Erreur d'enregistrement Supabase : ${sbResult.error || "Erreur de base de données"}`
+        });
+      }
+      console.log(`✨ [Supabase] Produit vendeur "${savedProduct.nom}" (${savedProduct.id}) synchronisé avec succès dans public.products`);
     }
-  }
 
-  if (success) {
+    // 2. Remove from tombstone blacklist if previously deleted
+    removeDeletedProductId(String(savedProduct.id));
+
+    // 3. Update memory store and safe local file
+    if (existingIndex > -1) {
+      products[existingIndex] = savedProduct;
+    } else {
+      products.unshift(savedProduct);
+    }
+    memoryStore.set(PRODUCTS_FILE, products);
+
+    if (process.env.VERCEL !== "1") {
+      try {
+        fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(products, null, 2), "utf-8");
+      } catch (e) {}
+    }
+
     console.log(`[Products] Produit enregistré avec succès : "${savedProduct.nom}" (${savedProduct.id})`);
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.json({ success: true, product: savedProduct });
-  } else {
-    res.status(500).json({ success: false, error: "Impossible d'enregistrer le produit dans la base de données." });
-  }
+    return res.json({ success: true, product: savedProduct });
 });
 
 // Bulk sync products from browser localStorage / multi-device sessions to server database
@@ -3602,8 +3977,8 @@ app.post("/api/messages/:threadId/read", (req, res) => {
   res.json({ success: true });
 });
 
-// GET /api/showcase - Fetch curated showcase cards for homepage
-app.get("/api/showcase", (req, res) => {
+// GET /api/showcase - Fetch curated showcase cards for homepage (Supabase app-data + local fallback)
+app.get("/api/showcase", async (req, res) => {
   const defaultShowcase = {
     heroCards: [
       {
@@ -3682,7 +4057,18 @@ app.get("/api/showcase", (req, res) => {
       }
     ]
   };
-  const fileData = readJSONFile(SHOWCASE_FILE, defaultShowcase);
+
+  let fileData: any = memoryStore.get(SHOWCASE_FILE);
+  if (!fileData && isSupabaseConfigured()) {
+    try {
+      fileData = await loadAppData("showcase.json", null);
+      if (fileData) memoryStore.set(SHOWCASE_FILE, fileData);
+    } catch {}
+  }
+  if (!fileData) {
+    fileData = readJSONFile(SHOWCASE_FILE, defaultShowcase);
+  }
+
   const data = {
     heroCards: Array.isArray(fileData?.heroCards) && fileData.heroCards.length > 0 ? fileData.heroCards : defaultShowcase.heroCards,
     galleryCards: Array.isArray(fileData?.galleryCards) && fileData.galleryCards.length > 0 ? fileData.galleryCards : defaultShowcase.galleryCards,
@@ -3694,31 +4080,54 @@ app.get("/api/showcase", (req, res) => {
 });
 
 // POST /api/showcase - Update showcase cards
-app.post("/api/showcase", (req, res) => {
-  const { auth, heroCards, galleryCards } = req.body;
-  if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
-    return res.status(403).json({ success: false, error: "Accès refusé." });
-  }
-  const current = readJSONFile(SHOWCASE_FILE, { heroCards: [], galleryCards: [] });
-  const updated = {
-    heroCards: Array.isArray(heroCards) ? heroCards : (current.heroCards || []),
-    galleryCards: Array.isArray(galleryCards) ? galleryCards : (current.galleryCards || []),
-  };
-  const success = writeJSONFile(SHOWCASE_FILE, updated);
-  if (success) {
+app.post("/api/showcase", async (req, res) => {
+  try {
+    const { auth, heroCards, galleryCards } = req.body;
+    if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+      return res.status(403).json({ success: false, error: "Accès refusé." });
+    }
+    const current = readJSONFile(SHOWCASE_FILE, { heroCards: [], galleryCards: [] });
+    const updated = {
+      heroCards: Array.isArray(heroCards) ? heroCards : (current.heroCards || []),
+      galleryCards: Array.isArray(galleryCards) ? galleryCards : (current.galleryCards || []),
+    };
+
+    memoryStore.set(SHOWCASE_FILE, updated);
+    if (isSupabaseConfigured()) {
+      await saveAppData("showcase.json", updated).catch(err => {
+        console.warn("⚠️ [Showcase Supabase] Notice sauvegarde:", err);
+      });
+    }
+
+    if (process.env.VERCEL !== "1") {
+      try {
+        fs.writeFileSync(SHOWCASE_FILE, JSON.stringify(updated, null, 2), "utf-8");
+      } catch (e) {}
+    }
+
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
-    res.json({ success: true, showcase: updated });
-  } else {
-    res.status(500).json({ success: false, error: "Erreur lors de la sauvegarde de la vitrine sur le serveur." });
+    return res.json({ success: true, showcase: updated });
+  } catch (err: any) {
+    console.error("🔴 [POST /api/showcase] Erreur:", err);
+    return res.status(500).json({ success: false, error: "Erreur lors de la sauvegarde de la vitrine: " + (err.message || String(err)) });
   }
 });
 
 // GET /api/banners - Fetch carousel banners
-app.get("/api/banners", (req, res) => {
-  let banners = readJSONFile(BANNERS_FILE, null);
+app.get("/api/banners", async (req, res) => {
+  let banners: any = memoryStore.get(BANNERS_FILE);
+  if (!banners && isSupabaseConfigured()) {
+    try {
+      banners = await loadAppData("banners.json", null);
+      if (banners) memoryStore.set(BANNERS_FILE, banners);
+    } catch {}
+  }
+  if (!banners) {
+    banners = readJSONFile(BANNERS_FILE, null);
+  }
+
   // Ensure valid array of slides with content
   if (Array.isArray(banners) && banners.length > 0 && !banners[0].badgeTagFr && banners[0].title) {
-    // If legacy short schema without badgeTagFr, read fresh banners.json from disk
     try {
       if (fs.existsSync(BANNERS_FILE)) {
         const diskContent = fs.readFileSync(BANNERS_FILE, "utf-8");
@@ -3730,6 +4139,7 @@ app.get("/api/banners", (req, res) => {
       }
     } catch (e) {}
   }
+
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
@@ -3737,61 +4147,99 @@ app.get("/api/banners", (req, res) => {
 });
 
 // POST /api/banners - Save carousel banners
-app.post("/api/banners", (req, res) => {
-  const body = req.body;
-  const slides = Array.isArray(body) ? body : (Array.isArray(body?.slides) ? body.slides : null);
-  const auth = body?.auth || req.headers.authorization;
-  if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
-    return res.status(403).json({ success: false, error: "Accès refusé." });
-  }
-  if (!Array.isArray(slides)) {
-    return res.status(400).json({ success: false, error: "Format invalide." });
-  }
-  const success = writeJSONFile(BANNERS_FILE, slides);
-  if (success) {
+app.post("/api/banners", async (req, res) => {
+  try {
+    const body = req.body;
+    const slides = Array.isArray(body) ? body : (Array.isArray(body?.slides) ? body.slides : null);
+    const auth = body?.auth || req.headers.authorization;
+    if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+      return res.status(403).json({ success: false, error: "Accès refusé." });
+    }
+    if (!Array.isArray(slides)) {
+      return res.status(400).json({ success: false, error: "Format invalide." });
+    }
+
+    memoryStore.set(BANNERS_FILE, slides);
+    if (isSupabaseConfigured()) {
+      await saveAppData("banners.json", slides).catch(err => {
+        console.warn("⚠️ [Banners Supabase] Notice sauvegarde:", err);
+      });
+    }
+
+    if (process.env.VERCEL !== "1") {
+      try {
+        fs.writeFileSync(BANNERS_FILE, JSON.stringify(slides, null, 2), "utf-8");
+      } catch (e) {}
+    }
+
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    res.json({ success: true, slides });
-  } else {
-    res.status(500).json({ success: false, error: "Erreur sauvegarde bannières." });
+    return res.json({ success: true, slides });
+  } catch (err: any) {
+    console.error("🔴 [POST /api/banners] Erreur:", err);
+    return res.status(500).json({ success: false, error: "Erreur sauvegarde bannières: " + (err.message || String(err)) });
   }
 });
 
 // GET /api/settings - Fetch global app configuration (WhatsApp and active logo ID)
-app.get("/api/settings", (req, res) => {
+app.get("/api/settings", async (req, res) => {
   const defaultSettings = {
     whatsappMerchantNumber: "22890000000",
     activeLogoId: "official"
   };
-  const settings = readJSONFile(SETTINGS_FILE, defaultSettings);
+
+  let settings: any = memoryStore.get(SETTINGS_FILE);
+  if (!settings && isSupabaseConfigured()) {
+    try {
+      settings = await loadAppData("settings.json", null);
+      if (settings) memoryStore.set(SETTINGS_FILE, settings);
+    } catch {}
+  }
+  if (!settings) {
+    settings = readJSONFile(SETTINGS_FILE, defaultSettings);
+  }
+
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
   res.json(settings);
 });
 
 // POST /api/settings - Save global app configuration (WhatsApp and active logo ID)
-app.post("/api/settings", (req, res) => {
-  const { auth, whatsappMerchantNumber, activeLogoId } = req.body;
-  if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
-    return res.status(403).json({ success: false, error: "Accès refusé." });
-  }
+app.post("/api/settings", async (req, res) => {
+  try {
+    const { auth, whatsappMerchantNumber, activeLogoId } = req.body;
+    if (auth && auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+      return res.status(403).json({ success: false, error: "Accès refusé." });
+    }
 
-  const defaultSettings = {
-    whatsappMerchantNumber: "22890000000",
-    activeLogoId: "official"
-  };
-  const currentSettings = readJSONFile(SETTINGS_FILE, defaultSettings);
+    const defaultSettings = {
+      whatsappMerchantNumber: "22890000000",
+      activeLogoId: "official"
+    };
+    const currentSettings = readJSONFile(SETTINGS_FILE, defaultSettings);
 
-  const newSettings = {
-    whatsappMerchantNumber: whatsappMerchantNumber || currentSettings.whatsappMerchantNumber || "22890000000",
-    activeLogoId: activeLogoId || currentSettings.activeLogoId || "official"
-  };
+    const newSettings = {
+      whatsappMerchantNumber: whatsappMerchantNumber || currentSettings.whatsappMerchantNumber || "22890000000",
+      activeLogoId: activeLogoId || currentSettings.activeLogoId || "official"
+    };
 
-  const success = writeJSONFile(SETTINGS_FILE, newSettings);
-  if (success) {
-    res.json({ success: true, settings: newSettings });
-  } else {
-    res.status(500).json({ success: false, error: "Impossible de sauvegarder la configuration." });
+    memoryStore.set(SETTINGS_FILE, newSettings);
+    if (isSupabaseConfigured()) {
+      await saveAppData("settings.json", newSettings).catch(err => {
+        console.warn("⚠️ [Settings Supabase] Notice sauvegarde:", err);
+      });
+    }
+
+    if (process.env.VERCEL !== "1") {
+      try {
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(newSettings, null, 2), "utf-8");
+      } catch (e) {}
+    }
+
+    return res.json({ success: true, settings: newSettings });
+  } catch (err: any) {
+    console.error("🔴 [POST /api/settings] Erreur:", err);
+    return res.status(500).json({ success: false, error: "Impossible de sauvegarder la configuration: " + (err.message || String(err)) });
   }
 });
 
@@ -3926,6 +4374,10 @@ app.post("/api/seller/featured-request", (req, res) => {
     return res.status(403).json({ success: false, error: "La mise en avant dans les Produits Phares est réservée aux abonnements PRO (jusqu'à 2) et BUSINESS (jusqu'à 5)." });
   }
 
+  if (user.vendeurSubscriptionStatus !== "active") {
+    return res.status(403).json({ success: false, error: `Votre abonnement ${plan} n'est pas actif (statut: ${user.vendeurSubscriptionStatus || "pending"}). Veuillez confirmer le paiement PayDunya.` });
+  }
+
   const { productId } = req.body;
   if (!productId) {
     return res.status(400).json({ success: false, error: "Identifiant de produit requis." });
@@ -4038,6 +4490,10 @@ app.post("/api/seller/banner-request", (req, res) => {
   const plan = user.vendeurPlan || (user.vendeurSubscription === "Offre 3" ? "BUSINESS" : user.vendeurSubscription === "Offre 2" ? "PRO" : "Gratuit");
   if (plan !== "BUSINESS") {
     return res.status(403).json({ success: false, error: "La soumission d'une bannière publicitaire sur la page d'accueil est exclusivement réservée aux abonnés BUSINESS." });
+  }
+
+  if (user.vendeurSubscriptionStatus !== "active") {
+    return res.status(403).json({ success: false, error: `Votre abonnement BUSINESS n'est pas actif (statut: ${user.vendeurSubscriptionStatus || "pending"}). Veuillez confirmer le paiement PayDunya.` });
   }
 
   const { title, subtitle, imageUrl, linkUrl, startDate, endDate } = req.body;
