@@ -63,7 +63,7 @@ interface MultiRoleDashboardsProps {
   onSelectProduct: (product: any) => void;
   onLogout?: () => void;
   onTabChange?: (tab: string) => void;
-  initialView?: "vendeur" | "client" | "affilie" | "livreur" | "menu";
+  initialView?: "vendeur" | "client" | "affilie" | "livreur" | "menu" | "help";
   onTrackOrder?: (orderId: string) => void;
 }
 
@@ -225,11 +225,30 @@ export default function MultiRoleDashboards({
   onTrackOrder
 }: MultiRoleDashboardsProps) {
   const [currentView, setCurrentView] = useState<"menu" | "client" | "vendeur" | "affilie" | "livreur" | "notifications" | "help" | "profile_settings" | "promos" | "favorites">(
-    initialView === "vendeur" ? "vendeur" : initialView === "livreur" ? "livreur" : initialView === "affilie" ? "affilie" : "menu"
+    initialView === "vendeur" ? "vendeur" : initialView === "livreur" ? "livreur" : initialView === "affilie" ? "affilie" : initialView === "help" ? "help" : "menu"
   );
   const [activeTab, setActiveTab] = useState<"client" | "vendeur" | "affilie" | "livreur" | "notifications">(
     initialView === "vendeur" ? "vendeur" : initialView === "livreur" ? "livreur" : "client"
   );
+
+  useEffect(() => {
+    if (initialView) {
+      if (initialView === "help") {
+        setCurrentView("help");
+      } else if (initialView === "vendeur") {
+        setCurrentView("vendeur");
+        setActiveTab("vendeur");
+      } else if (initialView === "livreur") {
+        setCurrentView("livreur");
+        setActiveTab("livreur");
+      } else if (initialView === "affilie") {
+        setCurrentView("affilie");
+        setActiveTab("affilie");
+      } else if (initialView === "menu") {
+        setCurrentView("menu");
+      }
+    }
+  }, [initialView]);
 
   // Delivery orders state
   const [deliveryOrders, setDeliveryOrders] = useState<any[]>([]);
@@ -283,8 +302,8 @@ export default function MultiRoleDashboards({
   useEffect(() => {
     if (initialView && initialView !== "menu") {
       setCurrentView(initialView as any);
-      if (initialView === "vendeur" || initialView === "client" || initialView === "affilie" || initialView === "livreur" || initialView === "notifications") {
-        setActiveTab(initialView as any);
+      if (initialView === "vendeur" || initialView === "client" || initialView === "affilie" || initialView === "livreur") {
+        setActiveTab(initialView);
       }
     } else if (initialView === "menu") {
       setCurrentView("menu");

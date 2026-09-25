@@ -62,7 +62,15 @@ import {
   Camera,
   Sparkles,
   RotateCcw,
-  Upload
+  Upload,
+  Download,
+  Eye,
+  TrendingUp,
+  Filter,
+  Check,
+  Power,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import { Product } from "./types";
 import AdminStats from "./components/AdminStats";
@@ -75,7 +83,25 @@ import { uploadImageToServer } from "./lib/imageUploadHelper";
 import officialLogoImg from "./assets/images/miabe_asi_official_logo_1787563252544.jpg";
 
 export default function AdminApp() {
-  const [activeTab, setActiveTab] = useState<"catalog" | "banners" | "stats" | "settings" | "requests">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "analytics" | "requests" | "vendors" | "banners" | "stats" | "settings">("catalog");
+  const [adminStatusFilter, setAdminStatusFilter] = useState<"all" | "actif" | "inactif" | "en_rupture">("all");
+  const [productAnalytics, setProductAnalytics] = useState<{
+    summary: {
+      totalProducts: number;
+      activeProducts: number;
+      inactiveProducts: number;
+      outOfStockProducts: number;
+      totalViews: number;
+      totalSales: number;
+      totalRevenue: number;
+      overallConversionRate: number;
+    };
+    products: any[];
+  } | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsSearchQuery, setAnalyticsSearchQuery] = useState("");
+  const [analyticsPartnerFilter, setAnalyticsPartnerFilter] = useState("Tous");
+  const [analyticsSortBy, setAnalyticsSortBy] = useState<"views" | "sales" | "revenue" | "conversion">("views");
   const [bannerSubSection, setBannerSubSection] = useState<"carousel" | "vitrine" | "gallery">("vitrine");
   // Server is the single source of truth; initialize with canonical slides, localStorage serves only as fallback
   const [adminPromoSlides, setAdminPromoSlides] = useState<PromoSlide[]>(INITIAL_PROMO_SLIDES);
@@ -588,6 +614,8 @@ export default function AdminApp() {
   const [formImages, setFormImages] = useState<string[]>([]);
   const [formPartenaire, setFormPartenaire] = useState("Boutique en Direct");
   const [formLienAffilie, setFormLienAffilie] = useState("");
+  const [formStatus, setFormStatus] = useState<"actif" | "inactif" | "en_rupture">("actif");
+  const [vendorOfferFilter, setVendorOfferFilter] = useState<"all" | "Offre 1" | "Offre 2" | "Offre 3">("all");
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
 
@@ -948,6 +976,13 @@ export default function AdminApp() {
     setFormImages(prod.images || []);
     setFormPartenaire(prod.partenaire || "Boutique en Direct");
     setFormLienAffilie(prod.lienAffilie || "");
+    const initialStatus: "actif" | "inactif" | "en_rupture" = 
+      prod.status === "inactif" || prod.status === "brouillon"
+        ? "inactif"
+        : prod.status === "en_rupture" || (prod.stock || 0) <= 0
+        ? "en_rupture"
+        : "actif";
+    setFormStatus(initialStatus);
     setFormError("");
     setFormSuccess("");
   };
@@ -964,8 +999,68 @@ export default function AdminApp() {
     setFormImages([]);
     setFormPartenaire("Boutique en Direct");
     setFormLienAffilie("");
+    setFormStatus("actif");
     setFormError("");
     setFormSuccess("");
+  };
+
+  const fetchProductAnalytics = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const res = await fetch("/api/admin/products-analytics?t=" + Date.now(), { cache: "no-store" });
+      const data = await res.json();
+      if (data.success) {
+        setProductAnalytics(data);
+      }
+    } catch (e) {
+      console.warn("Analytics fetch error:", e);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  };
+
+  const handleToggleProductStatus = async (product: Product, newStatus: "actif" | "inactif" | "en_rupture", newStock?: number) => {
+    try {
+      const payload: any = { status: newStatus };
+      if (typeof newStock !== "undefined") {
+        payload.stock = newStock;
+      } else if (newStatus === "en_rupture") {
+        payload.stock = 0;
+      } else if (newStatus === "actif" && (product.stock || 0) <= 0) {
+        payload.stock = 10;
+      }
+
+      const res = await fetch(`/api/products/${product.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "asime2026-auth-session" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(
+          newStatus === "inactif" 
+            ? `✓ "${product.nom}" est maintenant Inactif (masqué du site sans être supprimé).`
+            : newStatus === "en_rupture"
+            ? `⚠️ "${product.nom}" est marqué En Rupture de stock.`
+            : `✓ "${product.nom}" est maintenant Actif et visible sur le site !`
+        );
+        // Immediate local state update
+        setProducts(prev => prev.map(p => String(p.id) === String(product.id) ? { ...p, status: newStatus, stock: typeof payload.stock !== "undefined" ? payload.stock : p.stock } : p));
+        fetchProducts();
+        fetchProductAnalytics();
+      } else {
+        alert(data.error || "Impossible de modifier le statut.");
+      }
+    } catch (e: any) {
+      alert("Erreur lors de la mise à jour du statut : " + (e.message || String(e)));
+    }
+  };
+
+  const handleQuickAdjustStock = async (product: Product, delta: number) => {
+    const currentStock = Number(product.stock) || 0;
+    const nextStock = Math.max(0, currentStock + delta);
+    const nextStatus = nextStock === 0 ? "en_rupture" : (product.status === "inactif" ? "inactif" : "actif");
+    await handleToggleProductStatus(product, nextStatus, nextStock);
   };
 
   const handlePopulate100 = async () => {
@@ -1086,6 +1181,7 @@ export default function AdminApp() {
       categorie: formCategory,
       phare: formPhare,
       stock: parsedStock,
+      status: parsedStock === 0 ? "en_rupture" : formStatus,
       partenaire: formPartenaire,
       lienAffilie: formLienAffilie,
     };
@@ -1225,9 +1321,9 @@ export default function AdminApp() {
               <div>
                 <div className="flex items-center gap-2">
                   <Unlock className="w-5 h-5 text-[#d4af37]" />
-                  <h2 className="font-display font-extrabold text-lg uppercase tracking-wider">Bienvenue Gérant Miabé Asi</h2>
+                  <h2 className="font-display font-extrabold text-lg uppercase tracking-wider">Console d'Administration Globale</h2>
                 </div>
-                <p className="text-xs text-neutral-300 mt-1">Vous pouvez ajouter de nouveaux produits, modifier le catalogue national en temps réel et contrôler les stocks.</p>
+                <p className="text-xs text-neutral-300 mt-1">Supervisez le catalogue panafricain, activez/désactivez des produits en direct, analysez les performances et gérez les abonnements vendeurs.</p>
               </div>
               <button 
                 onClick={handleAdminLogout}
@@ -1237,36 +1333,139 @@ export default function AdminApp() {
               </button>
             </div>
 
+            {/* Quick Status KPI Summary Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div 
+                onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("all"); }}
+                className="bg-white p-3.5 border border-neutral-200 rounded-sm hover:border-[#d4af37] transition-all cursor-pointer shadow-2xs group"
+              >
+                <div className="flex items-center justify-between text-neutral-500 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Catalogue Total</span>
+                  <Package className="w-4 h-4 text-[#d4af37]" />
+                </div>
+                <div className="text-xl font-black font-mono text-neutral-950">{products.length}</div>
+                <p className="text-[9.5px] text-neutral-400 mt-0.5">Articles enregistrés</p>
+              </div>
+
+              <div 
+                onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("actif"); }}
+                className="bg-white p-3.5 border border-emerald-200 rounded-sm hover:border-emerald-500 transition-all cursor-pointer shadow-2xs group bg-gradient-to-br from-white to-emerald-50/20"
+              >
+                <div className="flex items-center justify-between text-emerald-800 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>Actifs (En Ligne)</span>
+                  </span>
+                  <Eye className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="text-xl font-black font-mono text-emerald-700">
+                  {products.filter(p => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length}
+                </div>
+                <p className="text-[9.5px] text-emerald-600 mt-0.5">Visibles et achetables</p>
+              </div>
+
+              <div 
+                onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("inactif"); }}
+                className="bg-white p-3.5 border border-neutral-300 rounded-sm hover:border-neutral-500 transition-all cursor-pointer shadow-2xs group bg-gradient-to-br from-white to-neutral-100/30"
+              >
+                <div className="flex items-center justify-between text-neutral-600 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-neutral-400"></span>
+                    <span>Inactifs (Masqués)</span>
+                  </span>
+                  <Power className="w-4 h-4 text-neutral-500" />
+                </div>
+                <div className="text-xl font-black font-mono text-neutral-800">
+                  {products.filter(p => p.status === "inactif").length}
+                </div>
+                <p className="text-[9.5px] text-neutral-500 mt-0.5">Retirés du site (conservés)</p>
+              </div>
+
+              <div 
+                onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("en_rupture"); }}
+                className="bg-white p-3.5 border border-rose-200 rounded-sm hover:border-rose-500 transition-all cursor-pointer shadow-2xs group bg-gradient-to-br from-white to-rose-50/20"
+              >
+                <div className="flex items-center justify-between text-rose-800 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                    <span>En Rupture</span>
+                  </span>
+                  <AlertCircle className="w-4 h-4 text-rose-600" />
+                </div>
+                <div className="text-xl font-black font-mono text-rose-700">
+                  {products.filter(p => p.status === "en_rupture" || (p.stock || 0) <= 0).length}
+                </div>
+                <p className="text-[9.5px] text-rose-600 mt-0.5">Stock épuisé ou déclaré</p>
+              </div>
+            </div>
+
             {/* Tabs Navigation */}
-            <div className="flex border-b border-neutral-200 gap-2 overflow-x-auto pb-px">
+            <div className="flex border-b border-neutral-200 gap-1.5 overflow-x-auto pb-px scrollbar-none">
               <button
                 onClick={() => setActiveTab("catalog")}
-                className={`py-3 px-6 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
                   activeTab === "catalog"
-                    ? "border-[#d4af37] text-neutral-955 font-black"
-                    : "border-transparent text-neutral-400 hover:text-neutral-900"
+                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
+                    : "border-transparent text-neutral-500 hover:text-neutral-900"
                 }`}
               >
-                <Database className="w-4 h-4" />
-                <span>Gestion Catalogue</span>
+                <Database className="w-4 h-4 text-[#d4af37]" />
+                <span>Catalogue & Statuts</span>
+                <span className="text-[9px] font-mono bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded-full">
+                  {products.length}
+                </span>
               </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab("analytics");
+                  fetchProductAnalytics();
+                }}
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                  activeTab === "analytics"
+                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
+                    : "border-transparent text-neutral-500 hover:text-neutral-900"
+                }`}
+              >
+                <TrendingUp className="w-4 h-4 text-blue-600" />
+                <span>Analytics par Produit</span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("vendors")}
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                  activeTab === "vendors"
+                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
+                    : "border-transparent text-neutral-500 hover:text-neutral-900"
+                }`}
+              >
+                <Users className="w-4 h-4 text-emerald-600" />
+                <span>Vendeurs & Abonnements</span>
+                {usersList.filter(u => u.role === "vendeur" || u.vendeurSubscription).length > 0 && (
+                  <span className="text-[9px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">
+                    {usersList.filter(u => u.role === "vendeur" || u.vendeurSubscription).length}
+                  </span>
+                )}
+              </button>
+
               <button
                 onClick={() => setActiveTab("banners")}
-                className={`py-3 px-6 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
                   activeTab === "banners"
-                    ? "border-[#d4af37] text-neutral-955 font-black"
-                    : "border-transparent text-neutral-400 hover:text-neutral-900"
+                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
+                    : "border-transparent text-neutral-500 hover:text-neutral-900"
                 }`}
               >
                 <ImageIcon className="w-4 h-4 text-[#d4af37]" />
-                <span>Affiches & Bannières ({adminPromoSlides.length})</span>
+                <span>Bannières & Vitrines</span>
               </button>
+
               <button
                 onClick={() => setActiveTab("requests")}
-                className={`py-3 px-6 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
                   activeTab === "requests"
-                    ? "border-[#d4af37] text-neutral-955"
-                    : "border-transparent text-neutral-400 hover:text-neutral-900"
+                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
+                    : "border-transparent text-neutral-500 hover:text-neutral-900"
                 }`}
               >
                 <Bell className="w-4 h-4 text-amber-500" />
@@ -1281,28 +1480,30 @@ export default function AdminApp() {
                   </span>
                 )}
               </button>
+
               <button
                 id="tab-btn-stats"
                 onClick={() => setActiveTab("stats")}
-                className={`py-3 px-6 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
                   activeTab === "stats"
-                    ? "border-[#d4af37] text-neutral-955"
-                    : "border-transparent text-neutral-400 hover:text-neutral-900"
+                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
+                    : "border-transparent text-neutral-500 hover:text-neutral-900"
                 }`}
               >
-                <BarChart3 className="w-4 h-4" />
-                <span>Statistiques de Ventes</span>
+                <BarChart3 className="w-4 h-4 text-purple-600" />
+                <span>Finances & Statistiques</span>
               </button>
+
               <button
                 onClick={() => setActiveTab("settings")}
-                className={`py-3 px-6 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
                   activeTab === "settings"
-                    ? "border-[#d4af37] text-neutral-955"
-                    : "border-transparent text-neutral-400 hover:text-neutral-900"
+                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
+                    : "border-transparent text-neutral-500 hover:text-neutral-900"
                 }`}
               >
-                <Settings className="w-4 h-4" />
-                <span>Configuration de la Redirection</span>
+                <Settings className="w-4 h-4 text-neutral-500" />
+                <span>Paramètres & Logo</span>
               </button>
             </div>
 
@@ -1407,6 +1608,52 @@ export default function AdminApp() {
                         className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-neutral-50/50"
                       />
                     </div>
+                  </div>
+
+                  {/* Statut de Publication (Actif / Inactif / En Rupture) */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                      Statut de Publication sur le site <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormStatus("actif")}
+                        className={`py-2 px-2 text-center rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                          formStatus === "actif"
+                            ? "border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600 font-black"
+                            : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:bg-neutral-100"
+                        }`}
+                      >
+                        🟢 Actif (En ligne)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormStatus("inactif")}
+                        className={`py-2 px-2 text-center rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                          formStatus === "inactif"
+                            ? "border-neutral-800 bg-neutral-800 text-white ring-1 ring-neutral-800 font-black"
+                            : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:bg-neutral-100"
+                        }`}
+                      >
+                        ⚪ Inactif (Masqué)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormStatus("en_rupture")}
+                        className={`py-2 px-2 text-center rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                          formStatus === "en_rupture"
+                            ? "border-rose-600 bg-rose-50 text-rose-800 ring-1 ring-rose-600 font-black"
+                            : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:bg-neutral-100"
+                        }`}
+                      >
+                        🔴 En Rupture
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-neutral-500 mt-1">
+                      • Inactif : retire le produit du site client sans le supprimer de la base.<br/>
+                      • En Rupture : indique que le stock est épuisé tout en conservant la fiche visible.
+                    </p>
                   </div>
 
                   <div>
@@ -1515,12 +1762,13 @@ export default function AdminApp() {
 
               {/* Database list of items */}
               <div className="lg:col-span-7 bg-white p-6 border border-neutral-200 rounded-sm shadow-xs">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b border-neutral-100 mb-4 gap-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 border-b border-neutral-100 mb-3 gap-3">
                   <div className="space-y-0.5">
-                    <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-neutral-950">
-                      Base de Données ({products.length} produits)
+                    <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-neutral-950 flex items-center gap-2">
+                      <Database className="w-4 h-4 text-[#d4af37]" />
+                      <span>Catalogue & Gestion des Statuts ({products.length})</span>
                     </h3>
-                    <p className="text-[9.5px] text-neutral-400 uppercase tracking-wider font-semibold">Filtrer par Boutique / Vendeur</p>
+                    <p className="text-[9.5px] text-neutral-400 uppercase tracking-wider font-semibold">Activez, masquez ou déclarez la rupture de vos produits en direct</p>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                     {/* Partner Selector Filter */}
@@ -1537,7 +1785,7 @@ export default function AdminApp() {
 
                     {/* Search query input */}
                     <div className="relative w-full sm:w-44">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-405 text-neutral-400" />
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
                       <input 
                         type="text" 
                         placeholder="Rechercher..." 
@@ -1549,6 +1797,49 @@ export default function AdminApp() {
                   </div>
                 </div>
 
+                {/* Status Segmented Filter Pills */}
+                <div className="flex flex-wrap items-center gap-1.5 mb-3 bg-neutral-100/70 p-1 rounded-sm border border-neutral-200">
+                  <button
+                    type="button"
+                    onClick={() => setAdminStatusFilter("all")}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
+                      adminStatusFilter === "all" ? "bg-neutral-900 text-white shadow-xs font-black" : "text-neutral-600 hover:text-neutral-900"
+                    }`}
+                  >
+                    Tous ({products.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminStatusFilter("actif")}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-all cursor-pointer ${
+                      adminStatusFilter === "actif" ? "bg-emerald-700 text-white shadow-xs font-black" : "text-emerald-700 hover:bg-emerald-50"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>Actifs en ligne ({products.filter(p => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminStatusFilter("inactif")}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-all cursor-pointer ${
+                      adminStatusFilter === "inactif" ? "bg-neutral-800 text-white shadow-xs font-black" : "text-neutral-600 hover:bg-neutral-200"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
+                    <span>Inactifs masqués ({products.filter(p => p.status === "inactif").length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminStatusFilter("en_rupture")}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-all cursor-pointer ${
+                      adminStatusFilter === "en_rupture" ? "bg-rose-700 text-white shadow-xs font-black" : "text-rose-700 hover:bg-rose-50"
+                    }`}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                    <span>En rupture ({products.filter(p => p.status === "en_rupture" || (p.stock || 0) <= 0).length})</span>
+                  </button>
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
@@ -1557,7 +1848,8 @@ export default function AdminApp() {
                         <th className="py-2.5 px-2">Catégorie</th>
                         <th className="py-2.5 px-2 text-right">Prix</th>
                         <th className="py-2.5 px-2 text-center">Stock</th>
-                        <th className="py-2.5 px-3 text-right">Actions</th>
+                        <th className="py-2.5 px-2 text-center">Statut Site</th>
+                        <th className="py-2.5 px-3 text-right">Actions Rapides</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1565,9 +1857,22 @@ export default function AdminApp() {
                         .filter(p => {
                           const matchesSearch = p.nom.toLowerCase().includes(adminSearchQuery.toLowerCase());
                           const matchesPartner = adminPartnerFilter === "Tous" || (p.partenaire || "Boutique en Direct") === adminPartnerFilter;
-                          return matchesSearch && matchesPartner;
+                          const isActif = (p.status || "actif") === "actif" && (p.stock || 0) > 0;
+                          const isInactif = p.status === "inactif";
+                          const isRupture = p.status === "en_rupture" || (p.stock || 0) <= 0;
+                          const matchesStatus = 
+                            adminStatusFilter === "all" ||
+                            (adminStatusFilter === "actif" && isActif) ||
+                            (adminStatusFilter === "inactif" && isInactif) ||
+                            (adminStatusFilter === "en_rupture" && isRupture);
+                          return matchesSearch && matchesPartner && matchesStatus;
                         })
-                        .map(prod => (
+                        .map(prod => {
+                          const isActif = (prod.status || "actif") === "actif" && (prod.stock || 0) > 0;
+                          const isInactif = prod.status === "inactif";
+                          const isRupture = prod.status === "en_rupture" || (prod.stock || 0) <= 0;
+
+                          return (
                           <tr key={prod.id} className="border-b border-neutral-100 hover:bg-neutral-50/50">
                             <td className="py-3 px-3">
                               <div className="flex items-center gap-2">
@@ -1577,7 +1882,7 @@ export default function AdminApp() {
                                 <div>
                                   <div className="font-bold text-neutral-900 line-clamp-1">{prod.nom}</div>
                                   <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                    <span className="text-[8px] bg-amber-550/10 text-amber-700 bg-amber-50 border border-[#d4af37]/25 font-black px-1 py-0.1 select-none rounded-[1px] uppercase tracking-wider">
+                                    <span className="text-[8px] bg-amber-50 text-amber-700 border border-[#d4af37]/25 font-black px-1 py-0.1 select-none rounded-[1px] uppercase tracking-wider">
                                       {prod.partenaire || "Boutique en Direct"}
                                     </span>
                                     <span className="text-[9px] text-neutral-400 font-mono tracking-wider">{prod.id}</span>
@@ -1585,49 +1890,713 @@ export default function AdminApp() {
                                 </div>
                               </div>
                             </td>
-                          <td className="py-3 px-2 text-[#b8901c] font-medium uppercase tracking-wider text-[10.5px] font-sans">{prod.categorie.split(" ")[0]}</td>
-                          <td className="py-3 px-2 text-right font-bold text-neutral-900 font-mono">
-                            {formatFCFA(prod.prix)}
-                            {prod.prixBarre && (
-                              <div className="line-through text-neutral-400 text-[10px] font-normal">{formatFCFA(prod.prixBarre)}</div>
-                            )}
-                          </td>
-                          <td className="py-3 px-2 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                              prod.stock > 10 
-                                ? "bg-green-100 text-green-700" 
-                                : prod.stock > 0 
-                                ? "bg-amber-100 text-amber-700" 
-                                : "bg-red-100 text-red-700"
-                            }`}>
-                              {prod.stock}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => startEditProduct(prod)}
-                                className="p-1.5 text-neutral-505 text-neutral-600 hover:text-amber-600 hover:bg-amber-50 cursor-pointer border border-neutral-200 transition-colors"
-                              >
-                                <Edit className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteProduct(prod.id, prod.nom)}
-                                className="p-1.5 text-red-650 text-red-600 hover:text-white hover:bg-red-600 cursor-pointer border border-neutral-200 transition-colors"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            <td className="py-3 px-2 text-[#b8901c] font-medium uppercase tracking-wider text-[10.5px] font-sans">
+                              {prod.categorie.split(" ")[0]}
+                            </td>
+                            <td className="py-3 px-2 text-right font-bold text-neutral-900 font-mono">
+                              {formatFCFA(prod.prix)}
+                              {prod.prixBarre && (
+                                <div className="line-through text-neutral-400 text-[10px] font-normal">{formatFCFA(prod.prixBarre)}</div>
+                              )}
+                            </td>
+                            <td className="py-3 px-2 text-center">
+                              <div className="inline-flex items-center gap-1 bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded-md">
+                                <button
+                                  type="button"
+                                  title="Diminuer stock"
+                                  onClick={() => handleQuickAdjustStock(prod, -1)}
+                                  className="w-4 h-4 rounded text-[10px] font-bold bg-white text-stone-600 hover:bg-stone-200 flex items-center justify-center cursor-pointer"
+                                >
+                                  -
+                                </button>
+                                <span className={`font-mono font-bold text-[10.5px] px-1 ${
+                                  prod.stock > 10 ? "text-emerald-700" : prod.stock > 0 ? "text-amber-700" : "text-rose-700"
+                                }`}>
+                                  {prod.stock}
+                                </span>
+                                <button
+                                  type="button"
+                                  title="Augmenter stock"
+                                  onClick={() => handleQuickAdjustStock(prod, 1)}
+                                  className="w-4 h-4 rounded text-[10px] font-bold bg-white text-stone-600 hover:bg-stone-200 flex items-center justify-center cursor-pointer"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* Statut Site Column */}
+                            <td className="py-3 px-2 text-center">
+                              {isInactif ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-neutral-100 text-neutral-700 border border-neutral-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
+                                  <span>Inactif (Masqué)</span>
+                                </span>
+                              ) : isRupture ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                  <span>En Rupture</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                  <span>Actif (En ligne)</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Actions Column */}
+                            <td className="py-3 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {isInactif ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductStatus(prod, "actif")}
+                                    title="Remettre en ligne sur le site"
+                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                  >
+                                    <Eye className="w-3 h-3" />
+                                    <span>Activer</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductStatus(prod, "inactif")}
+                                    title="Retirer du site sans supprimer"
+                                    className="px-2 py-1 bg-neutral-200 hover:bg-neutral-800 hover:text-white text-neutral-800 rounded text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    <Power className="w-3 h-3" />
+                                    <span>Masquer</span>
+                                  </button>
+                                )}
+
+                                {!isRupture ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductStatus(prod, "en_rupture", 0)}
+                                    title="Déclarer le stock épuisé"
+                                    className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    <AlertCircle className="w-3 h-3" />
+                                    <span>Rupture</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductStatus(prod, "actif", 10)}
+                                    title="Réapprovisionner avec 10 unités"
+                                    className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    <Package className="w-3 h-3" />
+                                    <span>+10 Stock</span>
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => startEditProduct(prod)}
+                                  title="Modifier"
+                                  className="p-1 text-neutral-600 hover:text-amber-600 hover:bg-amber-50 cursor-pointer border border-neutral-200 rounded transition-colors"
+                                >
+                                  <Edit className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteProduct(prod.id, prod.nom)}
+                                  title="Supprimer"
+                                  className="p-1 text-red-600 hover:text-white hover:bg-red-600 cursor-pointer border border-neutral-200 rounded transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
               </div>
             </div>
           </>
-                ) : activeTab === "requests" ? (
+        ) : activeTab === "analytics" ? (
+          <div className="space-y-6 animate-fade-in text-xs">
+            {/* Header & Export Bar */}
+            <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <h3 className="font-display font-extrabold text-base uppercase tracking-wider text-neutral-950 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                  <span>Analytics & Performances par Produit</span>
+                </h3>
+                <p className="text-xs text-neutral-500 font-sans mt-0.5">
+                  Suivez en direct les consultations (vues), les ventes réelles, le chiffre d'affaires et le taux de conversion de chaque produit.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={fetchProductAnalytics}
+                  className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-sm font-bold text-[10.5px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? "animate-spin" : ""}`} />
+                  <span>Actualiser</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prodsToExport = productAnalytics?.products || products;
+                    const headers = ["ID", "Nom", "Categorie", "Partenaire", "Statut", "Prix_FCFA", "Stock", "Vues", "Ventes", "Chiffre_Affaires_FCFA", "Taux_Conversion_Pct"];
+                    const rows = prodsToExport.map((p: any) => [
+                      `"${p.id}"`,
+                      `"${(p.nom || "").replace(/"/g, '""')}"`,
+                      `"${p.categorie || ""}"`,
+                      `"${p.partenaire || "Boutique en Direct"}"`,
+                      `"${p.status || "actif"}"`,
+                      p.prix || 0,
+                      p.stock || 0,
+                      p.views || 0,
+                      p.salesCount || 0,
+                      p.revenueGenerated || ((p.salesCount || 0) * (p.prix || 0)),
+                      p.conversionRate || 0
+                    ]);
+                    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", encodedUri);
+                    link.setAttribute("download", `analytics-produits-miabe-asi-${new Date().toISOString().slice(0, 10)}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="px-3.5 py-2 bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-950 rounded-sm font-bold text-[10.5px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Exporter CSV</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-blue-500">
+                <div className="flex items-center justify-between text-neutral-400 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Vues Cumulées</span>
+                  <Eye className="w-4 h-4 text-blue-500" />
+                </div>
+                <div className="text-2xl font-black font-mono text-neutral-950">
+                  {productAnalytics?.summary?.totalViews ?? products.reduce((acc, p) => acc + (p.views || 0), 0)}
+                </div>
+                <p className="text-[10px] text-neutral-400 mt-1">Consultations de fiches</p>
+              </div>
+
+              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-emerald-500">
+                <div className="flex items-center justify-between text-neutral-400 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Ventes Confirmées</span>
+                  <ShoppingBag className="w-4 h-4 text-emerald-500" />
+                </div>
+                <div className="text-2xl font-black font-mono text-emerald-700">
+                  {productAnalytics?.summary?.totalSales ?? products.reduce((acc, p) => acc + (p.salesCount || 0), 0)}
+                </div>
+                <p className="text-[10px] text-emerald-600 mt-1">Articles commandés</p>
+              </div>
+
+              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-[#d4af37]">
+                <div className="flex items-center justify-between text-neutral-400 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Chiffre d'Affaires</span>
+                  <CreditCard className="w-4 h-4 text-[#d4af37]" />
+                </div>
+                <div className="text-2xl font-black font-mono text-neutral-950">
+                  {formatFCFA(productAnalytics?.summary?.totalRevenue ?? products.reduce((acc, p) => acc + ((p.salesCount || 0) * (p.prix || 0)), 0))}
+                </div>
+                <p className="text-[10px] text-neutral-400 mt-1">Généré par les produits</p>
+              </div>
+
+              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-purple-500">
+                <div className="flex items-center justify-between text-neutral-400 mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Taux de Conversion</span>
+                  <TrendingUp className="w-4 h-4 text-purple-500" />
+                </div>
+                <div className="text-2xl font-black font-mono text-purple-700">
+                  {productAnalytics?.summary?.overallConversionRate ?? "0"}%
+                </div>
+                <p className="text-[10px] text-purple-600 mt-1">Moyenne globale commandes/vues</p>
+              </div>
+            </div>
+
+            {/* Analytics Table with Filters and Sorting */}
+            <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs space-y-4">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                  {/* Search input */}
+                  <div className="relative w-full sm:w-56">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
+                    <input
+                      type="text"
+                      placeholder="Rechercher par nom..."
+                      value={analyticsSearchQuery}
+                      onChange={(e) => setAnalyticsSearchQuery(e.target.value)}
+                      className="border border-neutral-300 rounded-sm pl-8 pr-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-500 w-full bg-white"
+                    />
+                  </div>
+
+                  {/* Vendor / Partner filter */}
+                  <select
+                    value={analyticsPartnerFilter}
+                    onChange={(e) => setAnalyticsPartnerFilter(e.target.value)}
+                    className="border border-neutral-300 rounded-sm px-2.5 py-1.5 text-xs outline-none bg-white font-sans text-neutral-800 uppercase tracking-wide cursor-pointer"
+                  >
+                    <option value="Tous">Tous les vendeurs</option>
+                    {Array.from(new Set(products.map(p => p.partenaire || "Boutique en Direct"))).filter(Boolean).map(p => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+
+                  {/* Sort selector */}
+                  <select
+                    value={analyticsSortBy}
+                    onChange={(e) => setAnalyticsSortBy(e.target.value as any)}
+                    className="border border-neutral-300 rounded-sm px-2.5 py-1.5 text-xs outline-none bg-white font-sans text-neutral-800 uppercase tracking-wide cursor-pointer"
+                  >
+                    <option value="views">Trier par Vues (Décroissant)</option>
+                    <option value="sales">Trier par Ventes (Décroissant)</option>
+                    <option value="revenue">Trier par Revenus (Décroissant)</option>
+                    <option value="conversion">Trier par Conversion (Décroissant)</option>
+                  </select>
+                </div>
+
+                <div className="text-[11px] text-neutral-500 font-mono">
+                  {products.length} produit(s) analysé(s)
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-neutral-200 bg-neutral-50 font-bold uppercase tracking-wider text-neutral-600 text-[10px]">
+                      <th className="py-2.5 px-3">Produit</th>
+                      <th className="py-2.5 px-2">Boutique</th>
+                      <th className="py-2.5 px-2 text-center">Statut</th>
+                      <th className="py-2.5 px-2 text-center">Vues</th>
+                      <th className="py-2.5 px-2 text-center">Ventes</th>
+                      <th className="py-2.5 px-2 text-right">CA Généré</th>
+                      <th className="py-2.5 px-3 text-center">Taux Conv.</th>
+                      <th className="py-2.5 px-2 text-center">Stock</th>
+                      <th className="py-2.5 px-3 text-right">Action Rapide</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(productAnalytics?.products || products)
+                      .filter((p: any) => {
+                        const matchesSearch = (p.nom || "").toLowerCase().includes(analyticsSearchQuery.toLowerCase());
+                        const matchesPartner = analyticsPartnerFilter === "Tous" || (p.partenaire || "Boutique en Direct") === analyticsPartnerFilter;
+                        return matchesSearch && matchesPartner;
+                      })
+                      .sort((a: any, b: any) => {
+                        if (analyticsSortBy === "sales") return (b.salesCount || 0) - (a.salesCount || 0);
+                        if (analyticsSortBy === "revenue") return (b.revenueGenerated || 0) - (a.revenueGenerated || 0);
+                        if (analyticsSortBy === "conversion") return (b.conversionRate || 0) - (a.conversionRate || 0);
+                        return (b.views || 0) - (a.views || 0);
+                      })
+                      .map((prod: any) => {
+                        const views = Number(prod.views) || 0;
+                        const sales = Number(prod.salesCount) || 0;
+                        const revenue = Number(prod.revenueGenerated) || (sales * Number(prod.prix || 0));
+                        const conv = views > 0 ? Number(((sales / views) * 100).toFixed(1)) : 0;
+                        const isActif = (prod.status || "actif") === "actif" && (prod.stock || 0) > 0;
+                        const isInactif = prod.status === "inactif";
+                        const isRupture = prod.status === "en_rupture" || (prod.stock || 0) <= 0;
+
+                        return (
+                          <tr key={prod.id} className="border-b border-neutral-100 hover:bg-neutral-50/50">
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-10 h-10 rounded-sm overflow-hidden bg-neutral-100 shrink-0">
+                                  <img src={prod.images?.[0]} alt={prod.nom} className="w-full h-full object-cover" />
+                                </div>
+                                <div>
+                                  <div className="font-bold text-neutral-900 line-clamp-1">{prod.nom}</div>
+                                  <div className="text-[9.5px] text-neutral-400 font-mono">{prod.id} • {formatFCFA(prod.prix)}</div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-2">
+                              <span className="text-[9px] font-bold text-neutral-700 bg-neutral-100 px-1.5 py-0.5 rounded uppercase">
+                                {prod.partenaire || "Boutique en Direct"}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-2 text-center">
+                              {isInactif ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-neutral-100 text-neutral-700 border border-neutral-300">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
+                                  <span>Inactif</span>
+                                </span>
+                              ) : isRupture ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                  <span>Rupture</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                  <span>Actif</span>
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-2 text-center font-mono font-bold text-neutral-900">
+                              <div className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
+                                <Eye className="w-3 h-3 text-blue-500" />
+                                <span>{views}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-2 text-center font-mono font-bold text-neutral-900">
+                              <div className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
+                                <ShoppingBag className="w-3 h-3 text-emerald-600" />
+                                <span>{sales}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-2 text-right font-mono font-bold text-neutral-950">
+                              {formatFCFA(revenue)}
+                            </td>
+
+                            <td className="py-3 px-3 text-center">
+                              <div className="inline-flex flex-col items-center">
+                                <span className={`text-[10px] font-mono font-black ${
+                                  conv >= 10 ? "text-emerald-700" : conv >= 3 ? "text-blue-700" : "text-stone-500"
+                                }`}>
+                                  {conv}%
+                                </span>
+                                <div className="w-12 h-1.5 bg-neutral-200 rounded-full overflow-hidden mt-0.5">
+                                  <div 
+                                    className={`h-full rounded-full ${conv >= 10 ? "bg-emerald-500" : conv >= 3 ? "bg-blue-500" : "bg-neutral-400"}`}
+                                    style={{ width: `${Math.min(100, conv * 5)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-2 text-center font-mono">
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                (prod.stock || 0) > 10 ? "bg-green-100 text-green-700" : (prod.stock || 0) > 0 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                              }`}>
+                                {prod.stock || 0}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {isInactif ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductStatus(prod, "actif")}
+                                    className="px-2 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-emerald-700"
+                                  >
+                                    Activer
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductStatus(prod, "inactif")}
+                                    className="px-2 py-1 bg-neutral-200 text-neutral-800 rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-neutral-800 hover:text-white"
+                                  >
+                                    Masquer
+                                  </button>
+                                )}
+
+                                {!isRupture ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductStatus(prod, "en_rupture", 0)}
+                                    className="px-2 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-rose-100"
+                                  >
+                                    Rupture
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductStatus(prod, "actif", 10)}
+                                    className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-100"
+                                  >
+                                    +10 Stock
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : activeTab === "vendors" ? (
+          <div className="space-y-6 animate-fade-in text-xs">
+            {/* Header */}
+            <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div>
+                <h3 className="font-display font-extrabold text-base uppercase tracking-wider text-neutral-950 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-emerald-600" />
+                  <span>Gestion des Espaces Vendeurs & Répartition par Offres</span>
+                </h3>
+                <p className="text-xs text-neutral-500 font-sans mt-0.5">
+                  Supervisez les boutiques vérifiées, les formules d'abonnement (Offre 1, 2 ou 3) et les droits d'accès associés.
+                </p>
+              </div>
+            </div>
+
+            {/* 3 Offer Breakdown Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div 
+                onClick={() => setVendorOfferFilter(vendorOfferFilter === "Offre 1" ? "all" : "Offre 1")}
+                className={`bg-white p-5 rounded-sm border transition-all cursor-pointer shadow-xs ${
+                  vendorOfferFilter === "Offre 1" ? "border-stone-800 ring-2 ring-stone-800" : "border-neutral-200 hover:border-stone-400"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded bg-stone-100 text-stone-800 border border-stone-200">
+                    Offre 1 • Formule Gratuite
+                  </span>
+                  <span className="text-xs font-mono font-bold text-stone-600">0 FCFA/mois</span>
+                </div>
+                <div className="text-2xl font-black font-mono text-stone-900 mt-2">
+                  {usersList.filter(u => (u.vendeurSubscription || "Offre 1") === "Offre 1" && u.role === "vendeur").length} Vendeurs
+                </div>
+                <ul className="text-[11px] text-stone-600 space-y-1 mt-3 border-t border-stone-100 pt-2 font-sans">
+                  <li>• Produits illimités au catalogue</li>
+                  <li>• Commission standard 10% sur les ventes</li>
+                  <li>• Analytics essentiels (vues, ventes réelles)</li>
+                  <li>• Encaissement Mobile Money direct</li>
+                </ul>
+              </div>
+
+              <div 
+                onClick={() => setVendorOfferFilter(vendorOfferFilter === "Offre 2" ? "all" : "Offre 2")}
+                className={`bg-white p-5 rounded-sm border transition-all cursor-pointer shadow-xs ${
+                  vendorOfferFilter === "Offre 2" ? "border-blue-600 ring-2 ring-blue-600" : "border-blue-200 hover:border-blue-400 bg-gradient-to-br from-white to-blue-50/20"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                    Offre 2 • Formule PRO
+                  </span>
+                  <span className="text-xs font-mono font-bold text-blue-700">1 600 FCFA/mois</span>
+                </div>
+                <div className="text-2xl font-black font-mono text-blue-900 mt-2">
+                  {usersList.filter(u => u.vendeurSubscription === "Offre 2" && u.role === "vendeur").length} Vendeurs
+                </div>
+                <ul className="text-[11px] text-blue-950 space-y-1 mt-3 border-t border-blue-100 pt-2 font-sans">
+                  <li>• Tous les avantages Offre 1</li>
+                  <li>• <strong>Badge Vendeur Vérifié</strong> officiel</li>
+                  <li>• <strong>Taux de conversion & statistiques détaillées</strong></li>
+                  <li>• Alertes de stock faible automatiques</li>
+                </ul>
+              </div>
+
+              <div 
+                onClick={() => setVendorOfferFilter(vendorOfferFilter === "Offre 3" ? "all" : "Offre 3")}
+                className={`bg-white p-5 rounded-sm border transition-all cursor-pointer shadow-xs ${
+                  vendorOfferFilter === "Offre 3" ? "border-[#d4af37] ring-2 ring-[#d4af37]" : "border-[#d4af37]/40 hover:border-[#d4af37] bg-gradient-to-br from-white to-amber-50/30"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                    Offre 3 • Formule BUSINESS (VIP)
+                  </span>
+                  <span className="text-xs font-mono font-bold text-amber-800">3 200 FCFA/mois</span>
+                </div>
+                <div className="text-2xl font-black font-mono text-amber-900 mt-2">
+                  {usersList.filter(u => u.vendeurSubscription === "Offre 3" && u.role === "vendeur").length} Vendeurs
+                </div>
+                <ul className="text-[11px] text-amber-950 space-y-1 mt-3 border-t border-amber-200 pt-2 font-sans">
+                  <li>• Tous les avantages Offre 1 & PRO</li>
+                  <li>• <strong>Bannières publicitaires d'accueil dédiées</strong></li>
+                  <li>• Vitrine personnalisée & URL VIP</li>
+                  <li>• Export comptable CSV & Support prioritaire 24/7</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Vendors Filter Pills & List */}
+            <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setVendorOfferFilter("all")}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
+                      vendorOfferFilter === "all" ? "bg-neutral-900 text-white font-black shadow-xs" : "bg-neutral-100 text-neutral-600 hover:text-neutral-900"
+                    }`}
+                  >
+                    Tous les Vendeurs ({usersList.filter(u => u.role === "vendeur").length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVendorOfferFilter("Offre 1")}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
+                      vendorOfferFilter === "Offre 1" ? "bg-stone-800 text-white font-black shadow-xs" : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                    }`}
+                  >
+                    Offre 1 - Gratuit ({usersList.filter(u => (u.vendeurSubscription || "Offre 1") === "Offre 1" && u.role === "vendeur").length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVendorOfferFilter("Offre 2")}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
+                      vendorOfferFilter === "Offre 2" ? "bg-blue-700 text-white font-black shadow-xs" : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                    }`}
+                  >
+                    Offre 2 - PRO ({usersList.filter(u => u.vendeurSubscription === "Offre 2" && u.role === "vendeur").length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVendorOfferFilter("Offre 3")}
+                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
+                      vendorOfferFilter === "Offre 3" ? "bg-amber-700 text-white font-black shadow-xs" : "bg-amber-100 text-amber-900 hover:bg-amber-200"
+                    }`}
+                  >
+                    Offre 3 - BUSINESS ({usersList.filter(u => u.vendeurSubscription === "Offre 3" && u.role === "vendeur").length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Vendors Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-neutral-200 bg-neutral-50 font-bold uppercase tracking-wider text-neutral-600 text-[10px]">
+                      <th className="py-2.5 px-3">Vendeur & Boutique</th>
+                      <th className="py-2.5 px-2">Contact</th>
+                      <th className="py-2.5 px-2 text-center">Offre / Plan</th>
+                      <th className="py-2.5 px-2 text-center">Articles</th>
+                      <th className="py-2.5 px-2 text-center">Statut Espace</th>
+                      <th className="py-2.5 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usersList
+                      .filter(u => u.role === "vendeur")
+                      .filter(u => vendorOfferFilter === "all" || (u.vendeurSubscription || "Offre 1") === vendorOfferFilter)
+                      .map((vendor) => {
+                        const vendorProducts = products.filter(p => p.vendeurId === vendor.id || (vendor.businessName && p.partenaire === vendor.businessName));
+                        const activeProds = vendorProducts.filter(p => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length;
+                        const inactiveProds = vendorProducts.filter(p => p.status === "inactif").length;
+                        const ruptureProds = vendorProducts.filter(p => p.status === "en_rupture" || (p.stock || 0) <= 0).length;
+
+                        return (
+                          <tr key={vendor.id} className="border-b border-neutral-100 hover:bg-neutral-50/50">
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 uppercase">
+                                  {vendor.name?.charAt(0) || "V"}
+                                </div>
+                                <div>
+                                  <div className="font-bold text-neutral-900">{vendor.businessName || vendor.name}</div>
+                                  <div className="text-[10px] text-neutral-400 font-sans">{vendor.name} • {vendor.email}</div>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-2 font-mono text-neutral-700">
+                              <div>{vendor.contactPhone || vendor.phone || "Non renseigné"}</div>
+                              <div className="text-[9.5px] text-neutral-400">{vendor.city || vendor.quartier || "Togo"}</div>
+                            </td>
+
+                            <td className="py-3 px-2 text-center">
+                              <select
+                                value={vendor.vendeurSubscription || "Offre 1"}
+                                onChange={async (e) => {
+                                  const newOffer = e.target.value;
+                                  try {
+                                    await fetch("/api/admin/users/update-offer", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json", "Authorization": "asime2026-auth-session" },
+                                      body: JSON.stringify({ userId: vendor.id, vendeurSubscription: newOffer })
+                                    });
+                                    showToast(`✓ Formule mise à jour en ${newOffer} pour ${vendor.businessName || vendor.name}.`);
+                                    fetchAdminData();
+                                  } catch {
+                                    showToast("Erreur de mise à jour.");
+                                  }
+                                }}
+                                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border cursor-pointer ${
+                                  vendor.vendeurSubscription === "Offre 3"
+                                    ? "bg-amber-50 text-amber-900 border-amber-300 font-black"
+                                    : vendor.vendeurSubscription === "Offre 2"
+                                    ? "bg-blue-50 text-blue-900 border-blue-300 font-black"
+                                    : "bg-stone-50 text-stone-800 border-stone-300"
+                                }`}
+                              >
+                                <option value="Offre 1">Offre 1 (Gratuit)</option>
+                                <option value="Offre 2">Offre 2 (PRO)</option>
+                                <option value="Offre 3">Offre 3 (BUSINESS)</option>
+                              </select>
+                            </td>
+
+                            <td className="py-3 px-2 text-center font-mono">
+                              <div className="font-bold text-neutral-900">{vendorProducts.length} articles</div>
+                              <div className="text-[9px] text-neutral-500 mt-0.5">
+                                <span className="text-emerald-600 font-bold">{activeProds} actifs</span>
+                                {inactiveProds > 0 && <span className="text-neutral-500 ml-1">• {inactiveProds} inactifs</span>}
+                                {ruptureProds > 0 && <span className="text-rose-600 ml-1">• {ruptureProds} rupture</span>}
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-2 text-center">
+                              {vendor.vendeurStatus === "Actif" ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span>Actif</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800">
+                                  <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                  <span>En attente</span>
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {vendor.vendeurStatus !== "Actif" && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await handleApproveSeller(vendor.id);
+                                      fetchAdminData();
+                                    }}
+                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9.5px] font-bold uppercase tracking-wider cursor-pointer"
+                                  >
+                                    Activer
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAdminPartnerFilter(vendor.businessName || vendor.name);
+                                    setActiveTab("catalog");
+                                  }}
+                                  className="px-2 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded text-[9.5px] font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                                >
+                                  <Package className="w-3 h-3 text-[#d4af37]" />
+                                  <span>Voir Produits</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : activeTab === "requests" ? (
           <div className="space-y-6 animate-fade-in text-xs">
             {/* Quick stats panel */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

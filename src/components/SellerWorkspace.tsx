@@ -38,11 +38,17 @@ import {
   ChevronDown,
   RefreshCw,
   Eye,
+  EyeOff,
+  AlertTriangle,
   Sliders,
   Layers,
   Award,
   MapPin,
-  Truck
+  Truck,
+  Lock,
+  Download,
+  FileText,
+  BarChart3
 } from "lucide-react";
 import { Product, SellerPlan } from "../types";
 import {
@@ -174,6 +180,7 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
   // -------------------------------------------------------------
   const [productSearch, setProductSearch] = useState("");
   const [selectedProductCategory, setSelectedProductCategory] = useState("all");
+  const [selectedProductStatus, setSelectedProductStatus] = useState<"all" | "actif" | "inactif" | "en_rupture">("all");
 
   const myProducts = products.filter((p) => {
     const isOwner =
@@ -182,14 +189,68 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
     return isOwner;
   });
 
+  const countAll = myProducts.length;
+  const countActif = myProducts.filter(p => (p.status === "actif" || (!p.status && (p.stock || 0) > 0))).length;
+  const countInactif = myProducts.filter(p => p.status === "inactif").length;
+  const countRupture = myProducts.filter(p => p.status === "en_rupture" || (p.stock || 0) <= 0).length;
+
   const filteredProducts = myProducts.filter((p) => {
     const matchesSearch =
       p.nom.toLowerCase().includes(productSearch.toLowerCase()) ||
       p.description.toLowerCase().includes(productSearch.toLowerCase());
     const matchesCategory =
       selectedProductCategory === "all" || p.categorie === selectedProductCategory;
-    return matchesSearch && matchesCategory;
+
+    const isRupture = p.status === "en_rupture" || (p.stock || 0) <= 0;
+    const isInactif = p.status === "inactif";
+    const isActif = !isInactif && !isRupture;
+
+    let matchesStatus = true;
+    if (selectedProductStatus === "actif") matchesStatus = isActif;
+    else if (selectedProductStatus === "inactif") matchesStatus = isInactif;
+    else if (selectedProductStatus === "en_rupture") matchesStatus = isRupture;
+
+    return matchesSearch && matchesCategory && matchesStatus;
   });
+
+  const handleToggleProductStatus = async (product: Product, newStatus: "actif" | "inactif" | "en_rupture", newStock?: number) => {
+    try {
+      const res = await fetch(`/api/products/${product.id}/status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": token || "asime2026"
+        },
+        body: JSON.stringify({
+          status: newStatus,
+          stock: newStock !== undefined ? newStock : (newStatus === "en_rupture" ? 0 : (product.stock && product.stock > 0 ? product.stock : 10))
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.product) {
+        setProducts(prev => prev.map(p => p.id === product.id ? data.product : p));
+        const statusLabel = newStatus === "actif" ? "mis en ligne (actif)" : newStatus === "inactif" ? "masqué de la boutique" : "signalé en rupture de stock";
+        showToast(`Produit "${product.nom}" ${statusLabel} avec succès.`);
+      } else {
+        const updatedProd: Product = {
+          ...product,
+          status: newStatus,
+          stock: newStock !== undefined ? newStock : (newStatus === "en_rupture" ? 0 : (product.stock && product.stock > 0 ? product.stock : 10))
+        };
+        setProducts(prev => prev.map(p => p.id === product.id ? updatedProd : p));
+        showToast(`Statut du produit mis à jour (${newStatus}).`);
+      }
+    } catch (e) {
+      console.error("Erreur mise à jour statut produit:", e);
+      const updatedProd: Product = {
+        ...product,
+        status: newStatus,
+        stock: newStock !== undefined ? newStock : (newStatus === "en_rupture" ? 0 : (product.stock && product.stock > 0 ? product.stock : 10))
+      };
+      setProducts(prev => prev.map(p => p.id === product.id ? updatedProd : p));
+      showToast(`Statut du produit mis à jour (${newStatus}).`);
+    }
+  };
 
   // -------------------------------------------------------------
   // ORDERS STATE
@@ -632,13 +693,60 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
     }
   };
 
-  // Financial Computations
+  // Financial Computations & Plan-specific rates
+  // Standard flat 10% commission on every sale for all plans
+  // Unlimited products for everyone
   const totalGrossSales = ordersList
     .filter((o) => o.status === "Livrée" || o.status === "Confirmée")
     .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-  const commissionMiabeAsi = Math.round(totalGrossSales * 0.1);
+  const commissionRate = 0.10;
+  const commissionPercentText = "10%";
+  const commissionMiabeAsi = Math.round(totalGrossSales * commissionRate);
   const netEarnings = totalGrossSales - commissionMiabeAsi;
   const availableBalance = wallet?.balance ?? netEarnings;
+
+  const handleOpenAddProduct = () => {
+    setIsEditingProduct(null);
+    setNewProdName("");
+    setNewProdDesc("");
+    setNewProdPrice("");
+    setNewProdPriceBarre("");
+    setNewProdStock("10");
+    setNewProdCategory(categories[0] || "Produits alimentaires");
+    setNewProdImageUrl("");
+    setNewProdImages([]);
+    setIsAddProductOpen(true);
+  };
+
+  const handleExportSalesCSV = () => {
+    if (currentPlan !== "BUSINESS") {
+      setTargetPlanToUpgrade("BUSINESS");
+      setUpgradeModalOpen(true);
+      showToast("L'export comptable CSV est réservé aux vendeurs en formule BUSINESS.");
+      return;
+    }
+    const headers = ["ID_Commande", "Date", "Client", "Telephone", "Quartier_Ville", "Statut", "Total_FCFA", "Methode_Paiement", "Articles"];
+    const rows = ordersList.map((o) => [
+      o.id,
+      new Date(o.date).toLocaleDateString("fr-FR"),
+      `"${(o.clientName || "").replace(/"/g, '""')}"`,
+      `"${(o.clientPhone || "").replace(/"/g, '""')}"`,
+      `"${(o.quartier || "").replace(/"/g, '""')}"`,
+      o.status,
+      o.totalAmount,
+      o.paymentMethod || "Paiement Mobile",
+      `"${(o.items || []).map((it: any) => `${it.nom} (x${it.quantite})`).join(" ; ").replace(/"/g, '""')}"`
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(";"), ...rows.map(e => e.join(";"))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `journal_ventes_${(user?.businessName || "vendeur").toLowerCase().replace(/[^a-z0-9]/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("✓ Journal comptable des ventes exporté en CSV avec succès !");
+  };
 
   // -------------------------------------------------------------
   // UPGRADE PLAN MODAL / LOGIC
@@ -690,14 +798,14 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
               <div className="flex items-center gap-1 mt-0.5">
                 <span className={`text-[8.5px] font-black uppercase px-1.5 py-0.2 rounded ${
                   currentPlan === "BUSINESS"
-                    ? "bg-[#d4af37] text-stone-950"
+                    ? "bg-[#d4af37] text-stone-950 font-black"
                     : currentPlan === "PRO"
-                    ? "bg-emerald-600 text-white"
+                    ? "bg-emerald-600 text-white font-bold"
                     : "bg-stone-800 text-stone-300"
                 }`}>
                   {currentPlan}
                 </span>
-                <span className="text-[9px] text-stone-400 font-mono">10% comm.</span>
+                <span className="text-[9px] text-[#d4af37] font-mono font-bold">{commissionPercentText} comm.</span>
               </div>
               <div className="flex items-center gap-1.5 mt-2 px-2 py-1 bg-stone-900 border border-stone-800 rounded-lg text-[10px] text-stone-300">
                 <span className="text-sm leading-none">{sellerCountry.flagEmoji}</span>
@@ -714,9 +822,9 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
             { id: "dashboard", label: "Tableau de bord", icon: LayoutDashboard },
             { id: "products", label: "Mes Produits", icon: Package, badge: myProducts.length },
             { id: "orders", label: "Commandes", icon: ShoppingBag, badge: ordersList.filter(o => o.status === "En attente").length || undefined },
-            { id: "featured", label: "Produits Phares", icon: Star, highlight: currentPlan !== "Gratuit" },
-            { id: "banner", label: "Bannière d'Accueil", icon: ImageIcon, proOnly: true },
-            { id: "shop", label: "Ma Vitrine & URL", icon: Globe },
+            { id: "featured", label: "Produits Phares", icon: Star, highlight: currentPlan !== "Gratuit", locked: currentPlan === "Gratuit", planBadge: "PRO" },
+            { id: "banner", label: "Bannière d'Accueil", icon: ImageIcon, locked: currentPlan !== "BUSINESS", planBadge: "BUSINESS" },
+            { id: "shop", label: "Ma Vitrine & URL", icon: Globe, locked: currentPlan === "Gratuit", planBadge: "PRO" },
             { id: "messages", label: "Messages", icon: MessageSquare, badge: messagesList.filter(m => !m.read).length || undefined },
             { id: "reviews", label: "Avis Clients", icon: Award },
             { id: "wallet", label: "Portefeuille & Retraits", icon: Wallet },
@@ -728,24 +836,53 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setActiveTab(item.id as TabType)}
+                onClick={() => {
+                  if (item.locked) {
+                    if (item.id === "banner") {
+                      setTargetPlanToUpgrade("BUSINESS");
+                      setUpgradeModalOpen(true);
+                      showToast("La bannière d'accueil personnalisée est réservée aux boutiques en formule BUSINESS.");
+                      return;
+                    } else {
+                      setTargetPlanToUpgrade("PRO");
+                      setUpgradeModalOpen(true);
+                      showToast(`Cette fonctionnalité est débloquée à partir de l'offre ${item.planBadge || "PRO"}.`);
+                      return;
+                    }
+                  }
+                  setActiveTab(item.id as TabType);
+                }}
                 className={`w-full px-3 py-2.5 rounded-xl flex items-center justify-between text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
                   isActive
-                    ? "bg-[#0B4D26] text-white shadow-md shadow-[#0B4D26]/20 font-black"
+                    ? currentPlan === "BUSINESS"
+                      ? "bg-gradient-to-r from-[#d4af37] to-[#b8901c] text-stone-950 shadow-md font-black"
+                      : currentPlan === "PRO"
+                      ? "bg-[#0B4D26] text-white shadow-md shadow-[#0B4D26]/20 font-black"
+                      : "bg-stone-800 text-white shadow-md font-black"
+                    : item.locked
+                    ? "text-stone-500 hover:bg-stone-900/60 hover:text-stone-400"
                     : "text-stone-300 hover:bg-stone-900 hover:text-white"
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <Icon className={`w-4 h-4 ${isActive ? "text-[#d4af37]" : "text-stone-400"}`} />
+                  <Icon className={`w-4 h-4 ${isActive ? (currentPlan === "BUSINESS" ? "text-stone-950" : "text-[#d4af37]") : item.locked ? "text-stone-600" : "text-stone-400"}`} />
                   <span>{item.label}</span>
                 </div>
-                {item.badge !== undefined && (
-                  <span className={`text-[9px] font-mono font-black px-1.5 py-0.5 rounded-full ${
-                    isActive ? "bg-white text-stone-950" : "bg-stone-800 text-stone-300"
-                  }`}>
-                    {item.badge}
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5">
+                  {item.locked && (
+                    <span className="flex items-center gap-0.5 text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-stone-900 text-stone-400 border border-stone-800">
+                      <Lock className="w-2.5 h-2.5" />
+                      <span>{item.planBadge}</span>
+                    </span>
+                  )}
+                  {item.badge !== undefined && (
+                    <span className={`text-[9px] font-mono font-black px-1.5 py-0.5 rounded-full ${
+                      isActive ? (currentPlan === "BUSINESS" ? "bg-stone-950 text-[#d4af37]" : "bg-white text-stone-950") : "bg-stone-800 text-stone-300"
+                    }`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
               </button>
             );
           })}
@@ -822,20 +959,20 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
 
           {/* Top Quick Actions */}
           <div className="flex items-center gap-2">
+            {currentPlan === "BUSINESS" && (
+              <button
+                type="button"
+                onClick={handleExportSalesCSV}
+                className="hidden sm:flex bg-stone-100 hover:bg-stone-200 text-stone-900 border border-stone-300 px-3 py-2 rounded-xl font-bold text-xs uppercase tracking-wider items-center gap-1.5 transition-colors cursor-pointer"
+                title="Exporter le journal des ventes CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-[#0B4D26]" />
+                <span>Export CSV</span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => {
-                setIsEditingProduct(null);
-                setNewProdName("");
-                setNewProdDesc("");
-                setNewProdPrice("");
-                setNewProdPriceBarre("");
-                setNewProdStock("10");
-                setNewProdCategory(categories[0] || "Produits alimentaires");
-                setNewProdImageUrl("");
-                setNewProdImages([]);
-                setIsAddProductOpen(true);
-              }}
+              onClick={handleOpenAddProduct}
               className="bg-[#0B4D26] hover:bg-[#083a1d] text-white px-3.5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4 text-[#d4af37]" />
@@ -854,62 +991,129 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
           {activeTab === "dashboard" && (
             <div className="space-y-6 animate-fade-in max-w-6xl mx-auto">
               
-              {/* Welcome banner with plan badge */}
-              <div className="bg-stone-950 text-white p-5 sm:p-6 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-black uppercase text-white">
-                      Bonjour, {user?.businessName || user?.name || "Vendeur"} !
-                    </h2>
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                      currentPlan === "BUSINESS"
-                        ? "bg-[#d4af37] text-stone-950"
-                        : currentPlan === "PRO"
-                        ? "bg-emerald-500 text-white"
-                        : "bg-stone-800 text-stone-300"
-                    }`}>
-                      {currentPlan}
-                    </span>
-                    <div className="flex items-center gap-1.5 bg-stone-900 border border-stone-800 px-2.5 py-0.5 rounded-full text-xs font-semibold text-stone-200">
-                      <span className="text-sm leading-none">{sellerCountry.flagEmoji}</span>
-                      <span>{sellerCountry.name}</span>
-                      <span className="text-stone-400 font-mono text-[10.5px] font-bold">({sellerCurrencyCode})</span>
+              {/* Welcome banner differentiated by plan */}
+              {currentPlan === "BUSINESS" ? (
+                <div className="bg-gradient-to-r from-stone-950 via-[#181308] to-stone-950 text-white p-5 sm:p-6 rounded-2xl border-2 border-[#d4af37]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-black uppercase text-white flex items-center gap-1.5">
+                        <span>{user?.businessName || user?.name || "Boutique"}</span>
+                        <span className="text-[#d4af37]">👑</span>
+                      </h2>
+                      <span className="bg-gradient-to-r from-[#d4af37] via-amber-400 to-[#d4af37] text-stone-950 text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-xs">
+                        BUSINESS PRESTIGE
+                      </span>
+                      <span className="bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
+                        {myProducts.length} Articles en ligne (Illimité)
+                      </span>
+                      <div className="flex items-center gap-1.5 bg-stone-900 border border-stone-800 px-2.5 py-0.5 rounded-full text-xs font-semibold text-stone-200">
+                        <span className="text-sm leading-none">{sellerCountry.flagEmoji}</span>
+                        <span>{sellerCountry.name}</span>
+                        <span className="text-stone-400 font-mono text-[10.5px] font-bold">({sellerCurrencyCode})</span>
+                      </div>
                     </div>
+                    <p className="text-xs text-[#d4af37]/90 font-sans">
+                      Espace Partenaire Élite Panafricain : Bannière carrousel d'accueil, priorité absolue sur les produits phares, export comptable CSV et conseiller dédié 24/7.
+                    </p>
                   </div>
-                  <p className="text-xs text-stone-400 font-sans">
-                    Bienvenue sur votre espace de vente unifié. Suivez vos commandes et développez vos ventes locales.
-                  </p>
-                </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  {currentPlan === "Gratuit" && (
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => {
-                        setTargetPlanToUpgrade("PRO");
-                        setUpgradeModalOpen(true);
-                      }}
-                      className="bg-[#d4af37] hover:bg-[#c49f27] text-stone-950 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                      onClick={handleExportSalesCSV}
+                      className="bg-stone-900 hover:bg-stone-800 text-[#d4af37] border border-[#d4af37]/40 px-3.5 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Télécharger le journal comptable en format CSV"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Passer en PRO (1 600 F)</span>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Export CSV</span>
                     </button>
-                  )}
-                  {currentPlan === "PRO" && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("subscription")}
+                      className="bg-[#d4af37] hover:bg-[#c49f27] text-stone-950 px-3.5 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
+                    >
+                      <Crown className="w-3.5 h-3.5" />
+                      <span>Gérer Offre</span>
+                    </button>
+                  </div>
+                </div>
+              ) : currentPlan === "PRO" ? (
+                <div className="bg-gradient-to-r from-emerald-950 via-[#0B4D26] to-stone-950 text-white p-5 sm:p-6 rounded-2xl border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-black uppercase text-white">
+                        Bonjour, {user?.businessName || user?.name || "Vendeur"} ! ✨
+                      </h2>
+                      <span className="bg-emerald-500 text-white text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-xs">
+                        ABONNEMENT PRO ACTIF
+                      </span>
+                      <span className="bg-stone-900 text-emerald-300 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-stone-800">
+                        {myProducts.length} Articles en ligne (Illimité)
+                      </span>
+                      <div className="flex items-center gap-1.5 bg-stone-900 border border-stone-800 px-2.5 py-0.5 rounded-full text-xs font-semibold text-stone-200">
+                        <span className="text-sm leading-none">{sellerCountry.flagEmoji}</span>
+                        <span>{sellerCountry.name}</span>
+                        <span className="text-stone-400 font-mono text-[10.5px] font-bold">({sellerCurrencyCode})</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-emerald-200/90 font-sans">
+                      Boutique Professionnelle Active : Vitrine publique avec URL personnalisée, 2 produits phares et support VIP.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
                       onClick={() => {
                         setTargetPlanToUpgrade("BUSINESS");
                         setUpgradeModalOpen(true);
                       }}
-                      className="bg-[#d4af37] hover:bg-[#c49f27] text-stone-950 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                      className="bg-[#d4af37] hover:bg-[#c49f27] text-stone-950 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
                     >
                       <Crown className="w-3.5 h-3.5" />
                       <span>Passer en BUSINESS (3 200 F)</span>
                     </button>
-                  )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-stone-950 text-white p-5 sm:p-6 rounded-2xl border border-stone-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-lg">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-black uppercase text-white">
+                        Bonjour, {user?.businessName || user?.name || "Vendeur"} !
+                      </h2>
+                      <span className="bg-stone-800 text-stone-300 text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full border border-stone-700">
+                        COMPTE GRATUIT
+                      </span>
+                      <span className="bg-stone-900 text-stone-300 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-stone-800">
+                        {myProducts.length} Articles en ligne (Illimité)
+                      </span>
+                      <div className="flex items-center gap-1.5 bg-stone-900 border border-stone-800 px-2.5 py-0.5 rounded-full text-xs font-semibold text-stone-200">
+                        <span className="text-sm leading-none">{sellerCountry.flagEmoji}</span>
+                        <span>{sellerCountry.name}</span>
+                        <span className="text-stone-400 font-mono text-[10.5px] font-bold">({sellerCurrencyCode})</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-stone-400 font-sans">
+                      Formule Gratuite standard : Catalogue illimité et ventes ouvertes sur les 7 pays partenaires.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetPlanToUpgrade("PRO");
+                        setUpgradeModalOpen(true);
+                      }}
+                      className="bg-[#d4af37] hover:bg-[#c49f27] text-stone-950 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shadow-md"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Passer en PRO (1 600 F)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Key Metrics Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -921,11 +1125,15 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
                   <p className="text-[10px] text-stone-500 font-sans">Total des commandes livrées &amp; confirmées</p>
                 </div>
 
-                {/* Metric 2: Commission Miabé Asi 10% */}
+                {/* Metric 2: Commission Miabé Asi */}
                 <div className="bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-xs space-y-1">
-                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block">Commission Marketplace (10%)</span>
+                  <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block">
+                    Commission Plateforme (10%)
+                  </span>
                   <p className="text-xl sm:text-2xl font-mono font-black text-amber-700">-{formatSellerPrice(commissionMiabeAsi)}</p>
-                  <p className="text-[10px] text-stone-500 font-sans">Frais plateforme &amp; passerelle</p>
+                  <p className="text-[10px] text-stone-500 font-sans">
+                    10% sur chaque vente effectuée
+                  </p>
                 </div>
 
                 {/* Metric 3: Solde Net Disponible */}
@@ -1069,6 +1277,34 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
           {activeTab === "products" && (
             <div className="space-y-5 animate-fade-in max-w-6xl mx-auto">
               
+              {/* Plan & Unlimited Products Info Banner */}
+              <div className="p-4 rounded-2xl border border-stone-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-[#d4af37]/30 flex items-center justify-center shrink-0">
+                    <Package className="w-5 h-5 text-[#0B4D26]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-black uppercase tracking-wider text-stone-900">
+                        Catalogue Vendeur • Produits Illimités
+                      </span>
+                      <span className="text-[10px] font-mono font-bold bg-stone-100 text-stone-800 px-2.5 py-0.5 rounded-full border border-stone-200">
+                        {myProducts.length} articles en ligne
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-stone-500 font-sans mt-0.5">
+                      Publiez autant de créations et d'articles que vous souhaitez sans aucune restriction de quota.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 border border-stone-200">
+                    Formule {currentPlan} • Commission 10%
+                  </span>
+                </div>
+              </div>
+
               {/* Filter & Search Bar */}
               <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex flex-grow items-center gap-2">
@@ -1112,18 +1348,7 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
                   </p>
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsEditingProduct(null);
-                      setNewProdName("");
-                      setNewProdDesc("");
-                      setNewProdPrice("");
-                      setNewProdPriceBarre("");
-                      setNewProdStock("10");
-                      setNewProdCategory(categories[0] || "Produits alimentaires");
-                      setNewProdImageUrl("");
-                      setNewProdImages([]);
-                      setIsAddProductOpen(true);
-                    }}
+                    onClick={handleOpenAddProduct}
                     className="bg-[#0B4D26] hover:bg-[#083a1d] text-white px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer inline-flex items-center gap-1.5"
                   >
                     <Plus className="w-4 h-4 text-[#d4af37]" />
@@ -2230,10 +2455,13 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
                     <h4 className="text-base font-black text-stone-900 uppercase">GRATUIT</h4>
                     <p className="font-mono font-black text-xl text-stone-900">0 FCFA <span className="text-xs text-stone-400 font-normal">/ mois</span></p>
                     <ul className="space-y-2 text-xs text-stone-600 border-t border-stone-100 pt-3">
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-600" /> Gestion catalogue &amp; stocks</li>
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-600" /> Gestion des commandes</li>
-                      <li className="flex items-center gap-1.5 text-stone-400 line-through"><X className="w-3.5 h-3.5 text-stone-300" /> Aucune URL publique</li>
-                      <li className="flex items-center gap-1.5 text-stone-400 line-through"><X className="w-3.5 h-3.5 text-stone-300" /> Produits phares</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-600" /> Commission marketplace : <strong>10% sur chaque vente</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-600" /> Catalogue : <strong>Produits illimités</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-600" /> Ventes ouvertes sur les 7 pays</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-600" /> Gestion commandes &amp; stocks</li>
+                      <li className="flex items-center gap-1.5 text-stone-400 line-through"><X className="w-3.5 h-3.5 text-stone-300" /> Aucune URL de boutique</li>
+                      <li className="flex items-center gap-1.5 text-stone-400 line-through"><X className="w-3.5 h-3.5 text-stone-300" /> Pas de Produits phares</li>
+                      <li className="flex items-center gap-1.5 text-stone-400 line-through"><X className="w-3.5 h-3.5 text-stone-300" /> Pas d'export comptable CSV</li>
                     </ul>
                   </div>
 
@@ -2261,10 +2489,13 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
                     <h4 className="text-base font-black text-stone-900 uppercase">PRO</h4>
                     <p className="font-mono font-black text-xl text-[#0B4D26]">1 600 FCFA <span className="text-xs text-stone-400 font-normal">/ mois</span></p>
                     <ul className="space-y-2 text-xs text-stone-700 border-t border-stone-100 pt-3 font-medium">
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> URL de boutique personnalisée</li>
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> Accès aux Produits Phares</li>
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> Badge Vendeur PRO</li>
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> Personnalisation avancée</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> Commission marketplace : <strong>10% sur chaque vente</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> Catalogue : <strong>Produits illimités</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> <strong>URL de boutique personnalisée</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> Jusqu'à 2 Produits Phares mis en avant</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> Badge officiel Vendeur PRO Vérifié</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#0B4D26]" /> Support prioritaire WhatsApp</li>
+                      <li className="flex items-center gap-1.5 text-stone-400 line-through"><X className="w-3.5 h-3.5 text-stone-300" /> Bannière carrousel d'accueil</li>
                     </ul>
                   </div>
 
@@ -2288,14 +2519,17 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
                   currentPlan === "BUSINESS" ? "border-[#d4af37] ring-2 ring-[#d4af37]" : "border-stone-800"
                 }`}>
                   <div className="space-y-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#d4af37]">Haute Visibilité</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#d4af37]">Haute Visibilité Élite</span>
                     <h4 className="text-base font-black text-white uppercase">BUSINESS</h4>
                     <p className="font-mono font-black text-xl text-[#d4af37]">3 200 FCFA <span className="text-xs text-stone-400 font-normal">/ mois</span></p>
                     <ul className="space-y-2 text-xs text-stone-200 border-t border-stone-800 pt-3">
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Tout le forfait PRO</li>
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Bannière sur la page d'accueil</li>
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Priorité maximale Produits Phares</li>
-                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Badge Vendeur BUSINESS</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Commission marketplace : <strong>10% sur chaque vente</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Catalogue : <strong>Produits illimités</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Tout le forfait PRO inclus</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> <strong>Bannière Carrousel en Page d'Accueil</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Jusqu'à 5 Produits Phares prioritaires</li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> <strong>Export comptable CSV instantané</strong></li>
+                      <li className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-[#d4af37]" /> Conseiller d'affaires dédié 24/7</li>
                     </ul>
                   </div>
 

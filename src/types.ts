@@ -87,6 +87,9 @@ export interface Product {
   isCrossBorderEligible?: boolean; // Can be shipped between African countries
   weightKg?: number;      // For freight / shipping rate calculation
   status?: "actif" | "inactif" | "brouillon" | "en_rupture";
+  views?: number;
+  salesCount?: number;
+  revenueGenerated?: number;
   valide?: boolean;
   createdAt?: string;
   updatedAt?: string;

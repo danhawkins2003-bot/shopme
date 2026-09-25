@@ -141,6 +141,7 @@ if (isSupabaseConfigured()) {
 function getDeletedProductIds(): string[] {
   try {
     const list = readJSONFile<any[]>(DELETED_PRODUCTS_FILE, []);
+    inMemoryDeletedIds.clear();
     if (Array.isArray(list)) {
       list.forEach((item) => {
         const id = typeof item === "string" ? item : (item?.id ? String(item.id) : "");
@@ -839,24 +840,35 @@ app.get(["/api/products", "/api/products/"], async (req, res) => {
     }
   }
 
+  // Read local products
+  const localProducts = readJSONFile<any[]>(PRODUCTS_FILE, []);
+  const cleanLocal = localProducts.filter((p: any) => !deletedIds.has(String(p?.id)));
+
   if (Array.isArray(supabaseProducts) && supabaseProducts.length > 0) {
     const cleanSupabase = supabaseProducts.filter((p: any) => !deletedIds.has(String(p?.id)));
-    memoryStore.set(PRODUCTS_FILE, cleanSupabase);
+    // Merge Supabase and local products to ensure full catalog is always available
+    const mergedMap = new Map<string, any>();
+    cleanSupabase.forEach((p: any) => mergedMap.set(String(p.id), p));
+    cleanLocal.forEach((p: any) => {
+      if (!mergedMap.has(String(p.id))) {
+        mergedMap.set(String(p.id), p);
+      }
+    });
+    const merged = Array.from(mergedMap.values());
+    memoryStore.set(PRODUCTS_FILE, merged);
     if (process.env.VERCEL !== "1") {
       try {
-        fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(cleanSupabase, null, 2), "utf-8");
+        fs.writeFileSync(PRODUCTS_FILE, JSON.stringify(merged, null, 2), "utf-8");
         if (fs.existsSync(PRODUCTS_BACKUP_FILE)) {
-          fs.writeFileSync(PRODUCTS_BACKUP_FILE, JSON.stringify(cleanSupabase, null, 2), "utf-8");
+          fs.writeFileSync(PRODUCTS_BACKUP_FILE, JSON.stringify(merged, null, 2), "utf-8");
         }
       } catch (e) {}
     }
-    return res.json(cleanSupabase);
+    return res.json(merged);
   }
 
   // Fallback to local produits.json
-  const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
-  const cleanProducts = products.filter((p: any) => !deletedIds.has(String(p?.id)));
-  res.json(Array.isArray(cleanProducts) ? cleanProducts : []);
+  res.json(Array.isArray(cleanLocal) ? cleanLocal : []);
 });
 
 // GET blog posts
@@ -1222,7 +1234,10 @@ app.post("/api/products/save", async (req, res) => {
       isCrossBorderEligible: product.isCrossBorderEligible !== undefined ? !!product.isCrossBorderEligible : true,
       weightKg: Number(product.weightKg || product.weight_kg) || 0.5,
       valide: typeof product.valide !== "undefined" ? !!product.valide : true,
-      status: product.status || "actif"
+      status: product.status ? product.status : (Math.max(0, Math.floor(Number(product.stock || 0))) === 0 ? "en_rupture" : "actif"),
+      views: Number(product.views || 0),
+      salesCount: Number(product.salesCount || 0),
+      revenueGenerated: Number(product.revenueGenerated || 0)
     };
 
     // Remove from deleted products tombstone blacklist in case it was previously deleted
@@ -1269,19 +1284,52 @@ app.post("/api/products/save", async (req, res) => {
 });
 
 // POST populate 105 products (Secure)
-app.post("/api/admin/populate-products", (req, res) => {
+app.post("/api/admin/populate-products", async (req, res) => {
   const { auth } = req.body;
   if (auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
     return res.status(403).json({ success: false, error: "Accès refusé." });
   }
 
   const generatedProducts = generateCatalogData();
+  inMemoryDeletedIds.clear();
+  writeJSONFile(DELETED_PRODUCTS_FILE, []);
+  memoryStore.delete(DELETED_PRODUCTS_FILE);
+  if (isSupabaseConfigured()) {
+    try {
+      await saveAppData("deleted_products.json", []);
+    } catch (e) {
+      console.warn("⚠️ [Populate Products] Notice effacement tombstones Supabase:", e);
+    }
+    try {
+      await syncAllProductsToSupabaseTable(generatedProducts);
+    } catch (e) {
+      console.warn("⚠️ [Populate Products] Notice synchronisation Supabase:", e);
+    }
+  }
   const success = writeJSONFile(PRODUCTS_FILE, generatedProducts);
   if (success) {
     res.json({ success: true, count: generatedProducts.length, message: "105 produits générés avec succès !" });
   } else {
     res.status(500).json({ success: false, error: "Impossible de générer le catalogue de masse." });
   }
+});
+
+// POST /api/admin/clear-deleted-products - Reset tombstoned products list
+app.post("/api/admin/clear-deleted-products", async (req, res) => {
+  const { auth } = req.body;
+  if (auth !== "asime2026" && auth !== "asime2026-auth-session" && auth !== "shopme2026" && auth !== "shopme2026-auth-session") {
+    return res.status(403).json({ success: false, error: "Accès refusé." });
+  }
+
+  inMemoryDeletedIds.clear();
+  writeJSONFile(DELETED_PRODUCTS_FILE, []);
+  memoryStore.delete(DELETED_PRODUCTS_FILE);
+  if (isSupabaseConfigured()) {
+    try {
+      await saveAppData("deleted_products.json", []);
+    } catch (e) {}
+  }
+  return res.json({ success: true, message: "Liste des produits supprimés réinitialisée." });
 });
 
 // GET /api/admin/db-status - Check Supabase configuration, connection, and table status
@@ -1980,7 +2028,10 @@ app.post(["/api/products", "/api/products/:id"], async (req, res, next) => {
     currencyCode: prodDetails.currencyCode || sanitizedCurrencyCode,
     lienAffilie: prodDetails.lienAffilie || "",
     valide: typeof prodDetails.valide !== "undefined" ? !!prodDetails.valide : true,
-    status: prodDetails.status || "actif"
+    status: prodDetails.status ? prodDetails.status : (Math.max(0, Math.floor(Number(prodDetails.stock || 0))) === 0 ? "en_rupture" : "actif"),
+    views: Number(prodDetails.views || existingProduct?.views || 0),
+    salesCount: Number(prodDetails.salesCount || existingProduct?.salesCount || 0),
+    revenueGenerated: Number(prodDetails.revenueGenerated || existingProduct?.revenueGenerated || 0)
   };
 
     // 1. Primary Source of Truth: Synchronize immediately to Supabase public.products table
@@ -2016,6 +2067,119 @@ app.post(["/api/products", "/api/products/:id"], async (req, res, next) => {
     console.log(`[Products] Produit enregistré avec succès : "${savedProduct.nom}" (${savedProduct.id})`);
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     return res.json({ success: true, product: savedProduct });
+});
+
+// POST /api/products/:id/status - Update product status (actif / inactif / en_rupture) and stock
+app.post("/api/products/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, stock } = req.body;
+
+    if (!status || !["actif", "inactif", "en_rupture"].includes(status)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: "Statut invalide. Valeurs autorisées : actif, inactif, en_rupture." 
+      });
+    }
+
+    const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+    const prodIndex = products.findIndex((p: any) => String(p.id) === String(id));
+    if (prodIndex === -1) {
+      return res.status(404).json({ success: false, error: "Produit non trouvé." });
+    }
+
+    // Update status
+    products[prodIndex].status = status;
+
+    // Optional stock update
+    if (typeof stock !== "undefined") {
+      const parsedStock = Math.max(0, Math.floor(Number(stock)));
+      products[prodIndex].stock = parsedStock;
+      // Auto-set rupture if stock is 0 and status was set to actif
+      if (parsedStock === 0 && status === "actif") {
+        products[prodIndex].status = "en_rupture";
+      }
+    } else if (status === "en_rupture" && (!products[prodIndex].stock || products[prodIndex].stock > 0)) {
+      // If manually marked en_rupture, keep current stock or leave note
+    }
+
+    // Synchronize to Supabase if configured
+    if (isSupabaseConfigured()) {
+      try {
+        await syncProductToSupabaseTable(products[prodIndex]);
+      } catch (sbErr) {
+        console.warn("⚠️ [Product Status] Synchronisation Supabase échouée (non bloquant):", sbErr);
+      }
+    }
+
+    writeJSONFile(PRODUCTS_FILE, products);
+    memoryStore.set(PRODUCTS_FILE, products);
+
+    console.log(`[Products] Statut du produit "${products[prodIndex].nom}" (${id}) mis à jour : ${products[prodIndex].status} (Stock: ${products[prodIndex].stock})`);
+    return res.json({ success: true, product: products[prodIndex] });
+  } catch (err: any) {
+    console.error("🔴 [Product Status Exception]:", err);
+    return res.status(500).json({ success: false, error: err.message || "Erreur interne" });
+  }
+});
+
+// POST /api/products/:id/view - Increment view count for product analytics
+app.post("/api/products/:id/view", (req, res) => {
+  const { id } = req.params;
+  const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+  const prodIndex = products.findIndex((p: any) => String(p.id) === String(id));
+  if (prodIndex > -1) {
+    products[prodIndex].views = (Number(products[prodIndex].views) || 0) + 1;
+    writeJSONFile(PRODUCTS_FILE, products);
+    memoryStore.set(PRODUCTS_FILE, products);
+    return res.json({ success: true, views: products[prodIndex].views });
+  }
+  return res.status(404).json({ success: false, error: "Produit non trouvé" });
+});
+
+// GET /api/admin/products-analytics - Overview of products analytics for Admin & Reports
+app.get("/api/admin/products-analytics", (req, res) => {
+  const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+  const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+
+  // Compute live aggregates
+  let totalViews = 0;
+  let totalSales = 0;
+  let totalRevenue = 0;
+
+  const enrichedProducts = products.map((p: any) => {
+    const views = Number(p.views) || 0;
+    const sales = Number(p.salesCount) || 0;
+    const revenue = Number(p.revenueGenerated) || (sales * Number(p.prix || 0));
+    const conversionRate = views > 0 ? Number(((sales / views) * 100).toFixed(1)) : 0;
+
+    totalViews += views;
+    totalSales += sales;
+    totalRevenue += revenue;
+
+    return {
+      ...p,
+      views,
+      salesCount: sales,
+      revenueGenerated: revenue,
+      conversionRate
+    };
+  });
+
+  return res.json({
+    success: true,
+    summary: {
+      totalProducts: products.length,
+      activeProducts: products.filter(p => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length,
+      inactiveProducts: products.filter(p => p.status === "inactif").length,
+      outOfStockProducts: products.filter(p => p.status === "en_rupture" || (p.stock || 0) <= 0).length,
+      totalViews,
+      totalSales,
+      totalRevenue,
+      overallConversionRate: totalViews > 0 ? Number(((totalSales / totalViews) * 100).toFixed(1)) : 0
+    },
+    products: enrichedProducts
+  });
 });
 
 // Bulk sync products from browser localStorage / multi-device sessions to server database
@@ -2317,12 +2481,25 @@ app.post("/api/orders/create", (req, res) => {
     CM: "Cameroun"
   };
 
-  // Subtract stocks and check validity
+  // Subtract stocks and check validity + update analytics & stock status
   for (const item of items) {
-    const prodIndex = products.findIndex(p => p.id === item.product.id);
+    const prodId = item.product?.id || item.id;
+    const prodIndex = products.findIndex(p => p.id === prodId);
     if (prodIndex > -1) {
       const currentStock = products[prodIndex].stock || 0;
-      products[prodIndex].stock = Math.max(0, currentStock - item.quantity);
+      const orderedQty = Math.max(1, Number(item.quantity || item.quantite || 1));
+      const newStock = Math.max(0, currentStock - orderedQty);
+      products[prodIndex].stock = newStock;
+      
+      // Automatic out-of-stock trigger when inventory reaches 0
+      if (newStock === 0) {
+        products[prodIndex].status = "en_rupture";
+      }
+
+      // Track product sales and generated revenue analytics
+      products[prodIndex].salesCount = (Number(products[prodIndex].salesCount) || 0) + orderedQty;
+      const unitPrice = Number(item.product?.prix || products[prodIndex].prix || 0);
+      products[prodIndex].revenueGenerated = (Number(products[prodIndex].revenueGenerated) || 0) + (unitPrice * orderedQty);
     }
   }
   writeJSONFile(PRODUCTS_FILE, products);
@@ -4624,6 +4801,71 @@ app.post("/api/admin/sync-products", (req, res) => {
   }
 });
 
+// Helper to generate natural, helpful responses for Aya AI Assistant
+function generateAyaSmartResponse(message: string, sampleProducts: string): string {
+  const msg = message.toLowerCase().trim();
+
+  // Greetings / Salutations
+  if (msg.includes("bonjour") || msg.includes("salut") || msg.includes("coucou") || msg.includes("bonsoir") || msg.includes("hello") || msg.includes("hi")) {
+    return "Miawoezon ! Bienvenue chez Miabé Asi — Le local, notre fierté 🇹🇬. Je suis Aya, votre assistante et conseillère virtuelle. Comment puis-je vous accompagner aujourd'hui dans vos achats ou découvertes de produits Made in Togo ?";
+  }
+
+  // Ewe language greetings
+  if (msg.includes("woézo") || msg.includes("woezo") || msg.includes("ndi") || msg.includes("fofo") || msg.includes("daavi") || msg.includes("elɔ̃") || msg.includes("egbe") || msg.includes("aleike")) {
+    return "Woezɔ̃ lɔlɔ̃tɔ ! Miabé Asi nye Togo tɔwo ƒe asitsafe gã. Nye ŋkɔe nye Aya. Nu ka me mate ŋu akpe ɖe ŋuwò le egbe ? Miafe adzɔnuwo tso Togo nye nu nyuiwo (Miel, Karité, Dzogbenukuwo alo atsyɔ̃nuwo) !";
+  }
+
+  // Products / Made in Togo / Local specialties
+  if (msg.includes("produit") || msg.includes("catalogue") || msg.includes("miel") || msg.includes("karit") || msg.includes("café") || msg.includes("chocolat") || msg.includes("wax") || msg.includes("artisan") || msg.includes("huile") || msg.includes("savon") || msg.includes("mode") || msg.includes("cadeau")) {
+    return `Miawoezon ! Miabé Asi valorise fièrement les richesses et le savoir-faire togolais :
+🍯 Miel Sauvage pur de Kpalimé
+🥥 Beurre de Karité Bio pur & Soins naturels
+☕ Cafés aromatiques des Plateaux & Cacao artisanal
+👗 Mode & Accessoires en Wax togolais authentique
+🎨 Objets d'artisanat et créations uniques
+
+${sampleProducts ? "Quelques suggestions disponibles :\n" + sampleProducts + "\n\n" : ""}Vous pouvez explorer tout notre catalogue en utilisant la barre de recherche ou les filtres par catégorie en haut du site !`;
+  }
+
+  // Delivery & shipping
+  if (msg.includes("livraison") || msg.includes("livrer") || msg.includes("délai") || msg.includes("frais") || msg.includes("transport") || msg.includes("lome") || msg.includes("lomé") || msg.includes("kara") || msg.includes("sokode")) {
+    return `🚚 Concernant les livraisons chez Miabé Asi :
+• À Lomé : Livraison express à domicile ou sur votre lieu de travail le jour même ou en 24h ouvrées.
+• En région : Expéditions sécurisées vers toutes les préfectures du Togo (Kpalimé, Atakpamé, Sokodé, Kara, Dapaong, etc.).
+• Sous-région et International : Disponible selon les vendeurs éligibles au commerce transfrontalier.
+Vous pouvez spécifier votre adresse et quartier précis lors de la finalisation de votre commande !`;
+  }
+
+  // Payment methods
+  if (msg.includes("paiement") || msg.includes("payer") || msg.includes("tmoney") || msg.includes("t-money") || msg.includes("flooz") || msg.includes("carte") || msg.includes("espece") || msg.includes("espèces") || msg.includes("cash") || msg.includes("portefeuille")) {
+    return `💳 Nos modes de règlement sont simples, instantanés et sécurisés :
+• Mobile Money : T-Money (Mix by Togocom) & Flooz (Moov Africa)
+• Cartes bancaires internationales (Visa & Mastercard)
+• Portefeuille électronique Miabé Asi Pay
+• Espèces à la livraison (disponible dans la zone urbaine de Lomé).
+Toutes les transactions sont chiffrées et protégées pour votre sécurité.`;
+  }
+
+  // Becoming a vendor / selling / plans / subscriptions
+  if (msg.includes("vendre") || msg.includes("vendeur") || msg.includes("boutique") || msg.includes("ouvrir") || msg.includes("inscrire") || msg.includes("forfait") || msg.includes("commission") || msg.includes("plan") || msg.includes("tarif")) {
+    return `🌟 Vous souhaitez vendre vos créations ou articles sur Miabé Asi ? C'est très simple !
+1. Ouvrez le menu principal et cliquez sur 'Devenir Vendeur'.
+2. Nos 3 formules sont adaptées à tous les créateurs :
+   • Formule Gratuite (0 FCFA) : Produits illimités, commission standard 10%.
+   • Formule PRO (1 600 FCFA/mois) : Analytics détaillés, badge certifié, mise en avant.
+   • Formule BUSINESS (3 200 FCFA/mois) : Bannières d'accueil dédiées, vitrine VIP, export comptable CSV, support 24/7.
+3. Vous disposez d'un tableau de bord moderne pour gérer vos stocks, voir vos ventes et encaisser vos gains via Mobile Money !`;
+  }
+
+  // Contact / WhatsApp / Support
+  if (msg.includes("contact") || msg.includes("whatsapp") || msg.includes("numéro") || msg.includes("aide") || msg.includes("support") || msg.includes("téléphone") || msg.includes("service")) {
+    return `📞 Besoin d'une assistance immédiate ? Vous pouvez contacter directement notre service client via le bouton WhatsApp vert présent sur la plateforme ou consulter notre Centre d'Aide dans le menu principal.`;
+  }
+
+  // Fallback default
+  return "Miawoezon ! Je suis Aya, votre Assistante Miabé Asi — 'Le local, notre fierté'. Je suis à votre disposition pour vous conseiller sur nos produits togolais, nos options de livraison, les paiements Mobile Money (T-Money/Flooz) ou la création de votre boutique vendeur. Comment puis-je vous aider aujourd'hui ?";
+}
+
 // POST /api/ai/assistant - AI Chatbot Assistant for Miabé Asi (Powered by Gemini)
 app.post("/api/ai/assistant", async (req, res) => {
   try {
@@ -4662,19 +4904,9 @@ Consignes de communication :
 
     const ai = getGeminiClient();
     if (!ai) {
-      // Fallback response if GEMINI_API_KEY is not present
-      const msgLower = message.toLowerCase();
-      let fallbackText = "Miawoezon ! Je suis Aya, l'Assistante IA de Miabé Asi — Le local, notre fierté. ";
-      if (msgLower.includes("livraison") || msgLower.includes("livrer")) {
-        fallbackText += "Nous assurons la livraison express le jour même à Lomé et la livraison sécurisée dans toutes les villes du Togo !";
-      } else if (msgLower.includes("paiement") || msgLower.includes("payer") || msgLower.includes("tmoney") || msgLower.includes("flooz")) {
-        fallbackText += "Vous pouvez régler vos achats par Carte bancaire, Mobile Money, Portefeuille Miabé Asi Pay ou à la livraison !";
-      } else if (msgLower.includes("produit") || msgLower.includes("miel") || msgLower.includes("karit") || msgLower.includes("cadeau")) {
-        fallbackText += "Découvrez notre catalogue 'Made in Togo' avec le Miel Sauvage de Kpalimé, le Beurre de Karité Bio, les Cafés des Plateaux et l'Artisanat local dans l'onglet Catalogue !";
-      } else {
-        fallbackText += "Comment puis-je vous guider aujourd'hui ? Posez-moi vos questions sur nos produits Made in Togo, nos modes de paiement ou la livraison !";
-      }
-      return res.json({ success: true, response: fallbackText });
+      // Smart conversational fallback when Gemini API key is absent
+      const reply = generateAyaSmartResponse(message, sampleProducts);
+      return res.json({ success: true, response: reply });
     }
 
     const contents: any[] = [];
@@ -4692,7 +4924,7 @@ Consignes de communication :
     });
 
     const result = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
+      model: "gemini-2.5-flash",
       contents: contents,
       config: {
         systemInstruction: systemInstruction,
@@ -4700,14 +4932,17 @@ Consignes de communication :
       }
     });
 
-    const reply = result.text || "Miawoezon ! Comment puis-je vous conseiller aujourd'hui sur Miabé Asi ?";
+    const reply = result.text || generateAyaSmartResponse(message, sampleProducts);
     res.json({ success: true, response: reply });
   } catch (error: any) {
     console.error("AI Assistant Endpoint Error:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "Erreur du serveur d'assistance IA.",
-      response: "Une petite interruption temporaire est survenue. N'hésitez pas à me poser à nouveau votre question !" 
+    // Graceful conversational recovery instead of breaking down
+    const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+    const sampleProducts = products.slice(0, 15).map(p => `- ${p.nom} (${p.categorie}): ${p.prix} FCFA`).join("\n");
+    const smartFallback = generateAyaSmartResponse(req.body?.message || "", sampleProducts);
+    res.json({ 
+      success: true, 
+      response: smartFallback 
     });
   }
 });

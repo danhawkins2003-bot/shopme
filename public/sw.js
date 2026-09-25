@@ -1,17 +1,14 @@
 // Miabé Asi PWA Service Worker — Versioned Cache & Stale-While-Revalidate Strategy
-const CACHE_NAME = "miabe-asi-v4";
+const CACHE_NAME = "miabe-asi-v5";
 
 const STATIC_PRECACHE = [
   "/",
-  "/manifest.json?v=4",
-  "/favicon.svg?v=4",
-  "/favicon.png?v=4",
-  "/icon-192.png?v=4",
-  "/icon-512.png?v=4",
-  "/icon-maskable-192.png?v=4",
-  "/icon-maskable-512.png?v=4",
-  "/apple-touch-icon.png?v=4",
-  "/official-logo.png?v=4"
+  "/manifest.json?v=5",
+  "/favicon.svg?v=5",
+  "/favicon.png?v=5",
+  "/icon-192.png?v=5",
+  "/icon-512.png?v=5",
+  "/apple-touch-icon.png?v=5"
 ];
 
 // Installation: Pre-cache shell assets & activate immediately
@@ -57,10 +54,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 1. Dynamic API and Auth endpoints: Always bypass SW cache
-  if (url.pathname.startsWith("/api/") || url.hostname.includes("supabase.co") || url.pathname.startsWith("/auth/")) {
-    event.respondWith(fetch(request));
-    return;
+  // ABSOLUTE BYPASS: Never intercept or cache in development environments, hot module reloads, or source modules
+  if (
+    url.hostname.includes("run.app") ||
+    url.hostname.includes("localhost") ||
+    url.hostname.includes("127.0.0.1") ||
+    url.port === "3000" ||
+    url.pathname.startsWith("/@") ||
+    url.pathname.startsWith("/src/") ||
+    url.pathname.startsWith("/node_modules/") ||
+    url.pathname.endsWith(".tsx") ||
+    url.pathname.endsWith(".ts") ||
+    url.pathname.endsWith(".jsx") ||
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/auth/") ||
+    url.hostname.includes("supabase.co")
+  ) {
+    return; // Let browser fetch directly from network
   }
 
   // 2. Navigation requests (HTML documents) -> Network-First

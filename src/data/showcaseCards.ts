@@ -20,36 +20,38 @@ export interface HomepageShowcaseData {
 
 export const DEFAULT_HERO_CARDS: ShowcaseCard[] = [
   {
-    id: "miel_dore",
-    title: "Notre Miel Doré",
-    subtitle: "100% sauvage, récolté à Kpalimé du plateau forestier.",
-    imageUrl: "https://images.unsplash.com/photo-1587049352846-4a222e784d38?auto=format&fit=crop&q=80&w=600",
-    category: "Made in Togo Premium",
-    searchQuery: "Miel"
+    id: "grand_marche_africain",
+    title: "Le Grand Marché Africain",
+    subtitle: "Explorez les étals vibrants et trésors authentiques de nos 7 pays partenaires en direct des vendeurs vérifiés.",
+    imageUrl: "https://images.unsplash.com/photo-1533900298318-6b8da08a523e?auto=format&fit=crop&q=80&w=1200",
+    category: "Tous",
+    searchQuery: "",
+    tag: "Marché Panafricain 🌍",
+    collection: "Direct Vendeurs"
   },
   {
     id: "soin_karite",
     title: "Soin au Karité",
     subtitle: "Pressé par notre coopérative de femmes solidaires.",
     imageUrl: "https://images.unsplash.com/photo-1608248543803-ba4f8c70ae0b?auto=format&fit=crop&q=80&w=600",
-    category: "Made in Togo Premium",
+    category: "Beauté & Santé Bio",
     searchQuery: "Karité"
   },
   {
     id: "paniers_kovie",
-    title: "Paniers de Kovié",
-    subtitle: "Cueillette du matin, fraîcheur livrée sous 24h à Lomé.",
+    title: "Paniers du Terroir",
+    subtitle: "Fraîcheur et récoltes livrées rapidement chez vous.",
     imageUrl: "https://images.unsplash.com/photo-1610348725531-843dff563e2c?auto=format&fit=crop&q=80&w=600",
-    category: "Paniers Frais & Épicerie",
+    category: "Épicerie & Fruits Séchés",
     searchQuery: ""
   },
   {
-    id: "hibiscus_epices",
-    title: "Hibiscus & Épices",
-    subtitle: "Pour vos infusions et bienfaits naturels au quotidien.",
-    imageUrl: "https://images.unsplash.com/photo-1597481499750-3e6b22637e12?auto=format&fit=crop&q=80&w=600",
-    category: "Made in Togo Premium",
-    searchQuery: "Thé"
+    id: "mode_wax_kita",
+    title: "Mode Wax & Créations",
+    subtitle: "Boubous, Kita et accessoires de stylistes africains.",
+    imageUrl: "https://images.unsplash.com/photo-1590736704728-f4730bb30770?auto=format&fit=crop&q=80&w=600",
+    category: "Tous",
+    searchQuery: "Wax"
   }
 ];
 

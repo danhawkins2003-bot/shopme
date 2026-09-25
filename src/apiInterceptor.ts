@@ -530,6 +530,148 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
     }, 200, true);
   }
 
+  // --- PRODUCT STATUS TOGGLE PATH (ACTIF / INACTIF / EN_RUPTURE) ---
+  if (cleanRoute.startsWith("/api/products/") && cleanRoute.endsWith("/status") && method === "POST") {
+    // Try server first
+    try {
+      const serverRes = await originalFetch(urlPath, init);
+      if (serverRes.ok) {
+        const text = await serverRes.text();
+        const data = text ? JSON.parse(text) : { success: true };
+        if (data.product) {
+          const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+          const idx = prods.findIndex((p: any) => String(p.id) === String(data.product.id));
+          if (idx > -1) {
+            prods[idx] = { ...prods[idx], ...data.product };
+            localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+          }
+        }
+        return makeResponse(data, 200, true);
+      }
+    } catch (e) {}
+
+    // Fallback: update in localStorage
+    const prodId = cleanRoute.replace("/api/products/", "").replace("/status", "").trim();
+    const { status, stock } = bodyData;
+    const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+    const idx = prods.findIndex((p: any) => String(p.id) === String(prodId));
+
+    if (idx === -1) {
+      return makeResponse({ success: false, error: "Produit non trouvé." }, 404, false);
+    }
+
+    prods[idx].status = status || "actif";
+    if (typeof stock !== "undefined") {
+      const parsedStock = Math.max(0, Math.floor(Number(stock)));
+      prods[idx].stock = parsedStock;
+      if (parsedStock === 0 && status === "actif") {
+        prods[idx].status = "en_rupture";
+      }
+    }
+
+    localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+    return makeResponse({ success: true, product: prods[idx] }, 200, true);
+  }
+
+  // --- PRODUCT VIEW TRACKING PATH ---
+  if (cleanRoute.startsWith("/api/products/") && cleanRoute.endsWith("/view") && method === "POST") {
+    const prodId = cleanRoute.replace("/api/products/", "").replace("/view", "").trim();
+    try {
+      originalFetch(urlPath, init).catch(() => {});
+    } catch (e) {}
+
+    const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+    const idx = prods.findIndex((p: any) => String(p.id) === String(prodId));
+    let viewsCount = 1;
+    if (idx > -1) {
+      viewsCount = (Number(prods[idx].views) || 0) + 1;
+      prods[idx].views = viewsCount;
+      localStorage.setItem("asime_emulated_products", JSON.stringify(prods));
+    }
+    return makeResponse({ success: true, views: viewsCount }, 200, true);
+  }
+
+  // --- PRODUCTS ANALYTICS PATH ---
+  if (cleanRoute === "/api/admin/products-analytics" && method === "GET") {
+    try {
+      const serverRes = await originalFetch("/api/admin/products-analytics?t=" + Date.now(), { cache: "no-store" });
+      if (serverRes.ok) {
+        return serverRes;
+      }
+    } catch (e) {}
+
+    const prods = JSON.parse(localStorage.getItem("asime_emulated_products") || "[]");
+    const orders = JSON.parse(localStorage.getItem("asime_emulated_orders") || "[]");
+
+    let totalViews = 0;
+    let totalSales = 0;
+    let totalRevenue = 0;
+
+    const enriched = prods.map((p: any) => {
+      const views = Number(p.views) || 0;
+      const sales = Number(p.salesCount) || 0;
+      const revenue = Number(p.revenueGenerated) || (sales * Number(p.prix || 0));
+      const conversionRate = views > 0 ? Number(((sales / views) * 100).toFixed(1)) : 0;
+
+      totalViews += views;
+      totalSales += sales;
+      totalRevenue += revenue;
+
+      return {
+        ...p,
+        views,
+        salesCount: sales,
+        revenueGenerated: revenue,
+        conversionRate,
+        status: p.status || ((p.stock || 0) <= 0 ? "en_rupture" : "actif")
+      };
+    });
+
+    return makeResponse({
+      success: true,
+      summary: {
+        totalProducts: prods.length,
+        activeProducts: prods.filter((p: any) => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length,
+        inactiveProducts: prods.filter((p: any) => p.status === "inactif").length,
+        outOfStockProducts: prods.filter((p: any) => p.status === "en_rupture" || (p.stock || 0) <= 0).length,
+        totalViews,
+        totalSales,
+        totalRevenue,
+        overallConversionRate: totalViews > 0 ? Number(((totalSales / totalViews) * 100).toFixed(1)) : 0
+      },
+      products: enriched
+    }, 200, true);
+  }
+
+  // --- AI ASSISTANT PATH ---
+  if (cleanRoute === "/api/ai/assistant" && method === "POST") {
+    try {
+      const serverRes = await originalFetch(urlPath, init);
+      if (serverRes.ok) {
+        return serverRes;
+      }
+    } catch (e) {}
+
+    const msg = String(bodyData?.message || "").toLowerCase().trim();
+    let reply = "Miawoezon ! Je suis Aya, l'Assistante virtuelle de Miabé Asi — 'Le local, notre fierté' 🇹🇬. Comment puis-je vous accompagner aujourd'hui dans vos achats ou découvertes de produits Made in Togo ?";
+
+    if (msg.includes("bonjour") || msg.includes("salut") || msg.includes("coucou") || msg.includes("bonsoir") || msg.includes("hello") || msg.includes("hi")) {
+      reply = "Miawoezon ! Bienvenue chez Miabé Asi — Le local, notre fierté 🇹🇬. Je suis Aya, votre assistante et conseillère virtuelle. Comment puis-je vous accompagner aujourd'hui dans vos achats ou découvertes de produits Made in Togo ?";
+    } else if (msg.includes("woézo") || msg.includes("woezo") || msg.includes("ndi") || msg.includes("fofo") || msg.includes("daavi") || msg.includes("elɔ̃")) {
+      reply = "Woezɔ̃ lɔlɔ̃tɔ ! Miabé Asi nye Togo tɔwo ƒe asitsafe gã. Nye ŋkɔe nye Aya. Nu ka me mate ŋu akpe ɖe ŋuwò le egbe ? Miafe adzɔnuwo tso Togo nye nu nyuiwo (Miel, Karité, Dzogbenukuwo alo atsyɔ̃nuwo) !";
+    } else if (msg.includes("produit") || msg.includes("miel") || msg.includes("karit") || msg.includes("café") || msg.includes("catalogue") || msg.includes("chocolat") || msg.includes("artisan") || msg.includes("made in togo")) {
+      reply = "🌿 Miabé Asi met en avant le meilleur de l'artisanat et du terroir togolais :\n• 🍯 Miel Sauvage pur de Kpalimé (100% naturel)\n• 🥥 Beurre de Karité Bio pur & soins de Notsé\n• ☕ Cafés aromatiques d'altitude & Chocolat artisanal\n• 👗 Mode Wax & Vêtements traditionnels\n• 🥗 Paniers frais et fruits locaux\n\nVous pouvez utiliser notre barre de recherche ou nos filtres par catégorie pour explorer tout le catalogue !";
+    } else if (msg.includes("livraison") || msg.includes("livrer") || msg.includes("délai") || msg.includes("frais") || msg.includes("lomé") || msg.includes("lome") || msg.includes("kara") || msg.includes("sokode")) {
+      reply = "🚚 Options de livraison Miabé Asi :\n• Grand Lomé : Livraison express le jour même ou sous 24h à domicile ou en point relais.\n• Régions du Togo : Expéditions sécurisées vers Kpalimé, Kara, Sokodé, Atakpamé, Dapaong, etc.\n• Sous-région : Expéditions transfrontalières disponibles selon les vendeurs.\nLe tarif s'affiche automatiquement en fonction de votre ville et quartier dans le panier.";
+    } else if (msg.includes("paiement") || msg.includes("payer") || msg.includes("tmoney") || msg.includes("flooz") || msg.includes("carte") || msg.includes("mobile money")) {
+      reply = "💳 Moyens de règlement acceptés :\n• Mobile Money : T-Money (Mix by Togocom) & Flooz (Moov Africa)\n• Cartes bancaires (Visa, Mastercard)\n• Portefeuille électronique Miabé Asi Pay\n• Espèces à la livraison dans la zone de Lomé\nTous les règlements sont instantanés et sécurisés.";
+    } else if (msg.includes("vendre") || msg.includes("vendeur") || msg.includes("boutique") || msg.includes("plan") || msg.includes("abonnement") || msg.includes("offre")) {
+      reply = "🌟 Vous souhaitez vendre vos créations sur Miabé Asi ?\n1. Cliquez sur 'Devenir Vendeur' dans le menu principal.\n2. Choisissez parmi nos 3 formules adaptées :\n   • Formule Gratuite (0 FCFA) : Produits illimités, commission 10% sur les ventes.\n   • Formule PRO (1 600 FCFA/mois) : Visibilité renforcée, badge vérifié, analytics détaillés.\n   • Formule BUSINESS (3 200 FCFA/mois) : Bannières d'accueil, vitrine prioritaire, export comptable et support VIP.\n3. Encaissez vos gains directement sur votre Mobile Money !";
+    }
+
+    return makeResponse({ success: true, response: reply }, 200, true);
+  }
+
   // --- BLOGS PATHS ---
   if (cleanRoute === "/api/blogs" && method === "GET") {
     const blogs = JSON.parse(localStorage.getItem("asime_emulated_blogs") || "[]");

@@ -46,7 +46,9 @@ import {
   FileText,
   Truck,
   ShieldCheck,
-  Camera
+  Camera,
+  HelpCircle,
+  Smartphone
 } from "lucide-react";
 import { Product, CartItem, BlogPost } from "./types";
 import MultiRoleDashboards from "./components/MultiRoleDashboards";
@@ -71,6 +73,7 @@ import officialLogoImg from "./assets/images/miabe_asi_official_logo_17875632525
 import { SellerLandingPage } from "./components/SellerLandingPage";
 import { PublicShopView } from "./components/PublicShopView";
 import { NotificationsPage, playNotificationChime } from "./components/NotificationsPage";
+import { HelpCenterModal } from "./components/HelpCenterModal";
 
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
@@ -638,6 +641,16 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [currentGalleryIndex, setCurrentGalleryIndex] = useState(0);
 
+  // Track product view for analytics whenever a customer opens a product modal
+  useEffect(() => {
+    if (selectedProduct?.id) {
+      try {
+        fetch(`/api/products/${selectedProduct.id}/view`, { method: "POST" }).catch(() => {});
+        setProducts(prev => prev.map(p => p.id === selectedProduct.id ? { ...p, views: (Number(p.views) || 0) + 1 } : p));
+      } catch (e) {}
+    }
+  }, [selectedProduct?.id]);
+
   // Reviews Structure and State
   interface Review {
     id: string;
@@ -907,7 +920,8 @@ export default function App() {
   const [isPaymentSuccess, setIsPaymentSuccess] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<any>(null);
   const [sellerDashboardActive, setSellerDashboardActive] = useState(false);
-  const [initialDashboardView, setInitialDashboardView] = useState<"vendeur" | "client" | "affilie" | "livreur" | "menu">("menu");
+  const [initialDashboardView, setInitialDashboardView] = useState<"vendeur" | "client" | "affilie" | "livreur" | "menu" | "help">("menu");
+  const [isHelpCenterOpen, setIsHelpCenterOpen] = useState(false);
 
   // Automatic payment simulation states
   const [autoPaymentStep, setAutoPaymentStep] = useState<number>(0);
@@ -952,6 +966,8 @@ export default function App() {
     vendeurStatus?: string;
     businessName?: string;
     vendeurMode?: string;
+    vendeurPlan?: string;
+    vendeurSubscription?: string;
     notifications?: any[];
     vendeurStats?: {
       produitsVendus: number;
@@ -2311,6 +2327,11 @@ export default function App() {
 
   // Filters logic
   const filteredProducts = products.filter(prod => {
+    // Inactive products are hidden from the public marketplace (withdrawn without deleting)
+    if (prod.status === "inactif") {
+      return false;
+    }
+
     const query = searchQuery.trim().toLowerCase();
     const prodCountry = resolveProductCountry(prod);
 
@@ -2332,10 +2353,11 @@ export default function App() {
     const matchesPrice = prod.prix <= priceRange;
 
     // 5. Availability filter (maintaining onlyInStock compatibility)
+    const isOutOfStock = prod.stock <= 0 || prod.status === "en_rupture";
     const matchesStock = 
-      (availabilityFilter === "all" && (!onlyInStock || prod.stock > 0)) ||
-      (availabilityFilter === "in_stock" && prod.stock > 0) ||
-      (availabilityFilter === "out_of_stock" && prod.stock === 0);
+      (availabilityFilter === "all" && (!onlyInStock || !isOutOfStock)) ||
+      (availabilityFilter === "in_stock" && !isOutOfStock) ||
+      (availabilityFilter === "out_of_stock" && isOutOfStock);
 
     // 5. Vendor country filter
     const matchesCountry = selectedCountryFilter === "Tous" || prodCountry.code.toUpperCase() === selectedCountryFilter.toUpperCase();
@@ -2550,6 +2572,22 @@ export default function App() {
                 </div>
               )}
             </motion.button>
+
+            {/* Universal Desktop & Tablet Menu Trigger */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsCartOpen(false);
+                setIsProfileOpen(false);
+                setIsMobileMenuOpen(true);
+              }}
+              className="hidden md:flex items-center gap-1.5 px-3.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-stone-200 hover:text-white rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer border border-neutral-700 shadow-2xs shrink-0"
+              title="Ouvrir le Menu Principal"
+              id="header-universal-menu-btn"
+            >
+              <Menu className="w-3.5 h-3.5 text-[#d4af37]" />
+              <span>Menu</span>
+            </button>
           </div>
 
         </div>
@@ -2557,13 +2595,13 @@ export default function App() {
 
       {/* --- Refined Sub Navigation Ribbon across all devices (Accueil, Catalogue, Blog, Contact) --- */}
       <div className="sticky top-[73px] md:top-[76px] z-30 bg-neutral-950 text-neutral-300 py-2.5 px-4 border-b border-neutral-800 shadow-sm">
-        <div className="max-w-7xl mx-auto flex items-center justify-center gap-6 sm:gap-10 md:gap-16 text-[11px] sm:text-xs md:text-sm uppercase font-bold tracking-widest">
+        <div className="max-w-7xl mx-auto flex items-center justify-center gap-6 sm:gap-10 md:gap-14 text-[11px] sm:text-xs md:text-sm uppercase font-bold tracking-widest overflow-x-auto scrollbar-none">
           <button 
             onClick={() => {
               setActiveTab("accueil");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }} 
-            className={`py-1 px-2 md:px-4 transition-all cursor-pointer bg-transparent border-b-2 ${
+            className={`py-1 px-2 md:px-3 transition-all cursor-pointer bg-transparent border-b-2 whitespace-nowrap ${
               activeTab === "accueil" 
                 ? "text-[#d4af37] border-[#d4af37] font-black" 
                 : "text-neutral-400 hover:text-white border-transparent"
@@ -2577,7 +2615,7 @@ export default function App() {
               setActiveTab("catalogue");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }} 
-            className={`py-1 px-2 md:px-4 transition-all cursor-pointer bg-transparent border-b-2 ${
+            className={`py-1 px-2 md:px-3 transition-all cursor-pointer bg-transparent border-b-2 whitespace-nowrap ${
               activeTab === "catalogue" 
                 ? "text-[#d4af37] border-[#d4af37] font-black" 
                 : "text-neutral-400 hover:text-white border-transparent"
@@ -2591,7 +2629,7 @@ export default function App() {
               setActiveTab("blog");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }} 
-            className={`py-1 px-2 md:px-4 transition-all cursor-pointer bg-transparent border-b-2 ${
+            className={`py-1 px-2 md:px-3 transition-all cursor-pointer bg-transparent border-b-2 whitespace-nowrap ${
               activeTab === "blog" 
                 ? "text-[#d4af37] border-[#d4af37] font-black" 
                 : "text-neutral-400 hover:text-white border-transparent"
@@ -2605,7 +2643,7 @@ export default function App() {
               setActiveTab("contact");
               window.scrollTo({ top: 0, behavior: "smooth" });
             }} 
-            className={`py-1 px-2 md:px-4 transition-all cursor-pointer bg-transparent border-b-2 ${
+            className={`py-1 px-2 md:px-3 transition-all cursor-pointer bg-transparent border-b-2 whitespace-nowrap ${
               activeTab === "contact" 
                 ? "text-[#d4af37] border-[#d4af37] font-black" 
                 : "text-neutral-400 hover:text-white border-transparent"
@@ -2994,54 +3032,46 @@ export default function App() {
 
                   </div>
 
-                  {/* Right Column: Beautiful Authentic Local Product Showcase Board */}
+                  {/* Right Column: Image unique authentique du marché d'Afrique */}
                   <div className="lg:col-span-5 relative w-full mt-6 lg:mt-0 px-2 sm:px-0">
-                    <div className="grid grid-cols-2 gap-4">
-                      {heroCards.map((card, idx) => {
-                        const defaultImg = DEFAULT_HERO_CARDS[idx]?.imageUrl || card.imageUrl;
-                        return (
-                          <div 
-                            key={card.id || idx}
-                            className={`bg-white p-2 border border-neutral-200 shadow-md group relative transition-transform hover:-translate-y-1 ${
-                              idx === 1 ? "md:mt-4 mt-0" : idx === 2 ? "md:-mt-4 mt-0" : ""
-                            }`}
-                          >
-                            {/* Image Container */}
-                            <div 
-                              className="aspect-square w-full overflow-hidden bg-stone-100 mb-2 relative cursor-pointer"
-                              onClick={() => {
-                                if (card.category) setSelectedCategory(card.category);
-                                setSearchQuery(card.searchQuery || "");
-                                setActiveTab("catalogue");
-                                window.scrollTo({ top: 0, behavior: "smooth" });
-                              }}
-                            >
-                              <img 
-                                src={card.imageUrl || defaultImg} 
-                                alt={card.title} 
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).src = defaultImg;
-                                }}
-                                className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-500"
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
+                    <div 
+                      onClick={() => {
+                        setActiveTab("catalogue");
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="relative rounded-2xl overflow-hidden shadow-xl border border-stone-200/80 bg-white group cursor-pointer transition-all duration-300 hover:shadow-2xl hover:border-emerald-600/40"
+                    >
+                      <div className="aspect-[4/3] w-full overflow-hidden relative">
+                        <img 
+                          src="/marche_afrique.jpg" 
+                          alt="Marché d'Afrique — Miabé Asi" 
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-stone-950/85 via-stone-900/25 to-transparent pointer-events-none" />
+                        
+                        {/* Top Badge */}
+                        <div className="absolute top-3 left-3 bg-[#0B4D26]/95 backdrop-blur-xs text-white text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md border border-emerald-400/30">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          Marché d'Afrique en Direct
+                        </div>
 
-                            <div 
-                              className="cursor-pointer"
-                              onClick={() => {
-                                if (card.category) setSelectedCategory(card.category);
-                                setSearchQuery(card.searchQuery || "");
-                                setActiveTab("catalogue");
-                                window.scrollTo({ top: 0, behavior: "smooth" });
-                              }}
-                            >
-                              <h4 className="text-xs font-bold text-neutral-800 uppercase tracking-tight">{card.title}</h4>
-                              <p className="text-[9.5px] text-stone-500 font-sans leading-tight mt-0.5">{card.subtitle}</p>
-                            </div>
+                        {/* Bottom Overlay Info */}
+                        <div className="absolute bottom-4 left-4 right-4 text-white">
+                          <p className="text-[11px] font-bold text-amber-300 uppercase tracking-widest mb-1 flex items-center gap-1">
+                            <span>✦</span> Terroir, Saveurs & Artisanat Local
+                          </p>
+                          <h3 className="text-base sm:text-lg font-black leading-snug drop-shadow-md text-stone-50">
+                            Le meilleur des marchés ouest-africains livrés à votre porte
+                          </h3>
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-300 group-hover:text-emerald-200 transition-colors">
+                              <span>Explorer le catalogue</span>
+                              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                            </span>
                           </div>
-                        );
-                      })}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -3192,18 +3222,18 @@ export default function App() {
                                 </button>
                                 <button
                                   onClick={() => addToCart(product, 1)}
-                                  disabled={product.stock <= 0 && (!product.partenaire || product.partenaire === "Boutique en Direct")}
+                                  disabled={(product.stock <= 0 || product.status === "en_rupture") && (!product.partenaire || product.partenaire === "Boutique en Direct")}
                                   className={`w-1/2 py-1.5 text-[8.5px] xs:text-[9.5px] font-bold tracking-wider uppercase transition-all truncate cursor-pointer ${
                                     product.partenaire && product.partenaire !== "Boutique en Direct"
                                       ? "bg-[#b8901c] hover:bg-neutral-950 text-white hover:text-white shadow font-bold"
-                                      : product.stock > 0 
+                                      : (product.stock > 0 && product.status !== "en_rupture")
                                         ? "bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white" 
                                         : "bg-neutral-200 text-neutral-450 cursor-not-allowed"
                                   }`}
                                 >
                                   {product.partenaire && product.partenaire !== "Boutique en Direct" 
                                     ? "Acheter" 
-                                    : (product.stock > 0 ? "+ Panier" : "Rupture")}
+                                    : ((product.stock > 0 && product.status !== "en_rupture") ? "+ Panier" : "Rupture")}
                                 </button>
                               </div>
                             </div>
@@ -3604,16 +3634,140 @@ export default function App() {
 
         {/* TAB 2: CATALOGUE WITH BEAUTIFUL GRID AND ADVANCED FILTERS */}
         {activeTab === "catalogue" && (
-          <div className="py-8 px-4 max-w-7xl mx-auto">
-            {/* Page Header */}
-            <div className="text-center mb-10">
-              <span className="text-[#d4af37] text-xs font-semibold tracking-widest uppercase mb-1 block">Découvrez notre collection</span>
-              <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 uppercase">Le Catalogue Miabé Asi</h1>
-              <div className="w-16 h-1 bg-[#d4af37] mx-auto mt-3"></div>
+          <div className="py-6 sm:py-8 px-4 max-w-7xl mx-auto">
+            {/* Visual Marketplace Hero Banner */}
+            <div className="relative rounded-2xl overflow-hidden mb-8 shadow-xl border border-stone-200 bg-stone-950 min-h-[240px] sm:min-h-[290px] flex items-center">
+              <img 
+                src="https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=1600&q=80" 
+                alt="Grand Marché Artisanal Panafricain Miabé Asi" 
+                className="absolute inset-0 w-full h-full object-cover object-center filter brightness-[0.38] transition-transform duration-700 hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-stone-950/95 via-stone-950/70 to-transparent"></div>
+              
+              <div className="relative z-10 p-6 sm:p-10 max-w-2xl text-left space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-3 py-1 bg-[#d4af37] text-stone-950 text-[10px] font-black uppercase tracking-widest rounded-full shadow-xs">
+                    Marketplace Panafricaine
+                  </span>
+                  <span className="text-stone-300 text-[11px] font-bold tracking-wider bg-white/10 px-2.5 py-0.5 rounded-full backdrop-blur-xs">
+                    🌍 7 Pays de la Zone PayDunya
+                  </span>
+                </div>
+
+                <h1 className="text-2xl sm:text-4xl font-display font-extrabold text-white tracking-tight uppercase leading-tight">
+                  Le Grand Marché Miabé Asi
+                </h1>
+
+                <p className="text-xs sm:text-sm text-stone-200 font-sans leading-relaxed">
+                  Découvrez l'authenticité africaine : tissus Wax confectionnés à la main, délices du terroir, cosmétiques au pur beurre de karité et créations d'art directement issus des ateliers de nos vendeurs partenaires.
+                </p>
+
+                {/* Trust & Guarantee Micro-Badges */}
+                <div className="pt-1.5 flex flex-wrap items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] font-bold text-[#d4af37]">
+                  <span className="flex items-center gap-1.5 bg-black/50 px-3 py-1 rounded-full border border-[#d4af37]/30">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#d4af37]" />
+                    <span>Créateurs &amp; Boutiques Vérifiés</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 bg-black/50 px-3 py-1 rounded-full border border-[#d4af37]/30">
+                    <Smartphone className="w-3.5 h-3.5 text-[#d4af37]" />
+                    <span>Mix by Yas, Flooz &amp; T-Money</span>
+                  </span>
+                  <span className="flex items-center gap-1.5 bg-black/50 px-3 py-1 rounded-full border border-[#d4af37]/30">
+                    <Truck className="w-3.5 h-3.5 text-[#d4af37]" />
+                    <span>Livraison Rapide</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Category Showcase Strip with Authentic Photos */}
+            <div className="mb-8">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-stone-900 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#d4af37]" />
+                  <span>Explorer par Univers &amp; Métiers</span>
+                </h2>
+                <span className="text-[11px] text-stone-500 font-sans">Sélectionnez une collection</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {[
+                  {
+                    name: "Made in Togo & Art",
+                    category: "Made in Togo Premium",
+                    image: "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=600&q=80",
+                    count: "Artisanat d'excellence"
+                  },
+                  {
+                    name: "Mode & Wax",
+                    category: "Vêtements & Mode",
+                    image: "https://images.unsplash.com/photo-1590736969955-71cc94801759?auto=format&fit=crop&w=600&q=80",
+                    count: "Tenues & Pagnes wax"
+                  },
+                  {
+                    name: "Paniers & Terroir",
+                    category: "Paniers Frais & Épicerie",
+                    image: "https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?auto=format&fit=crop&w=600&q=80",
+                    count: "Épices, miels, karité"
+                  },
+                  {
+                    name: "Montres & Bijoux",
+                    category: "Montres & Accessoires",
+                    image: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=600&q=80",
+                    count: "Accessoires de prestige"
+                  },
+                  {
+                    name: "Chaussures & Cuir",
+                    category: "Chaussures Premium",
+                    image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&w=600&q=80",
+                    count: "Maroquinerie & souliers"
+                  }
+                ].map((catItem) => {
+                  const isActive = selectedCategory === catItem.category;
+                  return (
+                    <button
+                      key={catItem.name}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(isActive ? "Toutes" : catItem.category);
+                        const filterElem = document.getElementById("catalog-filters-block");
+                        if (filterElem) {
+                          filterElem.scrollIntoView({ behavior: "smooth" });
+                        }
+                      }}
+                      className={`group relative rounded-xl overflow-hidden h-28 sm:h-32 text-left p-3 flex flex-col justify-end transition-all cursor-pointer border ${
+                        isActive
+                          ? "border-[#d4af37] ring-2 ring-[#d4af37] shadow-lg scale-[1.02]"
+                          : "border-stone-200 hover:border-[#d4af37]/70 shadow-2xs hover:shadow-md"
+                      }`}
+                    >
+                      <img
+                        src={catItem.image}
+                        alt={catItem.name}
+                        className="absolute inset-0 w-full h-full object-cover filter brightness-[0.55] group-hover:scale-110 group-hover:brightness-[0.45] transition-all duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent"></div>
+                      <div className="relative z-10">
+                        {isActive && (
+                          <span className="inline-block bg-[#d4af37] text-stone-950 text-[9px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-wider mb-1">
+                            Actif
+                          </span>
+                        )}
+                        <p className="text-xs sm:text-sm font-black uppercase text-white tracking-wide leading-tight group-hover:text-[#d4af37] transition-colors">
+                          {catItem.name}
+                        </p>
+                        <p className="text-[10px] text-stone-300 font-sans truncate mt-0.5">
+                          {catItem.count}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Filter and Query Tools */}
-            <div className="bg-white border border-neutral-150 p-5 rounded-sm shadow-xs mb-8 space-y-4">
+            <div id="catalog-filters-block" className="bg-white border border-neutral-150 p-5 rounded-xl shadow-xs mb-8 space-y-4">
               <div className="flex flex-col lg:flex-row gap-4 items-center justify-between w-full overflow-hidden">
                 {/* Mobile & Tablet Elegant Space-Saving Dropdown */}
                 <div className="block lg:hidden w-full relative">
@@ -4069,18 +4223,18 @@ export default function App() {
                               </button>
                               <button
                                 onClick={() => addToCart(product, 1)}
-                                disabled={product.stock <= 0 && (!product.partenaire || product.partenaire === "Boutique en Direct")}
+                                disabled={(product.stock <= 0 || product.status === "en_rupture") && (!product.partenaire || product.partenaire === "Boutique en Direct")}
                                 className={`flex-grow py-1.5 xs:py-2 sm:py-2.5 text-[8.5px] xs:text-[9.5px] sm:text-[10px] font-bold tracking-wider uppercase transition-all truncate cursor-pointer ${
                                   product.partenaire && product.partenaire !== "Boutique en Direct"
                                     ? "bg-[#b8901c] hover:bg-neutral-950 text-white hover:text-white shadow font-bold"
-                                    : product.stock > 0 
+                                    : (product.stock > 0 && product.status !== "en_rupture")
                                       ? "bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white" 
                                       : "bg-neutral-200 text-neutral-450 cursor-not-allowed"
                                 }`}
                               >
                                 {product.partenaire && product.partenaire !== "Boutique en Direct" 
                                   ? "Acheter" 
-                                  : (product.stock > 0 ? "+ Panier" : "Rupture")}
+                                  : ((product.stock > 0 && product.status !== "en_rupture") ? "+ Panier" : "Rupture")}
                               </button>
                               <button
                                 type="button"
@@ -5009,12 +5163,12 @@ export default function App() {
                   </div>
 
                   <div className="text-xs text-neutral-500 font-semibold uppercase mb-4 tracking-wider flex items-center gap-1.5 pt-1">
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-500"></span>
-                    <span>
+                    <span className={`w-2.5 h-2.5 rounded-full ${selectedProduct.stock > 0 && selectedProduct.status !== "en_rupture" ? "bg-green-500" : "bg-red-500"}`}></span>
+                    <span className={selectedProduct.stock > 0 && selectedProduct.status !== "en_rupture" ? "text-neutral-700" : "text-red-600 font-bold"}>
                       {language === "fr" ? "Disponibilité : " : "Adzɔnu siwo li : "}
-                      {selectedProduct.stock > 0 
+                      {selectedProduct.stock > 0 && selectedProduct.status !== "en_rupture"
                         ? `${selectedProduct.stock} ${language === "fr" ? "articles en stock" : "adzɔnuwo le nudraƒe"}` 
-                        : (language === "fr" ? "Rupture de Stock" : "Adzɔnu vɔ")
+                        : (language === "fr" ? "Rupture de Stock (Épuisé)" : "Adzɔnu vɔ")
                       }
                     </span>
                   </div>
@@ -5023,18 +5177,18 @@ export default function App() {
                 <div>
                   <button
                     onClick={() => { addToCart(selectedProduct, 1); setSelectedProduct(null); }}
-                    disabled={selectedProduct.stock <= 0 && (!selectedProduct.partenaire || selectedProduct.partenaire === "Boutique en Direct")}
+                    disabled={(selectedProduct.stock <= 0 || selectedProduct.status === "en_rupture") && (!selectedProduct.partenaire || selectedProduct.partenaire === "Boutique en Direct")}
                     className={`w-full py-3 font-bold text-xs uppercase tracking-widest transition-all cursor-pointer ${
                       selectedProduct.partenaire && selectedProduct.partenaire !== "Boutique en Direct"
                         ? "bg-[#b8901c] hover:bg-neutral-950 text-white shadow-lg font-bold"
-                        : selectedProduct.stock > 0 
+                        : (selectedProduct.stock > 0 && selectedProduct.status !== "en_rupture")
                           ? "bg-neutral-950 hover:bg-[#d4af37] hover:text-neutral-950 text-white" 
-                          : "bg-neutral-200 text-neutral-450 cursor-not-allowed"
+                          : "bg-neutral-200 text-neutral-400 cursor-not-allowed"
                     }`}
                   >
                     {selectedProduct.partenaire && selectedProduct.partenaire !== "Boutique en Direct"
                       ? (language === "fr" ? "Profiter de l'Offre Exclusive" : "Xɔ dzo xɔzo tɔxɛ sia")
-                      : selectedProduct.stock > 0 ? (language === "fr" ? "Ajouter au Panier" : "De Kusi Me") : (language === "fr" ? "Indisponible" : "Meli o")}
+                      : (selectedProduct.stock > 0 && selectedProduct.status !== "en_rupture") ? (language === "fr" ? "Ajouter au Panier" : "De Kusi Me") : (language === "fr" ? "Article Épuisé" : "Meli o")}
                   </button>
 
                   <div className="grid grid-cols-2 gap-2 mt-2">
@@ -6155,7 +6309,7 @@ export default function App() {
                       Copier le Lien
                     </button>
                     <a
-                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent("Découvrez Miabé Asi, la somptueuse vitrine du consommer local au Togo ! ✨🇹🇬 Retrouvez l'artisanat du terroir et de superbes cadeaux exclusifs ici: " + window.location.origin)}`}
+                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent("Découvrez Miabé Asi, la vitrine panafricaine des créateurs et produits d'Afrique ! ✨🌍 Retrouvez les merveilles de nos 7 pays partenaires ici : " + window.location.origin)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1.5 rounded-none h-9 text-xs"
@@ -6288,7 +6442,7 @@ export default function App() {
                 {
                   labelFr: "Préparation Terminée",
                   labelEwe: "Dzadzraɖo Wu Nu",
-                  descFr: "Le colis est emballé avec soin par l'artisan local.",
+                  descFr: "Le colis est emballé avec soin par le vendeur partenaire.",
                   descEwe: "Afitɔnu dɔwɔla la bla wò nudraɖeƒe nyuie."
                 },
                 {
@@ -7168,125 +7322,187 @@ export default function App() {
         </button>
       </div>
 
-      {/* Mobile Menu Drawer Overlay */}
+      {/* Universal Menu Drawer Overlay (Accessible on PC, Tablet and Mobile) */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
+        <div className="fixed inset-0 z-50 flex justify-end animate-fade-in">
           {/* Backdrop */}
           <div 
             onClick={() => setIsMobileMenuOpen(false)} 
-            className="absolute inset-0 bg-neutral-950/60 backdrop-blur-xs"
+            className="absolute inset-0 bg-neutral-950/70 backdrop-blur-xs transition-opacity"
           />
           
-          {/* Mobile Menu Drawer Content (Slide up from bottom) */}
+          {/* Menu Drawer Content */}
           <motion.div 
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="absolute bottom-0 inset-x-0 bg-white border-t border-neutral-200 rounded-t-2xl p-5 sm:p-6 shadow-2xl pb-safe select-none text-left max-h-[88vh] overflow-y-auto"
+            initial={{ opacity: 0, x: 80 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 80 }}
+            transition={{ type: "spring", damping: 26, stiffness: 220 }}
+            className="relative ml-auto w-full max-w-sm sm:max-w-md h-full bg-white border-l border-neutral-200 p-5 sm:p-6 shadow-2xl pb-safe select-none text-left overflow-y-auto z-10 flex flex-col justify-between"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-5 pb-3 border-b border-neutral-100 sticky top-0 bg-white z-10">
-              <div className="flex items-center gap-2.5">
-                {renderLogoNode("w-10 h-10")}
-                <div>
-                  <h3 className="font-sans font-black tracking-[0.04em] text-[#0E5224] text-base leading-none">Miabé Asi</h3>
-                  <p className="text-[9px] text-[#D97706] tracking-[0.06em] leading-normal font-semibold uppercase mt-0.5 font-sans">{t("slogan")}</p>
+            <div>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-5 pb-3 border-b border-neutral-100 sticky top-0 bg-white z-10">
+                <div className="flex items-center gap-2.5">
+                  {renderLogoNode("w-10 h-10")}
+                  <div>
+                    <h3 className="font-sans font-black tracking-[0.04em] text-[#0E5224] text-base leading-none">Miabé Asi</h3>
+                    <p className="text-[9px] text-[#D97706] tracking-[0.06em] leading-normal font-semibold uppercase mt-0.5 font-sans">{t("slogan")}</p>
+                  </div>
                 </div>
+                <button 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-2 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 border-0 bg-transparent rounded-full cursor-pointer"
+                  title="Fermer le menu"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="p-2 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-950 border-0 bg-transparent rounded-full cursor-pointer"
-                title="Fermer le menu"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-          {/* Menu Links List */}
-          <div className="space-y-1.5">
-            {[
-              { label: language === "fr" ? "Accueil du site" : "Aƒeme dzesi", value: "accueil" as const, desc: language === "fr" ? "Découvrir nos sélections phares et histoire" : "Kpɔ míaƒe adzɔnu dzesiwo kple ŋutinya" },
-              { label: language === "fr" ? "Catalogue de Produits" : "Adzɔnuwo kpeɖodzi", value: "catalogue" as const, desc: language === "fr" ? "Explorer l'ensemble de nos collections" : "Kpɔ míaƒe adzɔnu hame hamewo katã" },
-              { label: language === "fr" ? "Notifications & Suivi" : "Dzesiwo & Kpɔkplɔ", value: "notifications" as const, desc: language === "fr" ? "Suivi des commandes en temps réel" : "Dɔwɔwɔ ƒe dzesiwo" },
-              { label: language === "fr" ? "Vendre sur Miabé Asi" : "Dzra nu le Miabé Asi", value: "vendre" as const, desc: language === "fr" ? "Espace dédié aux vendeurs et créateurs africains" : "Teƒe tɔxɛ na asinɔlawo" },
-              { label: language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
-              { label: language === "fr" ? "Nous Contacter" : "Mía Kadodowo", value: "contact" as const, desc: language === "fr" ? "Support client, WhatsApp et assistance" : "WhatsApp kple kadodo" }
-            ].map((link) => (
-              <button
-                key={link.value}
-                onClick={() => {
-                  setActiveTab(link.value);
-                  setIsMobileMenuOpen(false);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-                className={`w-full p-3.5 flex flex-col text-left gap-0.5 rounded-sm transition-colors cursor-pointer border-0 ${
-                  activeTab === link.value 
-                    ? "bg-amber-500/10 text-neutral-900 border-l-4 border-[#d4af37]" 
-                    : "bg-transparent text-neutral-700 hover:bg-stone-50 border-l-4 border-transparent"
-                }`}
-              >
-                <span className="text-xs font-bold uppercase tracking-wider">{link.label}</span>
-                <span className="text-[10px] text-neutral-500 leading-tight font-sans font-normal">{link.desc}</span>
-              </button>
-            ))}
-
-            <div className="h-[1px] bg-neutral-100 my-4" />
-
-            {/* Country Selection inside Mobile Menu */}
-            <div className="p-3 bg-neutral-50 text-neutral-850 rounded-sm flex items-center justify-between border border-neutral-200 mb-2">
-              <div className="flex flex-col text-left gap-0.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#C88A24]">
-                  Pays &amp; Devise
-                </span>
-                <span className="text-[10px] text-neutral-500 font-sans leading-tight">
-                  Zone PayDunya (7 pays)
-                </span>
-              </div>
-              <CountrySelector id="mobile-menu-country-selector" />
-            </div>
-
-            {/* Language Selection inside Mobile Menu */}
-            <button
-              onClick={() => {
-                setLanguage(language === "fr" ? "ee" : "fr");
-                setIsMobileMenuOpen(false);
-              }}
-              className="w-full p-3.5 bg-neutral-50 text-neutral-850 hover:bg-stone-100 rounded-sm flex items-center justify-between cursor-pointer border border-neutral-200"
-            >
-              <div className="flex flex-col text-left gap-0.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#0f5132]">
-                  {language === "fr" ? "Passer en Eʋegbe" : "Passer en Français"}
-                </span>
-                <span className="text-[10px] text-neutral-500 font-sans leading-tight">
-                  {language === "fr" ? "Trɔ gbe yi Eʋegbe me na dɔwɔwɔ asitɔ" : "Trɔ yi Fransegbe me na dɔwɔwɔ asitɔ"}
-                </span>
-              </div>
-              <Globe className="w-4 h-4 text-[#0f5132]" />
-            </button>
-
-            {/* Share & Download App Link */}
-            <button
-              onClick={() => {
-                setIsMobileMenuOpen(false);
-                setIsShareDownloadOpen(true);
-              }}
-              className="w-full p-3.5 bg-transparent text-neutral-800 hover:bg-stone-50 rounded-sm flex items-center justify-between cursor-pointer border-0"
-            >
-              <div className="flex flex-col text-left gap-0.5">
-                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-800">Partager &amp; Télécharger</span>
-                <span className="text-[10px] text-neutral-500 font-sans leading-tight">Installer l'application ou partager le lien</span>
-              </div>
-              <Share2 className="w-4 h-4 text-[#b8901c]" />
-            </button>
-
-              {/* Offline mode indicator of the app */}
-              <div className="mt-6 p-4 bg-emerald-50 text-emerald-950 text-center rounded-sm border border-emerald-100">
-                <p className="text-[10.5px] font-bold uppercase tracking-wide">🌍 Marketplace Panafricaine</p>
-                <p className="text-[9.5px] text-emerald-700 mt-1 leading-normal font-sans">
-                  90% des revenus des ventes sont directement reversés aux vendeurs et producteurs africains.
+              {/* Prominent Seller Action Card in Menu */}
+              <div className="mb-4 p-4 rounded-xl bg-gradient-to-r from-stone-900 to-[#12261a] text-white border border-[#d4af37]/40 shadow-sm space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-[#d4af37] flex items-center gap-1">
+                    <Store className="w-3.5 h-3.5" />
+                    <span>Espace Vendeurs &amp; Créateurs</span>
+                  </span>
+                  <span className="text-[9px] font-bold bg-[#d4af37]/20 text-[#d4af37] px-2 py-0.5 rounded-full">
+                    {user?.role === "vendeur" ? (user.vendeurPlan || "PRO") : "7 Pays"}
+                  </span>
+                </div>
+                <p className="text-xs text-stone-300 font-sans">
+                  {user?.role === "vendeur"
+                    ? "Gérez vos commandes, catalogue, retraits et abonnement (Free, PRO, Business)."
+                    : "Ouvrez votre boutique en ligne et vendez vos articles au Togo et dans 6 pays ouest-africains."}
                 </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    if (user?.role === "vendeur") {
+                      setIsProfileOpen(true);
+                      setSellerDashboardActive(true);
+                      setInitialDashboardView("vendeur");
+                    } else if (user) {
+                      setActiveTab("vendre");
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    } else {
+                      setAuthMode("register");
+                      setAuthRole("vendeur");
+                      setAuthError("");
+                      setIsAuthOpen(true);
+                    }
+                  }}
+                  className="w-full py-2 bg-[#d4af37] hover:bg-[#c49f27] text-stone-950 font-black text-xs uppercase tracking-wider rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <Store className="w-3.5 h-3.5" />
+                  <span>{user?.role === "vendeur" ? "Accéder à mon espace vendeur" : "Créer un compte Vendeur"}</span>
+                </button>
               </div>
+
+              {/* Menu Links List */}
+              <div className="space-y-1">
+                {[
+                  { label: language === "fr" ? "Accueil du site" : "Aƒeme dzesi", value: "accueil" as const, desc: language === "fr" ? "Découvrir nos sélections phares et histoire" : "Kpɔ míaƒe adzɔnu dzesiwo kple ŋutinya" },
+                  { label: language === "fr" ? "Catalogue de Produits" : "Adzɔnuwo kpeɖodzi", value: "catalogue" as const, desc: language === "fr" ? "Explorer l'ensemble de nos collections" : "Kpɔ míaƒe adzɔnu hame hamewo katã" },
+                  { label: language === "fr" ? "Vendre sur Miabé Asi" : "Dzra nu le Miabé Asi", value: "vendre" as const, desc: language === "fr" ? "Espace dédié aux créateurs, artisans et boutiques" : "Teƒe tɔxɛ na asinɔlawo" },
+                  { label: language === "fr" ? "Notifications & Suivi" : "Dzesiwo & Kpɔkplɔ", value: "notifications" as const, desc: language === "fr" ? "Suivi des commandes en temps réel" : "Dɔwɔwɔ ƒe dzesiwo" },
+                  { label: language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
+                  { label: language === "fr" ? "Nous Contacter" : "Mía Kadodowo", value: "contact" as const, desc: language === "fr" ? "Support client, WhatsApp et assistance" : "WhatsApp kple kadodo" }
+                ].map((link) => (
+                  <button
+                    key={link.value}
+                    onClick={() => {
+                      setActiveTab(link.value);
+                      setIsMobileMenuOpen(false);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className={`w-full p-3 flex flex-col text-left gap-0.5 rounded-xl transition-colors cursor-pointer border-0 ${
+                      activeTab === link.value 
+                        ? "bg-amber-500/10 text-neutral-900 border-l-4 border-[#d4af37]" 
+                        : "bg-transparent text-neutral-700 hover:bg-stone-50 border-l-4 border-transparent"
+                    }`}
+                  >
+                    <span className="text-xs font-bold uppercase tracking-wider">{link.label}</span>
+                    <span className="text-[10px] text-neutral-500 leading-tight font-sans font-normal">{link.desc}</span>
+                  </button>
+                ))}
+
+                {/* Direct Help Center link in menu */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    setIsHelpCenterOpen(true);
+                  }}
+                  className="w-full p-3 flex items-center justify-between text-left rounded-xl transition-colors cursor-pointer border border-stone-200 bg-stone-50 hover:bg-stone-100 mt-2"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <HelpCircle className="w-4 h-4 text-[#0B4D26]" />
+                    <div>
+                      <span className="text-xs font-black uppercase tracking-wider text-stone-900 block">Centre d'Aide &amp; FAQ</span>
+                      <span className="text-[10px] text-stone-500 font-sans">Guides vendeurs, abonnements, paiements et expéditions</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-stone-400" />
+                </button>
+
+                <div className="h-[1px] bg-neutral-100 my-3" />
+
+                {/* Country Selection inside Menu */}
+                <div className="p-3 bg-neutral-50 text-neutral-850 rounded-xl flex items-center justify-between border border-neutral-200 mb-2">
+                  <div className="flex flex-col text-left gap-0.5">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#C88A24]">
+                      Pays &amp; Devise
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-sans leading-tight">
+                      Zone PayDunya (7 pays)
+                    </span>
+                  </div>
+                  <CountrySelector id="mobile-menu-country-selector" />
+                </div>
+
+                {/* Language Selection inside Menu */}
+                <button
+                  onClick={() => {
+                    setLanguage(language === "fr" ? "ee" : "fr");
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full p-3 bg-neutral-50 text-neutral-850 hover:bg-stone-100 rounded-xl flex items-center justify-between cursor-pointer border border-neutral-200"
+                >
+                  <div className="flex flex-col text-left gap-0.5">
+                    <span className="text-xs font-bold uppercase tracking-wider text-[#0f5132]">
+                      {language === "fr" ? "Passer en Eʋegbe" : "Passer en Français"}
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-sans leading-tight">
+                      {language === "fr" ? "Trɔ gbe yi Eʋegbe me na dɔwɔwɔ asitɔ" : "Trɔ yi Fransegbe me na dɔwɔwɔ asitɔ"}
+                    </span>
+                  </div>
+                  <Globe className="w-4 h-4 text-[#0f5132]" />
+                </button>
+
+                {/* Share & Download App Link */}
+                <button
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    setIsShareDownloadOpen(true);
+                  }}
+                  className="w-full p-3 bg-transparent text-neutral-800 hover:bg-stone-50 rounded-xl flex items-center justify-between cursor-pointer border-0"
+                >
+                  <div className="flex flex-col text-left gap-0.5">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-neutral-800">Partager &amp; Télécharger</span>
+                    <span className="text-[10px] text-neutral-500 font-sans leading-tight">Installer l'application ou partager le lien</span>
+                  </div>
+                  <Share2 className="w-4 h-4 text-[#b8901c]" />
+                </button>
+              </div>
+            </div>
+
+            {/* Offline mode indicator of the app */}
+            <div className="mt-4 p-3.5 bg-emerald-50 text-emerald-950 text-center rounded-xl border border-emerald-100">
+              <p className="text-[10.5px] font-bold uppercase tracking-wide">🌍 Marketplace Panafricaine</p>
+              <p className="text-[9.5px] text-emerald-700 mt-0.5 leading-normal font-sans">
+                90% à 97% des revenus des ventes sont directement reversés aux vendeurs et producteurs africains.
+              </p>
             </div>
           </motion.div>
         </div>
@@ -7416,6 +7632,31 @@ export default function App() {
         onClose={() => setIsInvoiceModalOpen(false)}
         order={selectedInvoiceOrder}
         merchantPhone={ASIME_SETTINGS.WHATSAPP_MERCHANT_NUMBER}
+      />
+
+      {/* --- INTERACTIVE HELP CENTER & FAQ MODAL --- */}
+      <HelpCenterModal
+        isOpen={isHelpCenterOpen}
+        onClose={() => setIsHelpCenterOpen(false)}
+        user={user}
+        onOpenRegisterSeller={() => {
+          setIsHelpCenterOpen(false);
+          setAuthMode("register");
+          setAuthRole("vendeur");
+          setAuthError("");
+          setIsAuthOpen(true);
+        }}
+        onOpenSellerDashboard={() => {
+          setIsHelpCenterOpen(false);
+          setIsProfileOpen(true);
+          setSellerDashboardActive(true);
+          setInitialDashboardView("vendeur");
+        }}
+        onOpenContact={() => {
+          setIsHelpCenterOpen(false);
+          setActiveTab("contact");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
       />
 
       {/* --- AI ASSISTANT AYA WIDGET --- */}
