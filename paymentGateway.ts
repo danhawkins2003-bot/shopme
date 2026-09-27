@@ -61,6 +61,30 @@ function loadEnvFile(): Record<string, string> {
     }
   }
 
+  // Load configured keys from settings.json if saved via Admin UI
+  try {
+    const settingsPath = path.join(process.cwd(), "settings.json");
+    if (fs.existsSync(settingsPath)) {
+      const s = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+      if (s.paydunyaMasterKey && !envMap["PAYDUNYA_MASTER_KEY"]) {
+        envMap["PAYDUNYA_MASTER_KEY"] = s.paydunyaMasterKey;
+        process.env["PAYDUNYA_MASTER_KEY"] = s.paydunyaMasterKey;
+      }
+      if (s.paydunyaPrivateKey && !envMap["PAYDUNYA_PRIVATE_KEY"]) {
+        envMap["PAYDUNYA_PRIVATE_KEY"] = s.paydunyaPrivateKey;
+        process.env["PAYDUNYA_PRIVATE_KEY"] = s.paydunyaPrivateKey;
+      }
+      if (s.paydunyaToken && !envMap["PAYDUNYA_TOKEN"]) {
+        envMap["PAYDUNYA_TOKEN"] = s.paydunyaToken;
+        process.env["PAYDUNYA_TOKEN"] = s.paydunyaToken;
+      }
+      if (s.paydunyaMode && !envMap["PAYDUNYA_MODE"]) {
+        envMap["PAYDUNYA_MODE"] = s.paydunyaMode;
+        process.env["PAYDUNYA_MODE"] = s.paydunyaMode;
+      }
+    }
+  } catch (e) {}
+
   return envMap;
 }
 
@@ -487,6 +511,11 @@ export class PayDunyaProvider implements IPaymentProvider {
         }
         console.warn("[PayDunya API] Bascule vers l'environnement de test sécurisé:", err.message);
       }
+    }
+
+    // If in Production mode, keys MUST be provided to debit real money
+    if (mode === "live" && (!privateKey || !token)) {
+      throw new Error("Paiement réel en direct actif (Mode Production) : les clés API officielles PayDunya (Master Key, Private Key, Token) sont requises pour débiter réellement le client. Veuillez les renseigner dans l'Espace Administrateur > Paramètres ou choisir 'Espèces à la livraison'.");
     }
 
     // Test / Sandbox mode with full server-verified lifecycle

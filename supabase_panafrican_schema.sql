@@ -247,27 +247,27 @@ DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'category_id')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_category' AND table_name = 'products') THEN
-        ALTER TABLE public.products ADD CONSTRAINT fk_products_category FOREIGN KEY (category_id) REFERENCES public.categories(id) ON DELETE SET NULL NOT VALID;
+        EXECUTE 'ALTER TABLE public.products ADD CONSTRAINT fk_products_category FOREIGN KEY (category_id) REFERENCES public.categories(id) ON DELETE SET NULL NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'shop_id')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_shop' AND table_name = 'products') THEN
-        ALTER TABLE public.products ADD CONSTRAINT fk_products_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID;
+        EXECUTE 'ALTER TABLE public.products ADD CONSTRAINT fk_products_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'vendeur_id')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_vendeur' AND table_name = 'products') THEN
-        ALTER TABLE public.products ADD CONSTRAINT fk_products_vendeur FOREIGN KEY (vendeur_id) REFERENCES public.profiles(id) ON DELETE SET NULL NOT VALID;
+        EXECUTE 'ALTER TABLE public.products ADD CONSTRAINT fk_products_vendeur FOREIGN KEY (vendeur_id) REFERENCES public.profiles(id) ON DELETE SET NULL NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'country_origin')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_country' AND table_name = 'products') THEN
-        ALTER TABLE public.products ADD CONSTRAINT fk_products_country FOREIGN KEY (country_origin) REFERENCES public.countries(code) ON UPDATE CASCADE NOT VALID;
+        EXECUTE 'ALTER TABLE public.products ADD CONSTRAINT fk_products_country FOREIGN KEY (country_origin) REFERENCES public.countries(code) ON UPDATE CASCADE NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'currency_code')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_currency' AND table_name = 'products') THEN
-        ALTER TABLE public.products ADD CONSTRAINT fk_products_currency FOREIGN KEY (currency_code) REFERENCES public.currencies(code) ON UPDATE CASCADE NOT VALID;
+        EXECUTE 'ALTER TABLE public.products ADD CONSTRAINT fk_products_currency FOREIGN KEY (currency_code) REFERENCES public.currencies(code) ON UPDATE CASCADE NOT VALID';
     END IF;
 END $$;
 
@@ -324,27 +324,27 @@ ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS split_processed BOOLEAN DEFAU
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
--- Clés étrangères sécurisées sur orders (vérifie que la colonne et la table cible existent)
+-- Clés étrangères sécurisées sur orders (vérifie que la colonne et la table cible existent dynamiquement)
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'user_id')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_user' AND table_name = 'orders') THEN
-        ALTER TABLE public.orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE SET NULL NOT VALID;
+        EXECUTE 'ALTER TABLE public.orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE SET NULL NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'shop_id')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_shop' AND table_name = 'orders') THEN
-        ALTER TABLE public.orders ADD CONSTRAINT fk_orders_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID;
+        EXECUTE 'ALTER TABLE public.orders ADD CONSTRAINT fk_orders_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'currency_code')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_currency' AND table_name = 'orders') THEN
-        ALTER TABLE public.orders ADD CONSTRAINT fk_orders_currency FOREIGN KEY (currency_code) REFERENCES public.currencies(code) ON UPDATE CASCADE NOT VALID;
+        EXECUTE 'ALTER TABLE public.orders ADD CONSTRAINT fk_orders_currency FOREIGN KEY (currency_code) REFERENCES public.currencies(code) ON UPDATE CASCADE NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'destination_country_code')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_country' AND table_name = 'orders') THEN
-        ALTER TABLE public.orders ADD CONSTRAINT fk_orders_country FOREIGN KEY (destination_country_code) REFERENCES public.countries(code) ON UPDATE CASCADE NOT VALID;
+        EXECUTE 'ALTER TABLE public.orders ADD CONSTRAINT fk_orders_country FOREIGN KEY (destination_country_code) REFERENCES public.countries(code) ON UPDATE CASCADE NOT VALID';
     END IF;
 END $$;
 
@@ -385,17 +385,17 @@ DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_items' AND column_name = 'order_id')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_order_items_order' AND table_name = 'order_items') THEN
-        ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE NOT VALID;
+        EXECUTE 'ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_items' AND column_name = 'product_id')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_order_items_product' AND table_name = 'order_items') THEN
-        ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL NOT VALID;
+        EXECUTE 'ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL NOT VALID';
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_items' AND column_name = 'shop_id')
        AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_order_items_shop' AND table_name = 'order_items') THEN
-        ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID;
+        EXECUTE 'ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID';
     END IF;
 END $$;
 

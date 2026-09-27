@@ -433,7 +433,7 @@ export default function AdminApp() {
   const [adminSearchQuery, setAdminSearchQuery] = useState("");
   const [adminPartnerFilter, setAdminPartnerFilter] = useState("Tous");
 
-  const [whatsappDisplaySetting, setWhatsappDisplaySetting] = useState("22890000000");
+  const [whatsappDisplaySetting, setWhatsappDisplaySetting] = useState("22899908169");
   const [activeLogoId, setActiveLogoId] = useState(() => {
     try {
       return localStorage.getItem("asime-active-logo-id") || "official";
@@ -441,6 +441,10 @@ export default function AdminApp() {
       return "official";
     }
   });
+  const [paydunyaMasterKey, setPaydunyaMasterKey] = useState("");
+  const [paydunyaPrivateKey, setPaydunyaPrivateKey] = useState("");
+  const [paydunyaToken, setPaydunyaToken] = useState("");
+  const [paydunyaMode, setPaydunyaMode] = useState<"live" | "test">("live");
   const [saveConfigSuccess, setSaveConfigSuccess] = useState(false);
 
   // Real-time admin operational states
@@ -921,6 +925,9 @@ export default function AdminApp() {
             setActiveLogoId(data.activeLogoId);
             try { localStorage.setItem("asime-active-logo-id", data.activeLogoId); } catch {}
           }
+          if (data.paydunyaMasterKey) setPaydunyaMasterKey(data.paydunyaMasterKey);
+          if (data.paydunyaToken) setPaydunyaToken(data.paydunyaToken);
+          if (data.paydunyaMode) setPaydunyaMode(data.paydunyaMode === "live" ? "live" : "test");
         }
       })
       .catch(err => console.error("Error fetching settings:", err));
@@ -973,7 +980,10 @@ export default function AdminApp() {
     setFormCategory(prod.categorie);
     setFormPhare(prod.phare);
     setFormStock(String(prod.stock));
-    setFormImages(prod.images || []);
+    const prodImages = Array.isArray(prod.images) && prod.images.length > 0 
+      ? prod.images 
+      : (prod.image ? [prod.image] : []);
+    setFormImages(prodImages);
     setFormPartenaire(prod.partenaire || "Boutique en Direct");
     setFormLienAffilie(prod.lienAffilie || "");
     const initialStatus: "actif" | "inactif" | "en_rupture" = 
@@ -1155,7 +1165,7 @@ export default function AdminApp() {
     }
 
     // Ensure any remaining base64 images are uploaded to Supabase Storage first
-    const cleanImages: string[] = [];
+    let cleanImages: string[] = [];
     for (let i = 0; i < formImages.length; i++) {
       const img = formImages[i];
       if (img.startsWith("data:")) {
@@ -1166,45 +1176,60 @@ export default function AdminApp() {
           setFormError(upRes.error || "Échec du téléversement de l'image sur Supabase Storage.");
           return;
         }
-      } else {
-        cleanImages.push(img);
+      } else if (typeof img === "string" && img.trim() !== "") {
+        cleanImages.push(img.trim());
       }
     }
 
     if (cleanImages.length === 0) {
-      setFormError("Au moins une photo du produit est obligatoire. Veuillez téléverser une ou plusieurs images depuis votre appareil.");
+      if (Array.isArray(editingProduct?.images) && editingProduct.images.length > 0) {
+        cleanImages = editingProduct.images.filter((img: any) => typeof img === "string" && img.trim() !== "");
+      } else if (editingProduct?.image && typeof editingProduct.image === "string" && editingProduct.image.trim() !== "") {
+        cleanImages = [editingProduct.image.trim()];
+      }
+    }
+
+    if (cleanImages.length === 0) {
+      setFormError("Au moins une photo du produit est obligatoire. Veuillez sélectionner ou téléverser une image.");
       return;
     }
 
     const payload = {
       id: editingProduct?.id || null,
-      nom: formName,
-      description: formDescription,
+      nom: formName.trim(),
+      description: formDescription.trim(),
       prix: parsedPrix,
       prixBarre: parsedPrixBarre,
+      prix_barre: parsedPrixBarre,
       images: cleanImages,
       image: cleanImages[0] || "",
       categorie: formCategory,
       phare: formPhare,
       stock: parsedStock,
       status: parsedStock === 0 ? "en_rupture" : formStatus,
-      partenaire: formPartenaire,
+      partenaire: formPartenaire || "Boutique en Direct",
       lienAffilie: formLienAffilie,
+      lien_affilie: formLienAffilie,
+      valide: true
     };
 
     try {
+      const adminToken = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
       const res = await fetch("/api/products/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": adminToken
+        },
         body: JSON.stringify({
-          auth: "asime2026-auth-session",
+          auth: adminToken,
           product: payload
         })
       });
 
       const responseData = await res.json();
       if (res.ok && responseData.success) {
-        setFormSuccess(editingProduct ? "Produit mis à jour avec succès dans Supabase !" : "Nouveau produit enregistré avec succès dans Supabase !");
+        setFormSuccess(editingProduct ? "Produit mis à jour avec succès !" : "Nouveau produit enregistré avec succès !");
         await fetchProducts();
         setTimeout(() => {
           resetForm();
@@ -1213,7 +1238,7 @@ export default function AdminApp() {
         setFormError(responseData.error || "Erreur de sauvegarde sur le serveur.");
       }
     } catch (err: any) {
-      setFormError("Erreur réseau : " + (err.message || "Impossible de sauvegarder."));
+      setFormError("Erreur : " + (err.message || "Impossible de sauvegarder."));
     }
   };
 
@@ -1223,11 +1248,14 @@ export default function AdminApp() {
     }
 
     try {
+      const adminToken = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
       const res = await fetch(`/api/products/${id}`, {
         method: "DELETE",
         headers: {
-          "Authorization": "asime2026-auth-session"
-        }
+          "Content-Type": "application/json",
+          "Authorization": adminToken
+        },
+        body: JSON.stringify({ auth: adminToken })
       });
       const data = await res.json();
       if (res.ok && data.success) {

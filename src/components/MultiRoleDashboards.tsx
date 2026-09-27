@@ -1560,6 +1560,7 @@ export default function MultiRoleDashboards({
   const [newProdImageUrl, setNewProdImageUrl] = useState("");
   const [newProdImages, setNewProdImages] = useState<string[]>([]);
   const [isEditingProduct, setIsEditingProduct] = useState<any | null>(null);
+  const [isSubmittingProduct, setIsSubmittingProduct] = useState(false);
 
   // Redesigned Seller Dashboard States
   const [sellerActiveSubTab, setSellerActiveSubTab] = useState<string>("dashboard");
@@ -1823,24 +1824,26 @@ export default function MultiRoleDashboards({
       // Offre 3 is premium and has absolutely no price limits!
     }
 
+    setIsSubmittingProduct(true);
     try {
       const productPayload = {
         auth: "asime2026",
         id: isEditingProduct ? isEditingProduct.id : "prod_" + Date.now().toString(),
-        nom: newProdName,
-        description: newProdDesc,
+        nom: newProdName.trim(),
+        description: newProdDesc.trim(),
         prix: prix,
         prixBarre: newProdPriceBarre ? Number(newProdPriceBarre) : null,
         stock: Number(newProdStock || 0),
         categorie: newProdCategory,
         partenaire: user?.businessName || user?.name || "Artisan Miabé Asi",
-        vendeurId: user?.id,
+        vendeurId: user?.id || (user as any)?.uid || "",
         countryCode: activeSellerCountryCode,
         countryOrigin: activeSellerCountryCode,
         currencyCode: activeSellerCurrencyCode,
         images: finalImages,
         image: finalImages[0] || "",
         statut: "Disponible",
+        status: "actif",
         phare: true
       };
 
@@ -1853,15 +1856,15 @@ export default function MultiRoleDashboards({
         body: JSON.stringify(productPayload)
       });
 
-      const data = await res.json();
-      if (data.success && data.product) {
+      const data = await res.json().catch(() => null);
+      if (data && data.success && data.product) {
         // Refresh local products list
         if (isEditingProduct) {
           setProducts(prev => prev.map(p => p.id === isEditingProduct.id ? data.product : p));
-          showToast("Produit mis à jour avec succès !");
+          showToast("✓ Produit mis à jour avec succès !");
         } else {
           setProducts(prev => [data.product, ...prev]);
-          showToast("Produit publié avec succès !");
+          showToast("✓ Produit publié avec succès dans votre boutique !");
         }
 
         // Cache into localStorage so offline/emulation has it
@@ -1889,11 +1892,14 @@ export default function MultiRoleDashboards({
         setNewProdPriceBarre("");
         setNewProdStock("");
         setNewProdImageUrl("");
+        setNewProdImages([]);
       } else {
-        showToast(`Erreur : ${data.error || "Impossible d'enregistrer le produit"}`);
+        showToast(`Erreur : ${data?.error || "Impossible d'enregistrer le produit"}`);
       }
-    } catch (err) {
-      showToast("Erreur lors de l'enregistrement du produit.");
+    } catch (err: any) {
+      showToast("Erreur lors de l'enregistrement du produit : " + (err?.message || "connexion impossible"));
+    } finally {
+      setIsSubmittingProduct(false);
     }
   };
 
@@ -3991,6 +3997,7 @@ export default function MultiRoleDashboards({
           setNewProdImageUrl={setNewProdImageUrl}
           newProdImages={newProdImages}
           setNewProdImages={setNewProdImages}
+          isSubmittingProduct={isSubmittingProduct}
           categories={categories}
           onBackToSite={() => {
             setCurrentView("menu");

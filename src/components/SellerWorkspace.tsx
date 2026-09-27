@@ -97,6 +97,7 @@ interface SellerWorkspaceProps {
   setNewProdImageUrl: (v: string) => void;
   newProdImages: string[];
   setNewProdImages: (imgs: string[]) => void;
+  isSubmittingProduct?: boolean;
   categories: string[];
   onBackToSite: () => void;
   onNavigateToPublicShop?: (slug: string) => void;
@@ -147,6 +148,7 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
   setNewProdImageUrl,
   newProdImages,
   setNewProdImages,
+  isSubmittingProduct = false,
   categories,
   onBackToSite,
   onNavigateToPublicShop
@@ -2989,17 +2991,57 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsAddProductOpen(false)}
-                    className="px-4 py-2 border border-stone-300 rounded-xl text-xs font-bold uppercase text-stone-600 hover:bg-stone-100"
+                    className="px-4 py-2 border border-stone-300 rounded-xl text-xs font-bold uppercase text-stone-600 hover:bg-stone-100 transition-colors"
                   >
                     Annuler
                   </button>
                   <button
                     type="submit"
-                    disabled={newProdImages.length === 0 || isUploadingProductImages}
-                    className="px-6 py-2 bg-[#0B4D26] hover:bg-[#083a1d] disabled:bg-stone-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
+                    onClick={(e) => {
+                      if (isUploadingProductImages) {
+                        e.preventDefault();
+                        showToast("Veuillez patienter pendant l'optimisation et le téléversement des photos...");
+                        return;
+                      }
+                      if (!newProdImages || newProdImages.length === 0) {
+                        e.preventDefault();
+                        setProductImageUploadError("⚠️ Au moins une photo réelle de votre produit est obligatoire.");
+                        showToast("⚠️ Au moins une photo réelle est obligatoire. Sélectionnez une image depuis votre appareil.");
+                        productFileInputRef.current?.click();
+                        return;
+                      }
+                      if (!newProdName.trim()) {
+                        showToast("Veuillez renseigner le nom de votre produit.");
+                        return;
+                      }
+                      if (!newProdPrice || Number(newProdPrice) <= 0) {
+                        showToast("Veuillez renseigner un prix valide pour votre produit.");
+                        return;
+                      }
+                    }}
+                    disabled={isSubmittingProduct}
+                    className={`px-6 py-2.5 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shadow-sm ${
+                      isSubmittingProduct
+                        ? "bg-stone-400 cursor-not-allowed opacity-80"
+                        : "bg-[#0B4D26] hover:bg-[#083a1d] active:scale-95"
+                    }`}
                   >
-                    {isUploadingProductImages && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    <span>{isEditingProduct ? "Enregistrer les modifications" : "Publier le produit"}</span>
+                    {isSubmittingProduct ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Publication en cours...</span>
+                      </>
+                    ) : isUploadingProductImages ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Envoi des photos...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{isEditingProduct ? "Enregistrer les modifications" : "Publier le produit"}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
