@@ -739,8 +739,8 @@ export async function loadFromSupabaseStore(key: string): Promise<any | null> {
 
   const cleanKey = key.replace(/\\/g, "/").split("/").pop() || key;
 
-  // If loading products, try relational table first
-  if (cleanKey.toLowerCase().includes("produit") || cleanKey.toLowerCase().includes("product")) {
+  // If loading products, try relational table first (ONLY for active catalog files, NEVER for deleted_products)
+  if (cleanKey === "produits.json" || cleanKey === "products.json") {
     const relationalProducts = await loadProductsFromSupabaseTable();
     if (relationalProducts && relationalProducts.length > 0) {
       return relationalProducts;

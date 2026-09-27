@@ -888,7 +888,7 @@ export default function App() {
   });
   const [checkoutCity, setCheckoutCity] = useState("");
   const [checkoutQuartier, setCheckoutQuartier] = useState("");
-  const [checkoutPayment, setCheckoutPayment] = useState("EnLigne");
+  const [checkoutPayment, setCheckoutPayment] = useState("Espèces");
 
   // Country & Currency derived from selected checkout country
   const checkoutCountry = getCountryByCode(checkoutCountryCode);
@@ -2204,18 +2204,24 @@ export default function App() {
       
       setCart([]);
       setIsCartOpen(false);
-      showToast("✓ Commande enregistrée ! Redirection WhatsApp...");
+      showToast("✓ Commande enregistrée avec succès !");
       
-      const opened = window.open(whatsappUrl, "_blank");
-      if (!opened) {
-        window.location.href = whatsappUrl;
+      // Try opening WhatsApp in a background tab
+      try {
+        window.open(whatsappUrl, "_blank");
+      } catch (e) {}
+
+      // Keep user in store and display order confirmation & invoice modal
+      if (orderId) {
+        fetchTrackingDetails(orderId);
+        setIsTrackingModalOpen(true);
       }
       return;
     }
 
     // 3. Initiate Online Payment with the Selected Provider
     try {
-      showToast("Paiement en cours d'initialisation...");
+      showToast("Passerelle de paiement en cours d'initialisation...");
       const payRes = await fetch("/api/payments/initiate", {
         method: "POST",
         headers: {
@@ -2234,7 +2240,8 @@ export default function App() {
 
       const payData = await payRes.json();
       if (payData.success) {
-        if (payData.session?.redirectUrl && (payData.session.redirectUrl.startsWith("http://") || payData.session.redirectUrl.startsWith("https://"))) {
+        // Only redirect externally if it is a real live external gateway URL
+        if (payData.session?.redirectUrl && !payData.session.redirectUrl.includes("paydunya-test") && (payData.session.redirectUrl.startsWith("http://") || payData.session.redirectUrl.startsWith("https://"))) {
           showToast("Redirection vers le guichet de paiement sécurisé...");
           window.location.href = payData.session.redirectUrl;
           return;
@@ -3635,137 +3642,6 @@ export default function App() {
         {/* TAB 2: CATALOGUE WITH BEAUTIFUL GRID AND ADVANCED FILTERS */}
         {activeTab === "catalogue" && (
           <div className="py-6 sm:py-8 px-4 max-w-7xl mx-auto">
-            {/* Visual Marketplace Hero Banner */}
-            <div className="relative rounded-2xl overflow-hidden mb-8 shadow-xl border border-stone-200 bg-stone-950 min-h-[240px] sm:min-h-[290px] flex items-center">
-              <img 
-                src="https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=1600&q=80" 
-                alt="Grand Marché Artisanal Panafricain Miabé Asi" 
-                className="absolute inset-0 w-full h-full object-cover object-center filter brightness-[0.38] transition-transform duration-700 hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-stone-950/95 via-stone-950/70 to-transparent"></div>
-              
-              <div className="relative z-10 p-6 sm:p-10 max-w-2xl text-left space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-3 py-1 bg-[#d4af37] text-stone-950 text-[10px] font-black uppercase tracking-widest rounded-full shadow-xs">
-                    Marketplace Panafricaine
-                  </span>
-                  <span className="text-stone-300 text-[11px] font-bold tracking-wider bg-white/10 px-2.5 py-0.5 rounded-full backdrop-blur-xs">
-                    🌍 7 Pays de la Zone PayDunya
-                  </span>
-                </div>
-
-                <h1 className="text-2xl sm:text-4xl font-display font-extrabold text-white tracking-tight uppercase leading-tight">
-                  Le Grand Marché Miabé Asi
-                </h1>
-
-                <p className="text-xs sm:text-sm text-stone-200 font-sans leading-relaxed">
-                  Découvrez l'authenticité africaine : tissus Wax confectionnés à la main, délices du terroir, cosmétiques au pur beurre de karité et créations d'art directement issus des ateliers de nos vendeurs partenaires.
-                </p>
-
-                {/* Trust & Guarantee Micro-Badges */}
-                <div className="pt-1.5 flex flex-wrap items-center gap-2 sm:gap-3 text-[10px] sm:text-[11px] font-bold text-[#d4af37]">
-                  <span className="flex items-center gap-1.5 bg-black/50 px-3 py-1 rounded-full border border-[#d4af37]/30">
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#d4af37]" />
-                    <span>Créateurs &amp; Boutiques Vérifiés</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 bg-black/50 px-3 py-1 rounded-full border border-[#d4af37]/30">
-                    <Smartphone className="w-3.5 h-3.5 text-[#d4af37]" />
-                    <span>Mix by Yas, Flooz &amp; T-Money</span>
-                  </span>
-                  <span className="flex items-center gap-1.5 bg-black/50 px-3 py-1 rounded-full border border-[#d4af37]/30">
-                    <Truck className="w-3.5 h-3.5 text-[#d4af37]" />
-                    <span>Livraison Rapide</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Visual Category Showcase Strip with Authentic Photos */}
-            <div className="mb-8">
-              <div className="flex items-center justify-between mb-3 px-1">
-                <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-stone-900 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-[#d4af37]" />
-                  <span>Explorer par Univers &amp; Métiers</span>
-                </h2>
-                <span className="text-[11px] text-stone-500 font-sans">Sélectionnez une collection</span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {[
-                  {
-                    name: "Made in Togo & Art",
-                    category: "Made in Togo Premium",
-                    image: "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=600&q=80",
-                    count: "Artisanat d'excellence"
-                  },
-                  {
-                    name: "Mode & Wax",
-                    category: "Vêtements & Mode",
-                    image: "https://images.unsplash.com/photo-1590736969955-71cc94801759?auto=format&fit=crop&w=600&q=80",
-                    count: "Tenues & Pagnes wax"
-                  },
-                  {
-                    name: "Paniers & Terroir",
-                    category: "Paniers Frais & Épicerie",
-                    image: "https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?auto=format&fit=crop&w=600&q=80",
-                    count: "Épices, miels, karité"
-                  },
-                  {
-                    name: "Montres & Bijoux",
-                    category: "Montres & Accessoires",
-                    image: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=600&q=80",
-                    count: "Accessoires de prestige"
-                  },
-                  {
-                    name: "Chaussures & Cuir",
-                    category: "Chaussures Premium",
-                    image: "https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&w=600&q=80",
-                    count: "Maroquinerie & souliers"
-                  }
-                ].map((catItem) => {
-                  const isActive = selectedCategory === catItem.category;
-                  return (
-                    <button
-                      key={catItem.name}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCategory(isActive ? "Toutes" : catItem.category);
-                        const filterElem = document.getElementById("catalog-filters-block");
-                        if (filterElem) {
-                          filterElem.scrollIntoView({ behavior: "smooth" });
-                        }
-                      }}
-                      className={`group relative rounded-xl overflow-hidden h-28 sm:h-32 text-left p-3 flex flex-col justify-end transition-all cursor-pointer border ${
-                        isActive
-                          ? "border-[#d4af37] ring-2 ring-[#d4af37] shadow-lg scale-[1.02]"
-                          : "border-stone-200 hover:border-[#d4af37]/70 shadow-2xs hover:shadow-md"
-                      }`}
-                    >
-                      <img
-                        src={catItem.image}
-                        alt={catItem.name}
-                        className="absolute inset-0 w-full h-full object-cover filter brightness-[0.55] group-hover:scale-110 group-hover:brightness-[0.45] transition-all duration-500"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent"></div>
-                      <div className="relative z-10">
-                        {isActive && (
-                          <span className="inline-block bg-[#d4af37] text-stone-950 text-[9px] font-black px-1.5 py-0.5 rounded-sm uppercase tracking-wider mb-1">
-                            Actif
-                          </span>
-                        )}
-                        <p className="text-xs sm:text-sm font-black uppercase text-white tracking-wide leading-tight group-hover:text-[#d4af37] transition-colors">
-                          {catItem.name}
-                        </p>
-                        <p className="text-[10px] text-stone-300 font-sans truncate mt-0.5">
-                          {catItem.count}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             {/* Filter and Query Tools */}
             <div id="catalog-filters-block" className="bg-white border border-neutral-150 p-5 rounded-xl shadow-xs mb-8 space-y-4">
               <div className="flex flex-col lg:flex-row gap-4 items-center justify-between w-full overflow-hidden">
@@ -5825,14 +5701,49 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Direct Action Link or Status */}
+                {/* Direct Action Link or In-App Payment Validation */}
                 {paymentSession.redirectUrl && (
-                  <a
-                    href={paymentSession.redirectUrl}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-center text-xs uppercase tracking-wider py-3 px-4 rounded-sm block transition-colors shadow-sm"
-                  >
-                    {language === "fr" ? "Accéder au guichet de paiement PayDunya →" : "Yi PayDunya fetututu dzi →"}
-                  </a>
+                  <div className="space-y-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          showToast("Validation du paiement...");
+                          const confRes = await fetch("/api/payments/confirm", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              transactionId: paymentSession.transactionId,
+                              orderId: paymentSession.orderId,
+                              providerId: paymentSession.providerId
+                            })
+                          });
+                          const confData = await confRes.json();
+                          if (confData.success || confData.status === "completed") {
+                            setIsPaymentSuccess(true);
+                            showToast("✓ Paiement validé avec succès !");
+                          } else {
+                            alert("Erreur de confirmation : " + (confData.error || "Inconnue"));
+                          }
+                        } catch (err: any) {
+                          alert("Erreur réseau : " + (err.message || String(err)));
+                        }
+                      }}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-center text-xs uppercase tracking-wider py-3 px-4 rounded-sm block transition-colors shadow-sm cursor-pointer"
+                    >
+                      {language === "fr" ? "✓ Confirmer et valider le paiement" : "✓ Do ga na gbe"}
+                    </button>
+                    {!paymentSession.redirectUrl.includes("paydunya-test") && (
+                      <a
+                        href={paymentSession.redirectUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-center text-xs uppercase tracking-wider py-2.5 px-4 rounded-sm block transition-colors"
+                      >
+                        {language === "fr" ? "Ouvrir le portail externe →" : "Yi portail dzi →"}
+                      </a>
+                    )}
+                  </div>
                 )}
               </div>
             )}

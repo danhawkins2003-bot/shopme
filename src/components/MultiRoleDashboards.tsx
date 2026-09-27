@@ -49,6 +49,7 @@ import {
 } from "lucide-react";
 import SellerWorkspace from "./SellerWorkspace";
 import { SellerLandingPage } from "./SellerLandingPage";
+import { uploadImageToServer } from "../lib/imageUploadHelper";
 import { SUPPORTED_COUNTRIES, getCountryByCode, isSupportedCountry, DEFAULT_COUNTRY_CODE, DEFAULT_CURRENCY_CODE, formatPrice } from "../data/westAfricanCountries";
 
 interface MultiRoleDashboardsProps {
@@ -1537,6 +1538,7 @@ export default function MultiRoleDashboards({
   const [firstListingDesc, setFirstListingDesc] = useState("");
   const [firstListingCategory, setFirstListingCategory] = useState("Made in Togo Premium");
   const [firstListingImageUrl, setFirstListingImageUrl] = useState("https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=400");
+  const [isUploadingFirstListing, setIsUploadingFirstListing] = useState(false);
   
   // Payout info state
   const [sellerPayoutType, setSellerPayoutType] = useState<"Mix by Yas" | "Flooz" | "Virement" | "PayDunya">("PayDunya");
@@ -1784,8 +1786,17 @@ export default function MultiRoleDashboards({
   // Submit product (Create or Edit)
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProdName || !newProdPrice) {
-      showToast("Veuillez remplir les champs obligatoires.");
+    if (!newProdName.trim() || !newProdPrice) {
+      showToast("Veuillez remplir les champs obligatoires (nom et prix).");
+      return;
+    }
+
+    const finalImages = (newProdImages && newProdImages.length > 0)
+      ? newProdImages.filter(img => typeof img === "string" && img.trim().length > 0)
+      : (newProdImageUrl && newProdImageUrl.trim() ? [newProdImageUrl.trim()] : []);
+
+    if (finalImages.length === 0) {
+      showToast("⚠️ Au moins une photo de votre produit est obligatoire. Veuillez téléverser au moins une image.");
       return;
     }
 
@@ -1827,7 +1838,8 @@ export default function MultiRoleDashboards({
         countryCode: activeSellerCountryCode,
         countryOrigin: activeSellerCountryCode,
         currencyCode: activeSellerCurrencyCode,
-        images: newProdImages && newProdImages.length > 0 ? newProdImages : [newProdImageUrl || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80"],
+        images: finalImages,
+        image: finalImages[0] || "",
         statut: "Disponible",
         phare: true
       };
@@ -3410,15 +3422,42 @@ export default function MultiRoleDashboards({
                               </button>
                             ))}
                           </div>
-                          <div className="pt-1.5">
-                            <span className="text-[9px] text-neutral-400">Ou saisir l'adresse URL d'une image personnalisée :</span>
-                            <input
-                              type="text"
-                              placeholder="Ex: https://image.com/mon-produit.jpg"
-                              value={firstListingImageUrl}
-                              onChange={(e) => setFirstListingImageUrl(e.target.value)}
-                              className="w-full px-2 py-1 text-[10px] border border-neutral-300 bg-white rounded-none focus:outline-none text-neutral-900 mt-1 font-mono"
-                            />
+                          <div className="pt-2 border-t border-neutral-200 space-y-1">
+                            <span className="text-[9.5px] font-bold text-neutral-600 uppercase tracking-widest block">
+                              Ou téléverser la vraie photo depuis votre appareil :
+                            </span>
+                            <label className="flex items-center justify-center gap-1.5 py-2 px-3 border border-dashed border-neutral-300 hover:border-[#0B4D26] bg-neutral-50 hover:bg-emerald-50/20 text-neutral-700 cursor-pointer transition-colors text-[10px] font-bold uppercase">
+                              <Camera className="w-3.5 h-3.5 text-[#0B4D26]" />
+                              <span>{isUploadingFirstListing ? "Téléversement en cours..." : "Choisir une photo depuis mon appareil"}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                disabled={isUploadingFirstListing}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  try {
+                                    setIsUploadingFirstListing(true);
+                                    const res = await uploadImageToServer(file, undefined, file.name);
+                                    if (res.success && res.url) {
+                                      setFirstListingImageUrl(res.url);
+                                      showToast("✓ Photo téléversée avec succès !");
+                                    } else {
+                                      showToast(res.error || "Erreur de téléversement.");
+                                    }
+                                  } catch (err: any) {
+                                    showToast("Erreur lors de l'envoi de la photo.");
+                                  } finally {
+                                    setIsUploadingFirstListing(false);
+                                    e.target.value = "";
+                                  }
+                                }}
+                                className="hidden"
+                              />
+                            </label>
+                            <p className="text-[8.5px] text-neutral-400">
+                              Sélectionnez une image de votre galerie ou prenez une photo. Aucune URL requise.
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -3434,7 +3473,7 @@ export default function MultiRoleDashboards({
                           {/* Card image container */}
                           <div className="w-full h-[140px] bg-neutral-100 overflow-hidden relative">
                             <img
-                              src={firstListingImageUrl || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&q=80&w=400"}
+                              src={firstListingImageUrl || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=400"}
                               alt="Preview item"
                               className="w-full h-full object-cover select-none transition-transform duration-500 hover:scale-110"
                               referrerPolicy="no-referrer"
@@ -3478,7 +3517,7 @@ export default function MultiRoleDashboards({
                       </button>
                       <button
                         type="button"
-                        disabled={!firstListingName || !firstListingPrice}
+                        disabled={!firstListingName || !firstListingPrice || !firstListingImageUrl || isUploadingFirstListing}
                         onClick={() => setVendeurStep("payout")}
                         className="bg-neutral-950 hover:bg-[#f56a3f] text-white font-black uppercase tracking-wider py-2.5 text-[10px] transition-all rounded-none cursor-pointer text-center disabled:opacity-40"
                       >

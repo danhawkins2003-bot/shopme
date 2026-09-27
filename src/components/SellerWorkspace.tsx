@@ -48,9 +48,13 @@ import {
   Lock,
   Download,
   FileText,
-  BarChart3
+  BarChart3,
+  UploadCloud,
+  Loader2,
+  Camera
 } from "lucide-react";
 import { Product, SellerPlan } from "../types";
+import { uploadImageToServer } from "../lib/imageUploadHelper";
 import {
   SUPPORTED_COUNTRIES,
   getCountryByCode,
@@ -173,6 +177,59 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
   // Format prices using the seller's registered currency
   const formatSellerPrice = (amount: number | null | undefined): string => {
     return formatPrice(amount, sellerCurrencyCode);
+  };
+
+  // Dedicated Product Images Upload States & Handlers
+  const [isUploadingProductImages, setIsUploadingProductImages] = useState(false);
+  const [productImageUploadError, setProductImageUploadError] = useState<string | null>(null);
+  const productFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleProductImageFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setProductImageUploadError(null);
+    const maxSlots = 6;
+    const currentList = Array.isArray(newProdImages) ? newProdImages : [];
+    const remainingSlots = maxSlots - currentList.length;
+
+    if (remainingSlots <= 0) {
+      setProductImageUploadError(`Vous pouvez ajouter au maximum ${maxSlots} photos par produit.`);
+      return;
+    }
+
+    const filesToProcess = Array.from(files).slice(0, remainingSlots) as File[];
+    setIsUploadingProductImages(true);
+
+    const uploadedUrls: string[] = [];
+    for (const file of filesToProcess) {
+      try {
+        const res = await uploadImageToServer(file, undefined, file.name);
+        if (res.success && res.url) {
+          uploadedUrls.push(res.url);
+        } else {
+          setProductImageUploadError(res.error || "Erreur lors du téléversement d'une image.");
+        }
+      } catch (err: any) {
+        setProductImageUploadError("Erreur lors de l'envoi de l'image : " + (err.message || String(err)));
+      }
+    }
+
+    if (uploadedUrls.length > 0) {
+      const merged = [...currentList, ...uploadedUrls].slice(0, maxSlots);
+      setNewProdImages(merged);
+      setNewProdImageUrl(merged[0] || "");
+    }
+
+    setIsUploadingProductImages(false);
+    e.target.value = "";
+  };
+
+  const handleRemoveProductImage = (indexToRemove: number) => {
+    const currentList = Array.isArray(newProdImages) ? newProdImages : [];
+    const updated = currentList.filter((_, idx) => idx !== indexToRemove);
+    setNewProdImages(updated);
+    setNewProdImageUrl(updated[0] || "");
   };
 
   // -------------------------------------------------------------
@@ -2797,41 +2854,136 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1">Catégorie *</label>
-                    <select
-                      value={newProdCategory}
-                      onChange={(e) => setNewProdCategory(e.target.value)}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#0B4D26]"
-                    >
-                      {categories.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1">URL de l'image *</label>
-                    <input
-                      type="url"
-                      required
-                      value={newProdImageUrl}
-                      onChange={(e) => setNewProdImageUrl(e.target.value)}
-                      placeholder="https://..."
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#0B4D26]"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1">Catégorie *</label>
+                  <select
+                    value={newProdCategory}
+                    onChange={(e) => setNewProdCategory(e.target.value)}
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#0B4D26]"
+                  >
+                    {categories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
                 </div>
 
-                {newProdImageUrl && (
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">Aperçu :</span>
-                    <div className="h-28 w-28 rounded-xl overflow-hidden border border-stone-200 bg-stone-100">
-                      <img src={newProdImageUrl} alt="Aperçu" className="w-full h-full object-cover" />
-                    </div>
+                {/* Multi-Image File Upload (Strictly no URL input, mandatory 1 to 6 images) */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider">
+                      Photos du produit <span className="text-red-500">* (Obligatoire — 1 à 6 photos réelles)</span>
+                    </label>
+                    <span className="text-[10px] text-stone-500 font-semibold">
+                      {newProdImages.length}/6 photo{newProdImages.length > 1 ? "s" : ""}
+                    </span>
                   </div>
-                )}
+
+                  {/* Hidden file input */}
+                  <input
+                    type="file"
+                    ref={productFileInputRef}
+                    onChange={handleProductImageFiles}
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                  />
+
+                  {/* Upload Dropzone / Trigger */}
+                  <div
+                    onClick={() => {
+                      if (!isUploadingProductImages && newProdImages.length < 6) {
+                        productFileInputRef.current?.click();
+                      }
+                    }}
+                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                      newProdImages.length === 0
+                        ? "border-amber-400 bg-amber-50/50 hover:bg-amber-100/60 hover:border-amber-500"
+                        : "border-stone-300 bg-stone-50 hover:bg-emerald-50/20 hover:border-[#0B4D26]"
+                    }`}
+                  >
+                    {isUploadingProductImages ? (
+                      <div className="flex flex-col items-center justify-center py-2 text-[#0B4D26]">
+                        <Loader2 className="w-6 h-6 animate-spin mb-1.5" />
+                        <p className="text-xs font-bold uppercase tracking-wider">Optimisation et téléversement en cours...</p>
+                        <p className="text-[10px] text-stone-500">Compression automatique haute qualité</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-white shadow-xs border border-stone-200 flex items-center justify-center mb-1.5">
+                          <UploadCloud className="w-5 h-5 text-[#0B4D26]" />
+                        </div>
+                        <p className="text-xs font-bold text-stone-900 uppercase tracking-wide">
+                          {newProdImages.length === 0 ? "Ajouter les photos de votre produit" : "Ajouter d'autres photos"}
+                        </p>
+                        <p className="text-[10.5px] text-stone-500 mt-0.5">
+                          Sélectionnez depuis votre téléphone, galerie ou ordinateur (JPG, PNG, WEBP)
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-1.5 text-[9px] text-[#0B4D26] font-bold bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                          <Camera className="w-3 h-3" />
+                          <span>Sélection multiple autorisée — Aucune URL requise</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload error display */}
+                  {productImageUploadError && (
+                    <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 p-2 rounded-lg font-medium">
+                      ⚠️ {productImageUploadError}
+                    </p>
+                  )}
+
+                  {/* Mandatory photo alert if empty */}
+                  {newProdImages.length === 0 && (
+                    <div className="flex items-center gap-2 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-[11px] font-semibold">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+                      <span>Vous devez obligatoirement ajouter au moins une photo pour pouvoir publier ce produit.</span>
+                    </div>
+                  )}
+
+                  {/* Uploaded Photos Grid */}
+                  {newProdImages.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
+                        Photos sélectionnées ({newProdImages.length}) :
+                      </span>
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {newProdImages.map((imgUrl, idx) => (
+                          <div
+                            key={idx}
+                            className="relative aspect-square rounded-xl overflow-hidden border-2 border-stone-200 bg-stone-100 group shadow-2xs"
+                          >
+                            <img src={imgUrl} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                            {idx === 0 && (
+                              <span className="absolute bottom-1 left-1 right-1 bg-[#0B4D26]/90 text-white text-[8px] font-bold text-center py-0.5 rounded uppercase tracking-wider backdrop-blur-xs">
+                                ★ Principale
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveProductImage(idx)}
+                              className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full shadow-md transition-transform hover:scale-110 cursor-pointer"
+                              title="Supprimer cette photo"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+
+                        {newProdImages.length < 6 && (
+                          <button
+                            type="button"
+                            onClick={() => productFileInputRef.current?.click()}
+                            className="aspect-square rounded-xl border-2 border-dashed border-stone-300 hover:border-[#0B4D26] bg-stone-50 hover:bg-emerald-50/30 flex flex-col items-center justify-center gap-1 text-stone-500 hover:text-[#0B4D26] transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span className="text-[9px] font-bold uppercase tracking-wider">Ajouter</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="pt-3 flex justify-end gap-2 border-t border-stone-100">
                   <button
@@ -2843,9 +2995,11 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-6 py-2 bg-[#0B4D26] hover:bg-[#083a1d] text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer"
+                    disabled={newProdImages.length === 0 || isUploadingProductImages}
+                    className="px-6 py-2 bg-[#0B4D26] hover:bg-[#083a1d] disabled:bg-stone-300 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5"
                   >
-                    {isEditingProduct ? "Enregistrer les modifications" : "Publier le produit"}
+                    {isUploadingProductImages && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isEditingProduct ? "Enregistrer les modifications" : "Publier le produit"}</span>
                   </button>
                 </div>
               </form>

@@ -738,8 +738,8 @@ function writeJSONFile<T>(filePath: string, data: T): boolean {
       console.warn(`⚠️ [Supabase Sync] Non-blocking backup for "${keyName}":`, err.message || err);
     });
 
-    // Directly sync relational table if data is products
-    if ((keyName.includes("produit") || keyName.includes("product")) && Array.isArray(data)) {
+    // Directly sync relational table only if data is the active catalog file
+    if ((keyName === "produits.json" || keyName === "products.json") && Array.isArray(data)) {
       syncAllProductsToSupabaseTable(data).catch(() => {});
     }
   }
@@ -822,6 +822,10 @@ app.post(["/api/upload", "/api/upload/image"], async (req, res) => {
   }
 });
 
+// In-memory cache for Supabase products to maintain high performance
+let lastSupabaseFetchTime = 0;
+let cachedSupabaseProducts: any[] | null = null;
+
 // GET products (Supabase public.products as primary source of truth, with local JSON fallback and tombstone filtering)
 app.get(["/api/products", "/api/products/"], async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -833,10 +837,19 @@ app.get(["/api/products", "/api/products/"], async (req, res) => {
 
   let supabaseProducts: any[] | null = null;
   if (isSupabaseConfigured()) {
-    try {
-      supabaseProducts = await loadProductsFromSupabaseTable();
-    } catch (err) {
-      console.warn("⚠️ [Products GET] Supabase temporairement indisponible, bascule sur fallback local:", err);
+    const now = Date.now();
+    if (cachedSupabaseProducts && (now - lastSupabaseFetchTime < 15000)) {
+      supabaseProducts = cachedSupabaseProducts;
+    } else {
+      try {
+        supabaseProducts = await loadProductsFromSupabaseTable();
+        if (supabaseProducts) {
+          cachedSupabaseProducts = supabaseProducts;
+          lastSupabaseFetchTime = now;
+        }
+      } catch (err) {
+        console.warn("⚠️ [Products GET] Supabase temporairement indisponible, bascule sur fallback local:", err);
+      }
     }
   }
 
@@ -1207,9 +1220,18 @@ app.post("/api/products/save", async (req, res) => {
 
     const prix = Math.max(0, Number(product.prix));
     const prixBarre = product.prixBarre ? Math.max(0, Number(product.prixBarre)) : (product.prix_barre ? Math.max(0, Number(product.prix_barre)) : null);
-    const images = Array.isArray(product.images) && product.images.length > 0 
-      ? product.images 
-      : (product.image ? [product.image] : ["https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600"]);
+    
+    const resolvedImages = Array.isArray(product.images) && product.images.length > 0 
+      ? product.images.filter((img: any) => typeof img === "string" && img.trim().length > 0)
+      : (product.image && typeof product.image === "string" && product.image.trim().length > 0 ? [product.image.trim()] : []);
+
+    if (resolvedImages.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Au moins une photo du produit est obligatoire. Veuillez téléverser au moins une image."
+      });
+    }
+    const images = resolvedImages;
     const affiliateLink = product.lienAffilie ? String(product.lienAffilie).trim() : (product.lien_affilie ? String(product.lien_affilie).trim() : "");
 
     // Format and validate data types
@@ -1245,15 +1267,16 @@ app.post("/api/products/save", async (req, res) => {
 
     // 1. Primary Source of Truth: Synchronize to Supabase public.products table
     if (isSupabaseConfigured()) {
-      const sbResult = await syncProductToSupabaseTable(validatedProduct);
-      if (!sbResult.success) {
-        console.error(`🔴 [POST /api/products/save] Échec Supabase:`, sbResult.error);
-        return res.status(500).json({
-          success: false,
-          error: `Erreur d'enregistrement Supabase : ${sbResult.error || "Erreur de base de données"}`
-        });
+      try {
+        const sbResult = await syncProductToSupabaseTable(validatedProduct);
+        if (!sbResult.success) {
+          console.warn(`⚠️ [POST /api/products/save] Avertissement Supabase (sauvegarde locale maintenue):`, sbResult.error);
+        } else {
+          console.log(`✨ [Supabase] Produit "${validatedProduct.nom}" (${validatedProduct.id}) synchronisé avec succès dans public.products`);
+        }
+      } catch (sbErr: any) {
+        console.warn(`⚠️ [POST /api/products/save] Exception Supabase (sauvegarde locale maintenue):`, sbErr.message || sbErr);
       }
-      console.log(`✨ [Supabase] Produit "${validatedProduct.nom}" (${validatedProduct.id}) synchronisé avec succès dans public.products`);
     }
 
     // 2. Non-blocking update of in-memory cache and local file
@@ -1265,6 +1288,8 @@ app.post("/api/products/save", async (req, res) => {
       products.unshift(validatedProduct);
     }
     memoryStore.set(PRODUCTS_FILE, products);
+    lastSupabaseFetchTime = 0;
+    cachedSupabaseProducts = null;
 
     if (process.env.VERCEL !== "1") {
       try {
@@ -1533,15 +1558,16 @@ app.delete("/api/products/:id", async (req, res) => {
   try {
     // 1. Delete from Supabase public.products table (Primary Source of Truth)
     if (isSupabaseConfigured()) {
-      const sbResult = await deleteProductFromSupabaseTable(idStr);
-      if (!sbResult.success) {
-        console.error(`🔴 [DELETE /api/products/:id] Échec Supabase:`, sbResult.error);
-        return res.status(500).json({
-          success: false,
-          error: `Erreur de suppression Supabase : ${sbResult.error || "Impossible de supprimer le produit de la base de données."}`
-        });
+      try {
+        const sbResult = await deleteProductFromSupabaseTable(idStr);
+        if (!sbResult.success) {
+          console.warn(`⚠️ [DELETE /api/products/:id] Avertissement Supabase (suppression locale maintenue):`, sbResult.error);
+        } else {
+          console.log(`🗑️ [Supabase] Produit ${idStr} supprimé avec succès de public.products`);
+        }
+      } catch (sbErr: any) {
+        console.warn(`⚠️ [DELETE /api/products/:id] Exception Supabase (suppression locale maintenue):`, sbErr.message || sbErr);
       }
-      console.log(`🗑️ [Supabase] Produit ${idStr} supprimé avec succès de public.products`);
     }
 
     // 2. Persist tombstone in Supabase Storage app-data and in-memory set (Anti-resurrection)
@@ -1551,6 +1577,8 @@ app.delete("/api/products/:id", async (req, res) => {
     const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
     const filtered = products.filter((p) => String(p.id) !== idStr);
     memoryStore.set(PRODUCTS_FILE, filtered);
+    lastSupabaseFetchTime = 0;
+    cachedSupabaseProducts = null;
 
     if (process.env.VERCEL !== "1") {
       try {
@@ -2015,9 +2043,15 @@ app.post(["/api/products", "/api/products/:id"], async (req, res, next) => {
     description: String(prodDetails.description || "").trim(),
     prix: prix,
     prixBarre: prodDetails.prixBarre ? Number(prodDetails.prixBarre) : null,
-    images: Array.isArray(prodDetails.images) && prodDetails.images.length > 0 
-      ? prodDetails.images 
-      : [prodDetails.images || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80"],
+    images: (() => {
+      const resolved = Array.isArray(prodDetails.images) && prodDetails.images.length > 0 
+        ? prodDetails.images.filter((img: any) => typeof img === "string" && img.trim().length > 0)
+        : (prodDetails.image && typeof prodDetails.image === "string" && prodDetails.image.trim().length > 0 ? [prodDetails.image.trim()] : []);
+      if (resolved.length === 0) {
+        throw new Error("Au moins une photo du produit est obligatoire. Veuillez téléverser au moins une image.");
+      }
+      return resolved;
+    })(),
     categorie: String(prodDetails.categorie || "Général").trim(),
     phare: typeof prodDetails.phare !== "undefined" ? !!prodDetails.phare : true, // Set to true so products show on mobile & home displays
     stock: typeof prodDetails.stock !== "undefined" ? Math.max(0, Math.floor(Number(prodDetails.stock))) : 10,
@@ -3063,8 +3097,8 @@ app.get("/checkout/paydunya-test", (req, res) => {
   const invoice = getPayDunyaInvoice(token) || getPayDunyaInvoice(orderId);
 
   const isSub = (invoice?.type === "subscription") || orderId.startsWith("SUB-");
-  const returnUrl = isSub ? `/?payment=sub_return&subId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}` : `/order-history?payment=return&orderId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}`;
-  const cancelUrl = isSub ? `/?payment=sub_cancel&subId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}` : `/order-history?payment=cancel&orderId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}`;
+  const returnUrl = isSub ? `/?payment=sub_return&subId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}` : `/?payment=return&orderId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}`;
+  const cancelUrl = isSub ? `/?payment=sub_cancel&subId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}` : `/?payment=cancel&orderId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}`;
 
   const amount = invoice?.amount || (isSub ? 1600 : 5000);
   const currency = invoice?.currencyCode || "XOF";

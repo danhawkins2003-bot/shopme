@@ -294,13 +294,25 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
       existingIndex = prods.findIndex((p: any) => p.id === prodId);
     }
 
+    const resolvedImages = Array.isArray(prodDetails.images) && prodDetails.images.length > 0 
+      ? prodDetails.images.filter((img: any) => typeof img === "string" && img.trim().length > 0)
+      : (prodDetails.image && typeof prodDetails.image === "string" && prodDetails.image.trim().length > 0 ? [prodDetails.image.trim()] : []);
+
+    if (resolvedImages.length === 0) {
+      return makeResponse({
+        success: false,
+        error: "Au moins une photo du produit est obligatoire. Veuillez téléverser au moins une image."
+      }, 400, false);
+    }
+
     const savedProduct = {
       id: prodId || "prod_" + Date.now().toString(),
       nom: String(prodDetails.nom || "").trim(),
       description: String(prodDetails.description || "").trim(),
       prix: prix,
       prixBarre: prodDetails.prixBarre ? Number(prodDetails.prixBarre) : null,
-      images: Array.isArray(prodDetails.images) ? prodDetails.images : [prodDetails.images || "https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=600&q=80"],
+      images: resolvedImages,
+      image: resolvedImages[0] || "",
       categorie: String(prodDetails.categorie || "Général").trim(),
       phare: typeof prodDetails.phare !== "undefined" ? !!prodDetails.phare : true,
       stock: typeof prodDetails.stock !== "undefined" ? Math.max(0, Math.floor(Number(prodDetails.stock))) : 10,

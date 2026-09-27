@@ -37,8 +37,14 @@ export async function uploadImageToServer(
       })
     });
 
-    const data = await response.json();
-    if (!response.ok || !data.success || !data.url) {
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.success || !data?.url) {
+      if (base64Data && base64Data.startsWith("data:image/")) {
+        return {
+          success: true,
+          url: base64Data
+        };
+      }
       return {
         success: false,
         error: data?.error || `Erreur serveur (${response.status}) lors du téléversement.`
@@ -51,6 +57,15 @@ export async function uploadImageToServer(
     };
   } catch (err: any) {
     console.error("Erreur uploadImageToServer:", err);
+    try {
+      if (typeof fileOrBase64 === "string" && fileOrBase64.startsWith("data:image/")) {
+        return { success: true, url: fileOrBase64 };
+      }
+      if (fileOrBase64 instanceof File) {
+        const fallbackBase64 = await fileToOptimizedDataUrl(fileOrBase64, 1200, 1200, 0.85);
+        return { success: true, url: fallbackBase64 };
+      }
+    } catch {}
     return {
       success: false,
       error: err.message || "Erreur de connexion lors du téléversement de l'image."

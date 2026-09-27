@@ -1171,13 +1171,19 @@ export default function AdminApp() {
       }
     }
 
+    if (cleanImages.length === 0) {
+      setFormError("Au moins une photo du produit est obligatoire. Veuillez téléverser une ou plusieurs images depuis votre appareil.");
+      return;
+    }
+
     const payload = {
       id: editingProduct?.id || null,
       nom: formName,
       description: formDescription,
       prix: parsedPrix,
       prixBarre: parsedPrixBarre,
-      images: cleanImages.length > 0 ? cleanImages : ["https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&q=80&w=600"],
+      images: cleanImages,
+      image: cleanImages[0] || "",
       categorie: formCategory,
       phare: formPhare,
       stock: parsedStock,
@@ -1710,15 +1716,30 @@ export default function AdminApp() {
                     <label htmlFor="phare_chk" className="text-[10px] font-bold text-neutral-700 uppercase tracking-wider cursor-pointer">Mettre en avant de la page d'accueil</label>
                   </div>
 
-                  {/* Image picker */}
+                  {/* Image picker (Strictly device upload, no URL input) */}
                   <div>
-                    <span className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Galerie images du produit (Max 4)</span>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider">
+                        Photos du produit <span className="text-red-500">* (Obligatoire — 1 à 4 photos réelles)</span>
+                      </span>
+                      <span className="text-[10px] text-neutral-500 font-semibold">{formImages.length}/4</span>
+                    </div>
+
                     <div 
                       onClick={handleTriggerFileInput}
-                      className="border-2 border-dashed border-neutral-300 hover:border-amber-500 bg-neutral-50 hover:bg-amber-50/10 py-4 px-4 text-center rounded-sm cursor-pointer transition-colors"
+                      className={`border-2 border-dashed py-4 px-4 text-center rounded-sm cursor-pointer transition-colors ${
+                        formImages.length === 0
+                          ? "border-amber-400 bg-amber-50/40 hover:bg-amber-100/60 hover:border-amber-500"
+                          : "border-neutral-300 hover:border-amber-500 bg-neutral-50 hover:bg-amber-50/10"
+                      }`}
                     >
-                      <ImageIcon className="w-8 h-8 text-neutral-450 mx-auto mb-2" />
-                      <p className="text-[10px] font-bold text-neutral-700 uppercase tracking-wide">Ajouter une image</p>
+                      <ImageIcon className="w-7 h-7 text-neutral-600 mx-auto mb-1.5" />
+                      <p className="text-[10px] font-bold text-neutral-800 uppercase tracking-wide">
+                        {formImages.length === 0 ? "Ajouter des photos depuis votre appareil" : "Ajouter d'autres photos"}
+                      </p>
+                      <p className="text-[9px] text-neutral-500 mt-0.5">
+                        Fichiers JPG, PNG ou WEBP acceptés — Sélection multiple possible (Aucune URL requise)
+                      </p>
                     </div>
 
                     <input 
@@ -1730,15 +1751,27 @@ export default function AdminApp() {
                       className="hidden"
                     />
 
+                    {formImages.length === 0 && (
+                      <p className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-sm mt-2 font-medium">
+                        ⚠️ L'ajout d'au moins une photo réelle du produit est obligatoire.
+                      </p>
+                    )}
+
                     {formImages.length > 0 && (
                       <div className="grid grid-cols-4 gap-2 mt-3">
                         {formImages.map((src, idx) => (
-                          <div key={idx} className="relative aspect-square border border-neutral-200">
+                          <div key={idx} className="relative aspect-square border border-neutral-300 rounded-sm overflow-hidden bg-neutral-100 group">
                             <img src={src} alt="Preview" className="w-full h-full object-cover" />
+                            {idx === 0 && (
+                              <span className="absolute bottom-1 left-1 right-1 bg-neutral-950/85 text-white text-[7.5px] font-bold text-center py-0.5 uppercase tracking-wider">
+                                ★ Principale
+                              </span>
+                            )}
                             <button
                               type="button"
                               onClick={() => removeUploadImage(idx)}
-                              className="absolute -top-1 -right-1 bg-red-650 hover:bg-neutral-900 bg-red-600 text-white p-0.5 rounded-full shadow"
+                              className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded-full shadow cursor-pointer"
+                              title="Supprimer la photo"
                             >
                               <X className="w-3 h-3" />
                             </button>
