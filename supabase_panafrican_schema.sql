@@ -90,9 +90,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     email TEXT UNIQUE,
     phone TEXT,
     full_name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'client' CHECK (role IN ('client', 'vendeur', 'livreur', 'admin', 'affilie')),
-    seller_type TEXT CHECK (seller_type IN ('particulier', 'professionnel')),
-    country_code VARCHAR(2) REFERENCES public.countries(code) ON UPDATE CASCADE,
+    role TEXT NOT NULL DEFAULT 'client',
+    seller_type TEXT,
+    country_code VARCHAR(2),
     city TEXT,
     quartier TEXT,
     address_line TEXT,
@@ -105,6 +105,24 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Si la table existait déjà, ajouter les colonnes manquantes
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'client';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS seller_type TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS country_code VARCHAR(2);
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS quartier TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS address_line TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS national_id_number TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tax_number TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS business_registration_number TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
 CREATE INDEX IF NOT EXISTS idx_profiles_country ON public.profiles(country_code);
 
@@ -113,16 +131,16 @@ CREATE INDEX IF NOT EXISTS idx_profiles_country ON public.profiles(country_code)
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.shops (
     id TEXT PRIMARY KEY,
-    owner_id TEXT NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    owner_id TEXT NOT NULL,
     name TEXT NOT NULL,
     slug TEXT UNIQUE,
-    seller_type TEXT NOT NULL DEFAULT 'particulier' CHECK (seller_type IN ('particulier', 'professionnel')),
+    seller_type TEXT NOT NULL DEFAULT 'particulier',
     description TEXT,
     bio TEXT,
     logo_url TEXT,
     cover_url TEXT,
-    country_code VARCHAR(2) NOT NULL REFERENCES public.countries(code) ON UPDATE CASCADE,
-    default_currency VARCHAR(3) NOT NULL REFERENCES public.currencies(code) ON UPDATE CASCADE DEFAULT 'XOF',
+    country_code VARCHAR(2) NOT NULL DEFAULT 'TG',
+    default_currency VARCHAR(3) NOT NULL DEFAULT 'XOF',
     city TEXT,
     quartier TEXT,
     address TEXT,
@@ -135,6 +153,29 @@ CREATE TABLE IF NOT EXISTS public.shops (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Si la table existait déjà, ajouter les colonnes manquantes
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS owner_id TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS seller_type TEXT DEFAULT 'particulier';
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS cover_url TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS country_code VARCHAR(2) DEFAULT 'TG';
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS default_currency VARCHAR(3) DEFAULT 'XOF';
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS quartier TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS whatsapp TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS subscription_plan TEXT DEFAULT 'Gratuit';
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS rating NUMERIC(3, 2) DEFAULT 5.0;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS sales_count INTEGER DEFAULT 0;
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.shops ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS idx_shops_country ON public.shops(country_code);
 CREATE INDEX IF NOT EXISTS idx_shops_owner ON public.shops(owner_id);
@@ -204,23 +245,28 @@ ALTER TABLE public.products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFA
 -- Ajout sécurisé des clés étrangères sur products (NOT VALID pour ne jamais bloquer sur d'anciennes données)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_category' AND table_name = 'products') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'category_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_category' AND table_name = 'products') THEN
         ALTER TABLE public.products ADD CONSTRAINT fk_products_category FOREIGN KEY (category_id) REFERENCES public.categories(id) ON DELETE SET NULL NOT VALID;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_shop' AND table_name = 'products') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'shop_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_shop' AND table_name = 'products') THEN
         ALTER TABLE public.products ADD CONSTRAINT fk_products_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_vendeur' AND table_name = 'products') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'vendeur_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_vendeur' AND table_name = 'products') THEN
         ALTER TABLE public.products ADD CONSTRAINT fk_products_vendeur FOREIGN KEY (vendeur_id) REFERENCES public.profiles(id) ON DELETE SET NULL NOT VALID;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_country' AND table_name = 'products') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'country_origin')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_country' AND table_name = 'products') THEN
         ALTER TABLE public.products ADD CONSTRAINT fk_products_country FOREIGN KEY (country_origin) REFERENCES public.countries(code) ON UPDATE CASCADE NOT VALID;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_currency' AND table_name = 'products') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'currency_code')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_products_currency' AND table_name = 'products') THEN
         ALTER TABLE public.products ADD CONSTRAINT fk_products_currency FOREIGN KEY (currency_code) REFERENCES public.currencies(code) ON UPDATE CASCADE NOT VALID;
     END IF;
 END $$;
@@ -238,12 +284,12 @@ CREATE TABLE IF NOT EXISTS public.orders (
     id TEXT PRIMARY KEY,
     user_id TEXT,
     shop_id TEXT,
-    total_amount NUMERIC NOT NULL,
+    total_amount NUMERIC NOT NULL DEFAULT 0,
     currency_code VARCHAR(3) NOT NULL DEFAULT 'XOF',
     exchange_rate_to_xof NUMERIC(14, 4) NOT NULL DEFAULT 1.0000,
     payment_method TEXT,
-    payment_status TEXT NOT NULL DEFAULT 'En attente' CHECK (payment_status IN ('En attente', 'Payé', 'Échoué', 'Remboursé')),
-    order_status TEXT NOT NULL DEFAULT 'En attente' CHECK (order_status IN ('En attente', 'En préparation', 'En cours de livraison', 'Livré', 'Annulé')),
+    payment_status TEXT NOT NULL DEFAULT 'En attente',
+    order_status TEXT NOT NULL DEFAULT 'En attente',
     destination_country_code VARCHAR(2) DEFAULT 'TG',
     destination_city TEXT,
     destination_address TEXT,
@@ -257,22 +303,47 @@ CREATE TABLE IF NOT EXISTS public.orders (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Clés étrangères sécurisées sur orders
+-- Si la table existait déjà, ajouter toutes les colonnes manquantes
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS user_id TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS shop_id TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS total_amount NUMERIC DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS currency_code VARCHAR(3) DEFAULT 'XOF';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS exchange_rate_to_xof NUMERIC(14, 4) DEFAULT 1.0000;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'En attente';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS order_status TEXT DEFAULT 'En attente';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS destination_country_code VARCHAR(2) DEFAULT 'TG';
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS destination_city TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS destination_address TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS recipient_name TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS recipient_phone TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS shipping_fee NUMERIC DEFAULT 0;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS is_cross_border BOOLEAN DEFAULT false;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS split_processed BOOLEAN DEFAULT false;
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+-- Clés étrangères sécurisées sur orders (vérifie que la colonne et la table cible existent)
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_user' AND table_name = 'orders') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'user_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_user' AND table_name = 'orders') THEN
         ALTER TABLE public.orders ADD CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE SET NULL NOT VALID;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_shop' AND table_name = 'orders') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'shop_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_shop' AND table_name = 'orders') THEN
         ALTER TABLE public.orders ADD CONSTRAINT fk_orders_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_currency' AND table_name = 'orders') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'currency_code')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_currency' AND table_name = 'orders') THEN
         ALTER TABLE public.orders ADD CONSTRAINT fk_orders_currency FOREIGN KEY (currency_code) REFERENCES public.currencies(code) ON UPDATE CASCADE NOT VALID;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_country' AND table_name = 'orders') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'orders' AND column_name = 'destination_country_code')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_orders_country' AND table_name = 'orders') THEN
         ALTER TABLE public.orders ADD CONSTRAINT fk_orders_country FOREIGN KEY (destination_country_code) REFERENCES public.countries(code) ON UPDATE CASCADE NOT VALID;
     END IF;
 END $$;
@@ -288,24 +359,42 @@ CREATE INDEX IF NOT EXISTS idx_orders_order_status ON public.orders(order_status
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.order_items (
     id TEXT PRIMARY KEY,
-    order_id TEXT NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+    order_id TEXT NOT NULL,
     product_id TEXT,
     product_name TEXT NOT NULL,
     shop_id TEXT,
-    unit_price NUMERIC NOT NULL,
+    unit_price NUMERIC NOT NULL DEFAULT 0,
     quantity INTEGER NOT NULL DEFAULT 1,
-    subtotal NUMERIC NOT NULL,
+    subtotal NUMERIC NOT NULL DEFAULT 0,
     currency_code VARCHAR(3) DEFAULT 'XOF',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Si la table existait déjà, ajouter les colonnes manquantes
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS order_id TEXT;
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS product_id TEXT;
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS product_name TEXT;
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS shop_id TEXT;
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS unit_price NUMERIC DEFAULT 0;
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS subtotal NUMERIC DEFAULT 0;
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS currency_code VARCHAR(3) DEFAULT 'XOF';
+ALTER TABLE public.order_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_order_items_product' AND table_name = 'order_items') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_items' AND column_name = 'order_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_order_items_order' AND table_name = 'order_items') THEN
+        ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE NOT VALID;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_items' AND column_name = 'product_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_order_items_product' AND table_name = 'order_items') THEN
         ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_product FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL NOT VALID;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_order_items_shop' AND table_name = 'order_items') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'order_items' AND column_name = 'shop_id')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_order_items_shop' AND table_name = 'order_items') THEN
         ALTER TABLE public.order_items ADD CONSTRAINT fk_order_items_shop FOREIGN KEY (shop_id) REFERENCES public.shops(id) ON DELETE SET NULL NOT VALID;
     END IF;
 END $$;
