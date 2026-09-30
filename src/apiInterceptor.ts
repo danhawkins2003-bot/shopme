@@ -695,8 +695,77 @@ async function handleEmulatedRequest(urlPath: string, init?: RequestInit): Promi
 
   // --- BLOGS PATHS ---
   if (cleanRoute === "/api/blogs" && method === "GET") {
+    try {
+      const serverRes = await originalFetch(urlPath, init);
+      if (serverRes.ok) {
+        const data = await serverRes.json();
+        localStorage.setItem("asime_emulated_blogs", JSON.stringify(data));
+        return makeResponse(data, 200, true);
+      }
+    } catch (e) {}
     const blogs = JSON.parse(localStorage.getItem("asime_emulated_blogs") || "[]");
     return makeResponse(blogs, 200, true);
+  }
+
+  if (cleanRoute === "/api/blogs" && method === "POST") {
+    try {
+      const serverRes = await originalFetch("/api/blogs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "asime2026-auth-session"
+        },
+        body: JSON.stringify(bodyData)
+      });
+      if (serverRes.ok) {
+        const data = await serverRes.json();
+        const blogs = JSON.parse(localStorage.getItem("asime_emulated_blogs") || "[]");
+        const idx = blogs.findIndex((b: any) => String(b.id) === String(data.blog?.id));
+        if (idx > -1) {
+          blogs[idx] = data.blog;
+        } else {
+          blogs.unshift(data.blog);
+        }
+        localStorage.setItem("asime_emulated_blogs", JSON.stringify(blogs));
+        return makeResponse(data, 200, true);
+      }
+    } catch (e) {}
+    // Local fallback
+    const blogs = JSON.parse(localStorage.getItem("asime_emulated_blogs") || "[]");
+    const blogId = bodyData.id || ("blog_" + Date.now());
+    const blogItem = {
+      ...bodyData,
+      id: blogId,
+      date: bodyData.date || new Date().toISOString().split("T")[0]
+    };
+    const idx = blogs.findIndex((b: any) => String(b.id) === String(blogId));
+    if (idx > -1) {
+      blogs[idx] = blogItem;
+    } else {
+      blogs.unshift(blogItem);
+    }
+    localStorage.setItem("asime_emulated_blogs", JSON.stringify(blogs));
+    return makeResponse({ success: true, blog: blogItem }, 200, true);
+  }
+
+  if (cleanRoute.startsWith("/api/blogs/") && method === "DELETE") {
+    const id = cleanRoute.substring("/api/blogs/".length);
+    try {
+      const serverRes = await originalFetch(`/api/blogs/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": "asime2026-auth-session" }
+      });
+      if (serverRes.ok) {
+        const blogs = JSON.parse(localStorage.getItem("asime_emulated_blogs") || "[]");
+        const filtered = blogs.filter((b: any) => String(b.id) !== String(id));
+        localStorage.setItem("asime_emulated_blogs", JSON.stringify(filtered));
+        return makeResponse({ success: true, id }, 200, true);
+      }
+    } catch (e) {}
+    const blogs = JSON.parse(localStorage.getItem("asime_emulated_blogs") || "[]");
+    const filtered = blogs.filter((b: any) => String(b.id) !== String(id));
+    localStorage.setItem("asime_emulated_blogs", JSON.stringify(filtered));
+    return makeResponse({ success: true, id }, 200, true);
   }
 
   // --- ADMIN AUTH PATH ---

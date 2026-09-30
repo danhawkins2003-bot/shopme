@@ -398,11 +398,13 @@ export class PayDunyaProvider implements IPaymentProvider {
 
     const returnUrl = isSubscription
       ? `${appBaseUrl}/?payment=sub_return&subId=${orderId}&token={token}`
-      : `${appBaseUrl}/order-history?payment=return&orderId=${orderId}&token={token}`;
+      : `${appBaseUrl}/?payment=return&orderId=${orderId}&token={token}`;
 
     const cancelUrl = isSubscription
       ? `${appBaseUrl}/?payment=sub_cancel&subId=${orderId}&token={token}`
-      : `${appBaseUrl}/order-history?payment=cancel&orderId=${orderId}&token={token}`;
+      : `${appBaseUrl}/?payment=cancel&orderId=${orderId}&token={token}`;
+
+    const callbackUrl = `${appBaseUrl}/api/payments/paydunya/ipn`;
 
     // If live keys are present, attempt official PayDunya invoice creation
     if (privateKey && token) {
@@ -447,7 +449,8 @@ export class PayDunyaProvider implements IPaymentProvider {
           },
           actions: {
             cancel_url: cancelUrl,
-            return_url: returnUrl
+            return_url: returnUrl,
+            callback_url: callbackUrl
           }
         };
 

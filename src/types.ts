@@ -65,6 +65,7 @@ export interface Product {
   prix: number;          // Current price in local/base currency
   prixBarre: number | null; // Slashed original price
   images: string[];      // Up to 4 images (as URLs or Base64)
+  image?: string;        // Optional single/main image fallback
   categorie: string;     // e.g. Accessoires, Bijoux, Vêtements, Chaussures
   categoryId?: string;   // Foreign key to Category
   phare: boolean;        // featured (approved)

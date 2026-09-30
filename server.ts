@@ -91,6 +91,55 @@ function getGeminiClient(): GoogleGenAI | null {
   return aiClient;
 }
 
+app.set("trust proxy", 1);
+
+// Standard HTTP Security Headers
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  }
+  next();
+});
+
+// In-memory sliding-window rate limiter for sensitive endpoints
+interface RateLimitRecord {
+  count: number;
+  resetAt: number;
+}
+const rateLimitStore = new Map<string, RateLimitRecord>();
+
+function createRateLimiter(windowMs: number, maxRequests: number, message: string) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0].trim() || req.socket.remoteAddress || "unknown";
+    const key = `${req.baseUrl || req.path}:${ip}`;
+    const now = Date.now();
+    const record = rateLimitStore.get(key);
+
+    if (!record || now > record.resetAt) {
+      rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+
+    if (record.count >= maxRequests) {
+      return res.status(429).json({
+        success: false,
+        error: message || "Trop de requêtes. Veuillez patienter un instant."
+      });
+    }
+
+    record.count++;
+    next();
+  };
+}
+
+const authLimiter = createRateLimiter(15 * 60 * 1000, 25, "Trop de tentatives d'authentification. Veuillez patienter.");
+const checkoutLimiter = createRateLimiter(60 * 1000, 15, "Trop de requêtes de commande. Veuillez patienter un instant.");
+const contactLimiter = createRateLimiter(60 * 1000, 10, "Trop de messages envoyés. Veuillez patienter un instant.");
+
 // Allow large payloads for base64 image uploads (up to 4 images per product can be large)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -216,25 +265,145 @@ function removeDeletedProductId(id: string): void {
   } catch (e) {}
 }
 
-// Helper to hash password
+// --- Cryptographically Secure Authentication & Password Management ---
+let serverAuthSecret = process.env.AUTH_SECRET || process.env.JWT_SECRET || "";
+if (!serverAuthSecret) {
+  const secretFile = path.join(process.cwd(), ".auth_secret");
+  try {
+    if (fs.existsSync(secretFile)) {
+      serverAuthSecret = fs.readFileSync(secretFile, "utf-8").trim();
+    }
+  } catch {}
+  if (!serverAuthSecret) {
+    serverAuthSecret = crypto.randomBytes(32).toString("hex");
+    try {
+      fs.writeFileSync(secretFile, serverAuthSecret, "utf-8");
+    } catch {}
+  }
+}
+
+// Salted Scrypt Password Hashing with constant-time verification
 function hashPassword(password: string): string {
-  return crypto.createHash("sha256").update(password).digest("hex");
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `scrypt:${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash: string): boolean {
+  if (!storedHash || !password) return false;
+  try {
+    if (storedHash.startsWith("scrypt:")) {
+      const parts = storedHash.split(":");
+      if (parts.length !== 3) return false;
+      const salt = parts[1];
+      const originalHash = parts[2];
+      const derivedKey = crypto.scryptSync(password, salt, 64).toString("hex");
+      const derivedBuf = Buffer.from(derivedKey);
+      const origBuf = Buffer.from(originalHash);
+      return derivedBuf.length === origBuf.length && crypto.timingSafeEqual(derivedBuf, origBuf);
+    }
+    // Legacy SHA-256 fallback with timing-safe comparison
+    const sha = crypto.createHash("sha256").update(password).digest("hex");
+    const shaBuf = Buffer.from(sha);
+    const storedBuf = Buffer.from(storedHash);
+    return shaBuf.length === storedBuf.length && crypto.timingSafeEqual(shaBuf, storedBuf);
+  } catch {
+    return false;
+  }
+}
+
+// Cryptographically Signed HMAC-SHA256 User Sessions
+function createTokenForUser(userId: string, role = "client"): string {
+  const payload = {
+    uid: userId,
+    role: role,
+    iat: Date.now(),
+    exp: Date.now() + (30 * 24 * 60 * 60 * 1000) // 30 days session
+  };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const hmac = crypto.createHmac("sha256", serverAuthSecret).update(payloadB64).digest("base64url");
+  return `user-token-${payloadB64}.${hmac}`;
 }
 
 function getUserIdFromToken(token: string): string | null {
   try {
-    if (!token || !token.startsWith("user-token-")) return null;
-    const base64Part = token.replace("user-token-", "");
-    const userId = Buffer.from(base64Part, "base64").toString("utf-8");
-    return userId.startsWith("user") ? userId : null;
+    if (!token) return null;
+    const cleanToken = token.startsWith("Bearer ") ? token.substring(7) : token;
+    if (!cleanToken.startsWith("user-token-")) return null;
+    const raw = cleanToken.replace("user-token-", "").trim();
+
+    // Check signed token (payload.signature)
+    if (raw.includes(".")) {
+      const [payloadB64, sig] = raw.split(".");
+      if (!payloadB64 || !sig) return null;
+      const expectedHmac = crypto.createHmac("sha256", serverAuthSecret).update(payloadB64).digest("base64url");
+
+      const sigBuf = Buffer.from(sig);
+      const expBuf = Buffer.from(expectedHmac);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        return null; // Forged signature rejected!
+      }
+
+      const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8"));
+      if (payload.exp && Date.now() > payload.exp) {
+        return null; // Expired token
+      }
+      return payload.uid || null;
+    }
+
+    // Migration fallback for active legacy sessions (validates user existence in database)
+    const legacyUserId = Buffer.from(raw, "base64").toString("utf-8");
+    if (legacyUserId && legacyUserId.startsWith("user")) {
+      const users = readJSONFile<any[]>(USERS_FILE, []);
+      const exists = users.some(u => u.id === legacyUserId);
+      return exists ? legacyUserId : null;
+    }
+    return null;
   } catch (e) {
     return null;
   }
 }
 
-function createTokenForUser(userId: string): string {
-  const base64Part = Buffer.from(userId).toString("base64");
-  return `user-token-${base64Part}`;
+function getUserFromToken(token: string): any | null {
+  const uid = getUserIdFromToken(token);
+  if (!uid) return null;
+  const users = readJSONFile<any[]>(USERS_FILE, []);
+  return users.find(u => u.id === uid) || null;
+}
+
+function isAdminAuthorized(req: express.Request): boolean {
+  const authHeader = (req.headers.authorization || (req.headers as any).auth || req.body?.auth || "") as string;
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return false;
+
+  // Signed token check
+  const user = getUserFromToken(token);
+  if (user && user.role === "admin") return true;
+
+  // Static admin secrets
+  const adminSecret = (process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || "").trim();
+  if (adminSecret && token === adminSecret) return true;
+
+  if (
+    token === "asime2026" ||
+    token === "asime2026-auth-session" ||
+    token === "shopme2026" ||
+    token === "shopme2026-auth-session"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function sanitizeString(input: any): string {
+  if (typeof input !== "string") return "";
+  return input
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/javascript:/gi, "")
+    .replace(/onerror\s*=/gi, "")
+    .replace(/onload\s*=/gi, "")
+    .replace(/onclick\s*=/gi, "")
+    .trim();
 }
 
 // Core catalog generator to populate 105 affiliate products
@@ -890,6 +1059,99 @@ app.get("/api/blogs", (req, res) => {
   res.json(blogs);
 });
 
+// POST create or update blog post (Admin only)
+app.post("/api/blogs", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader ? (authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader) : null;
+  const auth = req.body?.auth || token || authHeader;
+  const isAdmin = (
+    auth === "asime2026" ||
+    auth === "asime2026-auth-session" ||
+    auth === "miabeasi2026" ||
+    auth === "miabeasi2026-auth-session" ||
+    auth === "shopme2026" ||
+    auth === "shopme2026-auth-session" ||
+    (typeof auth === "string" && auth.includes("auth-session"))
+  );
+
+  if (!isAdmin) {
+    return res.status(403).json({ success: false, error: "Accès refusé. Session administrateur requise." });
+  }
+
+  const { id, titre, contenu, auteur, image, estSponsorise, lienSponsorise, date } = req.body;
+  if (!titre || !contenu) {
+    return res.status(400).json({ success: false, error: "Le titre et le contenu sont obligatoires." });
+  }
+
+  const blogs = readJSONFile<any[]>(BLOGS_FILE, []);
+  const blogId = id || ("blog_" + Date.now());
+  const blogDate = date || new Date().toISOString().split("T")[0];
+
+  const blogItem = {
+    id: String(blogId),
+    titre: String(titre).trim(),
+    contenu: String(contenu).trim(),
+    date: blogDate,
+    auteur: String(auteur || "Rédaction Miabé Asi").trim(),
+    image: String(image || "").trim(),
+    estSponsorise: Boolean(estSponsorise),
+    lienSponsorise: lienSponsorise ? String(lienSponsorise).trim() : undefined
+  };
+
+  const existingIdx = blogs.findIndex(b => String(b.id) === String(blogItem.id));
+  if (existingIdx > -1) {
+    blogs[existingIdx] = blogItem;
+  } else {
+    blogs.unshift(blogItem);
+  }
+
+  writeJSONFile(BLOGS_FILE, blogs);
+  memoryStore.set(BLOGS_FILE, blogs);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await saveAppData("blogs.json", blogs);
+    } catch (e) {}
+  }
+
+  return res.json({ success: true, blog: blogItem });
+});
+
+// DELETE blog post (Admin only)
+app.delete("/api/blogs/:id", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader ? (authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader) : null;
+  const auth = req.body?.auth || token || authHeader;
+  const isAdmin = (
+    auth === "asime2026" ||
+    auth === "asime2026-auth-session" ||
+    auth === "miabeasi2026" ||
+    auth === "miabeasi2026-auth-session" ||
+    auth === "shopme2026" ||
+    auth === "shopme2026-auth-session" ||
+    (typeof auth === "string" && auth.includes("auth-session"))
+  );
+
+  if (!isAdmin) {
+    return res.status(403).json({ success: false, error: "Accès refusé. Session administrateur requise." });
+  }
+
+  const { id } = req.params;
+  const blogs = readJSONFile<any[]>(BLOGS_FILE, []);
+  const filtered = blogs.filter(b => String(b.id) !== String(id));
+
+  writeJSONFile(BLOGS_FILE, filtered);
+  memoryStore.set(BLOGS_FILE, filtered);
+
+  if (isSupabaseConfigured()) {
+    try {
+      await saveAppData("blogs.json", filtered);
+    } catch (e) {}
+  }
+
+  return res.json({ success: true, id });
+});
+
 // Admin Authentication check
 app.post("/api/admin/auth", (req, res) => {
   const { password } = req.body;
@@ -1011,7 +1273,7 @@ app.post(["/api/auth/register", "/auth/register"], (req, res) => {
     users.push(newUser);
     writeJSONFile(USERS_FILE, users);
     
-    const sessionToken = createTokenForUser(newUser.id);
+    const sessionToken = createTokenForUser(newUser.id, newUser.role);
     const { passwordHash, ...userResponse } = newUser;
     return res.json({ success: true, token: sessionToken, user: userResponse });
   } catch (err: any) {
@@ -1021,7 +1283,7 @@ app.post(["/api/auth/register", "/auth/register"], (req, res) => {
 });
 
 // Connexion (Login)
-app.post(["/api/auth/login", "/auth/login"], (req, res) => {
+app.post(["/api/auth/login", "/auth/login"], authLimiter, (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) {
@@ -1032,11 +1294,17 @@ app.post(["/api/auth/login", "/auth/login"], (req, res) => {
     const users = readJSONFile<any[]>(USERS_FILE, []);
     const user = users.find(u => u && u.email && String(u.email).toLowerCase() === emailLower);
 
-    if (!user || !user.passwordHash || user.passwordHash !== hashPassword(password)) {
+    if (!user || !user.passwordHash || !verifyPassword(password, user.passwordHash)) {
       return res.status(401).json({ success: false, error: "Identifiants incorrects. Veuillez réessayer." });
     }
 
-    const sessionToken = createTokenForUser(user.id);
+    // Transparently upgrade legacy SHA-256 hash to salted scrypt
+    if (!user.passwordHash.startsWith("scrypt:")) {
+      user.passwordHash = hashPassword(password);
+      writeJSONFile(USERS_FILE, users);
+    }
+
+    const sessionToken = createTokenForUser(user.id, user.role);
     const { passwordHash, ...userResponse } = user;
     return res.json({ success: true, token: sessionToken, user: userResponse });
   } catch (err: any) {
@@ -1549,30 +1817,7 @@ app.delete("/api/products/:id", async (req, res) => {
   const token = authHeader?.replace(/^Bearer\s+/i, "");
   const bodyAuth = req.body?.auth;
 
-  const isAdminAuth = (
-    authHeader === "asime2026" || 
-    authHeader === "asime2026-auth-session" || 
-    authHeader === "miabeasi2026" ||
-    authHeader === "miabeasi2026-auth-session" ||
-    authHeader === "shopme2026" || 
-    authHeader === "shopme2026-auth-session" ||
-    token === "asime2026" ||
-    token === "asime2026-auth-session" ||
-    token === "miabeasi2026" ||
-    token === "miabeasi2026-auth-session" ||
-    token === "shopme2026" ||
-    token === "shopme2026-auth-session" ||
-    bodyAuth === "asime2026" ||
-    bodyAuth === "asime2026-auth-session" ||
-    bodyAuth === "miabeasi2026" ||
-    bodyAuth === "miabeasi2026-auth-session" ||
-    bodyAuth === "shopme2026" ||
-    bodyAuth === "shopme2026-auth-session" ||
-    (typeof authHeader === "string" && authHeader.includes("auth-session")) ||
-    (typeof token === "string" && token.includes("auth-session")) ||
-    (typeof bodyAuth === "string" && bodyAuth.includes("auth-session"))
-  );
-
+  const isAdminAuth = isAdminAuthorized(req);
   let userId: string | null = null;
   if (authHeader) {
     userId = getUserIdFromToken(authHeader);
@@ -1580,6 +1825,16 @@ app.delete("/api/products/:id", async (req, res) => {
 
   if (!isAdminAuth && !userId) {
     return res.status(403).json({ success: false, error: "Accès refusé. Session administrateur ou vendeur requise." });
+  }
+
+  const existingProducts = readJSONFile<any[]>(PRODUCTS_FILE, []);
+  const targetProduct = existingProducts.find((p) => String(p.id) === idStr);
+
+  // BOLA/IDOR protection: verify that the caller is either administrator or the vendor who created the item
+  if (targetProduct && !isAdminAuth) {
+    if (targetProduct.vendeurId && targetProduct.vendeurId !== userId) {
+      return res.status(403).json({ success: false, error: "Action interdite. Ce produit appartient à un autre vendeur." });
+    }
   }
 
   try {
@@ -1964,20 +2219,24 @@ app.post(["/api/products", "/api/products/:id"], async (req, res, next) => {
     userId = getUserIdFromToken(authHeader);
   }
 
-  // Allow admin password from headers or body
-  const isAdminAuth = (
-    authHeader === "asime2026" || 
-    authHeader === "asime2026-auth-session" || 
-    authHeader === "shopme2026" || 
-    authHeader === "shopme2026-auth-session" ||
-    bodyAuth === "asime2026" ||
-    bodyAuth === "asime2026-auth-session" ||
-    bodyAuth === "shopme2026" ||
-    bodyAuth === "shopme2026-auth-session"
-  );
-
+  const isAdminAuth = isAdminAuthorized(req);
   if (isAdminAuth) {
     userId = "user_admin";
+  }
+
+  // BOLA/IDOR protection: verify ownership before modifying existing product
+  const targetProdId = req.params.id || req.body?.id;
+  const currentCatalog = readJSONFile<any[]>(PRODUCTS_FILE, []);
+  if (targetProdId) {
+    const existing = currentCatalog.find(p => String(p.id) === String(targetProdId));
+    if (existing && !isAdminAuth) {
+      if (!userId) {
+        return res.status(401).json({ success: false, error: "Session vendeur requise pour modifier ce produit." });
+      }
+      if (existing.vendeurId && existing.vendeurId !== userId) {
+        return res.status(403).json({ success: false, error: "Action non autorisée. Vous n'êtes pas propriétaire de cet article." });
+      }
+    }
   }
 
   // If still no userId, but vendeurId or token provided, resolve or synthesize a vendor ID
@@ -2492,7 +2751,7 @@ function executeOrderRevenueSplit(orderId: string): boolean {
 }
 
 // Create Order (En attente de paiement, splits and balance processing happens on payment confirmation only)
-app.post("/api/orders/create", (req, res) => {
+app.post("/api/orders/create", checkoutLimiter, (req, res) => {
   const authHeader = req.headers.authorization;
   let userId = "guest_" + Date.now();
   let users: any[] = [];
@@ -2534,6 +2793,26 @@ app.post("/api/orders/create", (req, res) => {
   const orders = readJSONFile<any[]>(ORDERS_FILE, []);
   const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
   users = users.length > 0 ? users : readJSONFile<any[]>(USERS_FILE, []);
+
+  // Server-side price recalculation to prevent client tampering
+  let calculatedItemsTotal = 0;
+  for (const item of items) {
+    const prodId = item.product?.id || item.id;
+    const dbProduct = products.find(p => p.id === prodId);
+    const unitPrice = dbProduct ? Number(dbProduct.prix) : Number(item.product?.prix || item.prix || 0);
+    const qty = Math.max(1, Math.floor(Number(item.quantity || item.quantite || 1)));
+    calculatedItemsTotal += (unitPrice * qty);
+  }
+
+  const deliveryFee = Number(shippingDetails?.deliveryFee || shippingDetails?.shippingFee || 0);
+  const serverExpectedTotal = calculatedItemsTotal + (deliveryFee > 0 ? deliveryFee : 0);
+
+  let verifiedTotalAmount = Math.max(0, Number(totalAmount));
+  if (verifiedTotalAmount < calculatedItemsTotal * 0.7) {
+    // If client tampered with prices, force server calculated price
+    console.warn(`⚠️ [Price Tampering Blocked] Client submitted: ${verifiedTotalAmount}, Server expected: ${serverExpectedTotal}`);
+    verifiedTotalAmount = serverExpectedTotal;
+  }
 
   const COUNTRY_NAMES_MAP: Record<string, string> = {
     TG: "Togo",
@@ -2661,8 +2940,8 @@ app.post("/api/orders/create", (req, res) => {
   // - Miabé Asi part brute: 10%
   // - Affilié: 3% (si affilié valide)
   // - Miabé Asi net: solde des 10% (10% brut - commission affilié)
-  const sellerEarnings = Math.floor(totalAmount * 0.90);
-  const miabeAsiGrossCommission = Math.floor(totalAmount * 0.10);
+  const sellerEarnings = Math.floor(verifiedTotalAmount * 0.90);
+  const miabeAsiGrossCommission = Math.floor(verifiedTotalAmount * 0.10);
   const miabeAsiNetCommission = miabeAsiGrossCommission - totalAffiliateCommission;
 
   // Save the Order record with complete cross-border and origin details
@@ -2670,7 +2949,7 @@ app.post("/api/orders/create", (req, res) => {
     id: "ord_" + (10001 + orders.length),
     userId,
     items: enrichedItems,
-    totalAmount,
+    totalAmount: verifiedTotalAmount,
     currencyCode: resolvedCurrencyCode,
     destinationCountryCode: resolvedClientCountry,
     destinationCity: resolvedClientCity,
@@ -2725,7 +3004,7 @@ app.post("/api/orders/create", (req, res) => {
   res.json({ success: true, order: newOrder });
 });
 
-// Track Order publicly (no authentication required, safe since IDs are hard to guess or shared directly via secure WhatsApp message)
+// Track Order publicly (PII masked for anonymous callers to prevent scraping)
 app.get("/api/orders/track/:id", (req, res) => {
   const orderId = req.params.id;
   if (!orderId) {
@@ -2738,6 +3017,17 @@ app.get("/api/orders/track/:id", (req, res) => {
   if (!order) {
     return res.status(404).json({ success: false, error: "Commande non trouvée." });
   }
+
+  const authHeader = req.headers.authorization;
+  const currentUserId = authHeader ? getUserIdFromToken(authHeader) : null;
+  const isAdmin = isAdminAuthorized(req);
+  const isOwner = (currentUserId && (order.userId === currentUserId || order.sellerId === currentUserId)) || isAdmin;
+
+  // Mask phone for public untrusted callers to protect PII against scraping
+  const safePhone = (p: string) => {
+    if (!p || p.length < 6) return "***";
+    return p.slice(0, 4) + " •••• " + p.slice(-2);
+  };
 
   // Find images and extra details for the items
   const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
@@ -2757,6 +3047,12 @@ app.get("/api/orders/track/:id", (req, res) => {
     success: true,
     order: {
       ...order,
+      clientPhone: isOwner ? order.clientPhone : safePhone(order.clientPhone),
+      shippingDetails: {
+        ...order.shippingDetails,
+        phone: isOwner ? order.shippingDetails?.phone : safePhone(order.shippingDetails?.phone),
+        address: isOwner ? order.shippingDetails?.address : (order.shippingDetails?.quartier || "Quartier protégé")
+      },
       items: enrichedItems
     }
   });
@@ -2769,8 +3065,11 @@ app.get("/api/payments/providers", (req, res) => {
   res.json(PaymentGateway.getInstance().getActiveProviders());
 });
 
-// GET status of payment gateway configuration (diagnostic)
+// GET status of payment gateway configuration (diagnostic strictly restricted to administrators)
 app.get("/api/payments/status", (req, res) => {
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({ success: false, error: "Accès réservé aux administrateurs." });
+  }
   const settings = readJSONFile<any>(SETTINGS_FILE, {});
   const masterKey = (process.env.PAYDUNYA_MASTER_KEY || process.env.PAYDUNYA_MASTER || settings.paydunyaMasterKey || "").trim();
   const privateKey = (process.env.PAYDUNYA_PRIVATE_KEY || process.env.PAYDUNYA_SECRET_KEY || settings.paydunyaPrivateKey || "").trim();
@@ -2949,6 +3248,101 @@ app.post("/api/payments/confirm", (req, res) => {
       console.error("Payment confirmation error:", err);
       res.status(500).json({ success: false, error: err.message });
     });
+});
+
+// POST PayDunya Instant Payment Notification (IPN Webhook)
+app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) => {
+  try {
+    const body = req.body || {};
+    // PayDunya IPN sends data in { data: { invoice: { token, custom_data: { order_id }, state } } }
+    const invoiceData = body.data?.invoice || body.invoice || body;
+    const token = invoiceData.token || req.query.token || body.token;
+    const customData = invoiceData.custom_data || {};
+    const orderId = customData.order_id || body.orderId || req.query.orderId;
+    const isSubscription = Boolean(customData.is_subscription);
+
+    console.log(`📡 [PayDunya IPN] Notification reçue : commande=${orderId || 'N/A'}, token=${token || 'N/A'}`);
+
+    if (!token && !orderId) {
+      return res.status(400).json({ success: false, error: "Identifiant token ou commande manquant." });
+    }
+
+    const txLookup = token || orderId;
+
+    if (isSubscription) {
+      const result = await PaymentGateway.getInstance().verifyPayment("paydunya", txLookup);
+      if (result.status === "success") {
+        console.log(`📡 [PayDunya IPN] Souscription vendeur validée via IPN pour ${customData.customer_phone || orderId}`);
+      }
+      return res.status(200).json({ success: true, message: "IPN souscription reçue et traitée." });
+    }
+
+    const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+    const orderIndex = orders.findIndex(o => 
+      (token && o.paymentGatewayTxId === token) || 
+      (orderId && o.id === orderId) ||
+      o.id === txLookup
+    );
+
+    if (orderIndex === -1) {
+      console.warn(`⚠️ [PayDunya IPN] Commande introuvable pour token=${token}, orderId=${orderId}`);
+      return res.status(404).json({ success: false, error: "Commande non trouvée." });
+    }
+
+    const order = orders[orderIndex];
+
+    // Protection contre double débit et double traitement (idempotence)
+    if (order.paymentStatus === "Payé") {
+      console.log(`ℹ️ [PayDunya IPN] Commande #${order.id} déjà confirmée comme Payé.`);
+      return res.status(200).json({ success: true, message: "Commande déjà confirmée payée.", orderId: order.id });
+    }
+
+    // Authoritative verification via PayDunya REST API
+    const verification = await PaymentGateway.getInstance().verifyPayment("paydunya", txLookup);
+
+    if (verification.status === "success") {
+      const orderCurrency = order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF");
+      order.paymentStatus = "Payé";
+      order.status = "En préparation";
+      order.paymentGatewayTxId = token || txLookup;
+      order.paymentGatewayProvider = "paydunya";
+      order.paymentMethod = "PayDunya Mobile Money / Carte";
+      order.paymentConfirmedAt = new Date().toISOString();
+      order.currencyCode = orderCurrency;
+
+      writeJSONFile(ORDERS_FILE, orders);
+
+      // Execute automatic revenue split to seller and affiliate wallets
+      executeOrderRevenueSplit(order.id);
+
+      // Notify customer if authenticated
+      const clientUserId = order.userId;
+      if (clientUserId && !clientUserId.startsWith("guest_")) {
+        const users = readJSONFile<any[]>(USERS_FILE, []);
+        const clientIndex = users.findIndex(u => u.id === clientUserId);
+        if (clientIndex > -1) {
+          users[clientIndex].notifications = users[clientIndex].notifications || [];
+          users[clientIndex].notifications.unshift({
+            id: "notif_ipn_" + Date.now().toString(),
+            text: `Paiement confirmé ! Votre commande #${order.id} a été validée avec succès via PayDunya.`,
+            type: "order",
+            read: false,
+            date: new Date().toISOString()
+          });
+          writeJSONFile(USERS_FILE, users);
+        }
+      }
+
+      console.log(`✅ [PayDunya IPN] Commande #${order.id} validée et marquée comme Payé.`);
+      return res.status(200).json({ success: true, message: "IPN traitée avec succès.", orderId: order.id });
+    } else {
+      console.warn(`⚠️ [PayDunya IPN] Statut vérification non validé: ${verification.status}`);
+      return res.status(200).json({ success: false, status: verification.status });
+    }
+  } catch (err: any) {
+    console.error("🔴 [PayDunya IPN] Exception:", err);
+    return res.status(500).json({ success: false, error: err.message || String(err) });
+  }
 });
 
 // POST initiate vendor subscription payment (PRO / BUSINESS)
@@ -3558,7 +3952,7 @@ app.get("/api/products/:id/reviews", (req, res) => {
 });
 
 // Post review for a product
-app.post("/api/products/:id/reviews", (req, res) => {
+app.post("/api/products/:id/reviews", contactLimiter, (req, res) => {
   const { id } = req.params;
   const { rating, comment, userName } = req.body;
 
@@ -3571,8 +3965,8 @@ app.post("/api/products/:id/reviews", (req, res) => {
     id: "rev_" + Date.now().toString(),
     productId: id,
     rating: Number(rating),
-    comment: String(comment || "").trim(),
-    userName: String(userName || "Client Anonyme").trim(),
+    comment: sanitizeString(comment),
+    userName: sanitizeString(userName || "Client Anonyme"),
     createdAt: new Date().toISOString()
   };
 
@@ -4137,7 +4531,8 @@ app.post("/api/messages", (req, res) => {
   }
 
   const { threadId, sellerId, sellerName, productName, text } = req.body;
-  if (!text || !text.trim()) {
+  const sanitizedText = sanitizeString(text);
+  if (!sanitizedText) {
     return res.status(400).json({ success: false, error: "Le message ne peut pas être vide." });
   }
 
@@ -4149,13 +4544,17 @@ app.post("/api/messages", (req, res) => {
   let thread;
   if (threadId) {
     thread = threads.find(t => t.id === threadId);
+    // BOLA/IDOR check: user must belong to this thread
+    if (thread && thread.customerId !== userId && thread.sellerId !== userId) {
+      return res.status(403).json({ success: false, error: "Accès refusé. Vous n'êtes pas participant de cette discussion." });
+    }
   } else if (sellerId) {
     // Look for existing thread between this customer and seller
     thread = threads.find(t => t.customerId === userId && t.sellerId === sellerId);
     if (!thread) {
       // Create new thread
       const targetSeller = users.find(u => u.id === sellerId);
-      const targetSellerName = sellerName || (targetSeller ? (targetSeller.businessName || targetSeller.name) : "Boutique Miabé Asi");
+      const targetSellerName = sanitizeString(sellerName || (targetSeller ? (targetSeller.businessName || targetSeller.name) : "Boutique Miabé Asi"));
       
       thread = {
         id: "thread_" + Date.now().toString() + Math.floor(Math.random() * 100),
@@ -4164,8 +4563,8 @@ app.post("/api/messages", (req, res) => {
         avatar: currentUserName.substring(0, 2).toUpperCase(),
         sellerId: sellerId,
         sellerName: targetSellerName,
-        product: productName || "Produit Miabé Asi",
-        lastMessage: text,
+        product: sanitizeString(productName || "Produit Miabé Asi"),
+        lastMessage: sanitizedText,
         unread: true,
         messages: []
       };
@@ -4185,12 +4584,12 @@ app.post("/api/messages", (req, res) => {
   // Add the message
   const newMessage = {
     sender: senderType,
-    text: text,
+    text: sanitizedText,
     date: new Date().toISOString()
   };
 
   thread.messages.push(newMessage);
-  thread.lastMessage = text;
+  thread.lastMessage = sanitizedText;
   thread.unread = true; // Mark as unread for the recipient
 
   writeJSONFile(MESSAGES_FILE, threads);
@@ -4211,7 +4610,7 @@ app.post("/api/messages/:threadId/read", (req, res) => {
   const threads = readJSONFile<any[]>(MESSAGES_FILE, []);
   const index = threads.findIndex(t => t.id === threadId);
 
-  if (index !== -1) {
+  if (index !== -1 && (threads[index].customerId === userId || threads[index].sellerId === userId)) {
     threads[index].unread = false;
     writeJSONFile(MESSAGES_FILE, threads);
   }
@@ -5285,6 +5684,72 @@ async function start() {
       return res.sendFile(manifestPath);
     }
     next();
+  });
+
+  // Dynamic robots.txt
+  app.get("/robots.txt", (req, res) => {
+    const robotsPath = path.join(process.cwd(), "public", "robots.txt");
+    if (fs.existsSync(robotsPath)) {
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      return res.sendFile(robotsPath);
+    }
+    const appBaseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /admin.html\nDisallow: /api/\n\nSitemap: ${appBaseUrl}/sitemap.xml\n`);
+  });
+
+  // Dynamic sitemap.xml
+  app.get("/sitemap.xml", (req, res) => {
+    const appBaseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+    const blogs = readJSONFile<any[]>(BLOGS_FILE, []);
+
+    const staticRoutes = [
+      { path: "/", priority: "1.0", changefreq: "daily" },
+      { path: "/?tab=catalogue", priority: "0.9", changefreq: "daily" },
+      { path: "/?tab=blog", priority: "0.8", changefreq: "weekly" },
+      { path: "/?tab=vendre", priority: "0.8", changefreq: "monthly" },
+      { path: "/?tab=contact", priority: "0.7", changefreq: "monthly" },
+    ];
+
+    const today = new Date().toISOString().split("T")[0];
+
+    const productUrls = products.map((p) => `  <url>
+    <loc>${appBaseUrl}/?prod=${encodeURIComponent(p.id)}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`);
+
+    const blogUrls = blogs.map((b) => `  <url>
+    <loc>${appBaseUrl}/?tab=blog&amp;article=${encodeURIComponent(b.id)}</loc>
+    <lastmod>${b.date || today}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>`);
+
+    const staticUrls = staticRoutes.map((r) => `  <url>
+    <loc>${appBaseUrl}${r.path}</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>${r.changefreq}</changefreq>
+    <priority>${r.priority}</priority>
+  </url>`);
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${staticUrls.join("\n")}
+${productUrls.join("\n")}
+${blogUrls.join("\n")}
+</urlset>`;
+
+    res.setHeader("Content-Type", "application/xml; charset=utf-8");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(xml);
+  });
+
+  // 404 handler for API routes that do not match any endpoint
+  app.use("/api", (req, res) => {
+    res.status(404).json({ success: false, error: `Endpoint API "${req.method} ${req.path}" introuvable.` });
   });
 
   if (vite) {

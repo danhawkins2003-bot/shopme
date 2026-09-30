@@ -1,7 +1,10 @@
 {
+  "id": "/",
   "short_name": "Miabé Asi",
-  "name": "Miabé Asi",
+  "name": "Miabé Asi — Marketplace Panafricaine",
   "description": "Le local, notre fierté — La vitrine par excellence des produits nobles togolais.",
+  "scope": "/",
+  "start_url": "/",
   "icons": [
     {
       "src": "/favicon.svg?v=4",

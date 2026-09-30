@@ -147,7 +147,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({
           oldStatus: "En attente",
           newStatus: "Confirmée",
           title: "Paiement Validé & Commande Confirmée",
-          text: "Votre commande #CMD-84210 (Miel Sauvage de Kpalimé) a été validée par l'artisan vendeur.",
+          text: "Votre commande #CMD-84210 (Miel Sauvage de Kpalimé) a été validée par le vendeur partenaire.",
           type: "order_status",
           read: false,
           date: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),

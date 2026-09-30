@@ -74,6 +74,8 @@ import { SellerLandingPage } from "./components/SellerLandingPage";
 import { PublicShopView } from "./components/PublicShopView";
 import { NotificationsPage, playNotificationChime } from "./components/NotificationsPage";
 import { HelpCenterModal } from "./components/HelpCenterModal";
+import { LegalPoliciesModal, LegalTab } from "./components/LegalPoliciesModal";
+import { CookieConsentBanner } from "./components/CookieConsentBanner";
 
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
@@ -750,6 +752,47 @@ export default function App() {
     }
   }, []);
 
+  // Legal Policies Modal State
+  const [legalModalOpen, setLegalModalOpen] = useState(false);
+  const [legalModalTab, setLegalModalTab] = useState<LegalTab>("confidentialite");
+
+  const openLegalModal = (tab: LegalTab = "confidentialite") => {
+    setLegalModalTab(tab);
+    setLegalModalOpen(true);
+  };
+
+  // Dynamic Product Page SEO and JSON-LD structured data
+  useEffect(() => {
+    if (selectedProduct) {
+      document.title = `${selectedProduct.nom} — Miabé Asi`;
+      let script = document.getElementById("product-jsonld");
+      if (!script) {
+        script = document.createElement("script");
+        script.id = "product-jsonld";
+        script.setAttribute("type", "application/ld+json");
+        document.head.appendChild(script);
+      }
+      script.textContent = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "name": selectedProduct.nom,
+        "image": selectedProduct.images || (selectedProduct.image ? [selectedProduct.image] : []),
+        "description": selectedProduct.description,
+        "offers": {
+          "@type": "Offer",
+          "price": selectedProduct.prix,
+          "priceCurrency": selectedProduct.currencyCode || "XOF",
+          "availability": (selectedProduct.stock ?? 1) > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+          "url": `https://miabeasi.com/?prod=${encodeURIComponent(selectedProduct.id)}`
+        }
+      });
+    } else {
+      document.title = "Miabé Asi — Marketplace Panafricaine & Produits Nobles du Togo";
+      const script = document.getElementById("product-jsonld");
+      if (script) script.remove();
+    }
+  }, [selectedProduct]);
+
   const getProductReviews = (productId: string, productName: string, productCategory: string) => {
     const existing = productReviews[productId];
     if (existing) return existing;
@@ -1147,8 +1190,8 @@ export default function App() {
     const paymentStatus = params.get("payment");
     const orderId = params.get("orderId") || params.get("order_id");
 
-    if (paymentStatus === "success" && orderId) {
-      showToast("✓ Paiement PayDunya reçu ! Votre commande a été enregistrée.");
+    if ((paymentStatus === "success" || paymentStatus === "return") && orderId) {
+      showToast("✓ Paiement PayDunya validé ! Votre commande est confirmée.");
       confetti({
         particleCount: 150,
         spread: 80,
@@ -5701,48 +5744,22 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Direct Action Link or In-App Payment Validation */}
+                {/* Direct Gateway Action Link */}
                 {paymentSession.redirectUrl && (
                   <div className="space-y-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          showToast("Validation du paiement...");
-                          const confRes = await fetch("/api/payments/confirm", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              transactionId: paymentSession.transactionId,
-                              orderId: paymentSession.orderId,
-                              providerId: paymentSession.providerId
-                            })
-                          });
-                          const confData = await confRes.json();
-                          if (confData.success || confData.status === "completed") {
-                            setIsPaymentSuccess(true);
-                            showToast("✓ Paiement validé avec succès !");
-                          } else {
-                            alert("Erreur de confirmation : " + (confData.error || "Inconnue"));
-                          }
-                        } catch (err: any) {
-                          alert("Erreur réseau : " + (err.message || String(err)));
-                        }
-                      }}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-center text-xs uppercase tracking-wider py-3 px-4 rounded-sm block transition-colors shadow-sm cursor-pointer"
+                    <a
+                      href={paymentSession.redirectUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-center text-xs uppercase tracking-wider py-3.5 px-4 rounded-sm block transition-colors shadow-sm cursor-pointer"
                     >
-                      {language === "fr" ? "✓ Confirmer et valider le paiement" : "✓ Do ga na gbe"}
-                    </button>
-                    {!paymentSession.redirectUrl.includes("paydunya-test") && (
-                      <a
-                        href={paymentSession.redirectUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-center text-xs uppercase tracking-wider py-2.5 px-4 rounded-sm block transition-colors"
-                      >
-                        {language === "fr" ? "Ouvrir le portail externe →" : "Yi portail dzi →"}
-                      </a>
-                    )}
+                      {language === "fr" 
+                        ? "Procéder au Débit Réel sur le Guichet PayDunya →" 
+                        : "Yi PayDunya dzi na fetutu →"}
+                    </a>
+                    <p className="text-[10px] text-stone-500 text-center">
+                      Sécurisé par le protocole PayDunya • Prélèvements directs TMoney, Flooz, Wave & Cartes Bancaires
+                    </p>
                   </div>
                 )}
               </div>
@@ -5847,8 +5864,17 @@ export default function App() {
 
         </div>
 
-        <div className="max-w-7xl mx-auto pt-8 mt-8 border-t border-neutral-800 text-center text-neutral-500 text-[10px] uppercase tracking-widest">
+        <div className="max-w-7xl mx-auto pt-8 mt-8 border-t border-neutral-800 flex flex-col sm:flex-row items-center justify-between text-neutral-500 text-[10px] uppercase tracking-widest gap-4">
           <p>© {new Date().getFullYear()} Miabé Asi. {t("footer_rights")} {language === "fr" ? "CONÇU POUR LE CONSOMMER LOCAL TOGOLAIS 🇹🇬" : "WÒ WƆE NA TOGO-TƆWO ƑE ADZƆNUWO 🇹🇬"}</p>
+          <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] text-neutral-400">
+            <button onClick={() => openLegalModal("confidentialite")} className="hover:text-[#d4af37] transition-colors cursor-pointer bg-transparent border-0 p-0">Confidentialité</button>
+            <span>•</span>
+            <button onClick={() => openLegalModal("cgu")} className="hover:text-[#d4af37] transition-colors cursor-pointer bg-transparent border-0 p-0">CGU & Conditions</button>
+            <span>•</span>
+            <button onClick={() => openLegalModal("remboursement")} className="hover:text-[#d4af37] transition-colors cursor-pointer bg-transparent border-0 p-0">Retours & Remboursements</button>
+            <span>•</span>
+            <button onClick={() => openLegalModal("cookies")} className="hover:text-[#d4af37] transition-colors cursor-pointer bg-transparent border-0 p-0">Cookies</button>
+          </div>
         </div>
       </footer>
 
@@ -7315,7 +7341,7 @@ export default function App() {
                 {[
                   { label: language === "fr" ? "Accueil du site" : "Aƒeme dzesi", value: "accueil" as const, desc: language === "fr" ? "Découvrir nos sélections phares et histoire" : "Kpɔ míaƒe adzɔnu dzesiwo kple ŋutinya" },
                   { label: language === "fr" ? "Catalogue de Produits" : "Adzɔnuwo kpeɖodzi", value: "catalogue" as const, desc: language === "fr" ? "Explorer l'ensemble de nos collections" : "Kpɔ míaƒe adzɔnu hame hamewo katã" },
-                  { label: language === "fr" ? "Vendre sur Miabé Asi" : "Dzra nu le Miabé Asi", value: "vendre" as const, desc: language === "fr" ? "Espace dédié aux créateurs, artisans et boutiques" : "Teƒe tɔxɛ na asinɔlawo" },
+                  { label: language === "fr" ? "Vendre sur Miabé Asi" : "Dzra nu le Miabé Asi", value: "vendre" as const, desc: language === "fr" ? "Espace dédié aux créateurs, vendeurs et boutiques" : "Teƒe tɔxɛ na asinɔlawo" },
                   { label: language === "fr" ? "Notifications & Suivi" : "Dzesiwo & Kpɔkplɔ", value: "notifications" as const, desc: language === "fr" ? "Suivi des commandes en temps réel" : "Dɔwɔwɔ ƒe dzesiwo" },
                   { label: language === "fr" ? "Le Journal de Miabé Asi" : "Miabé Asi Nyadzɔdzɔwo", value: "blog" as const, desc: language === "fr" ? "Articles, conseils et innovations" : "Nyadzɔdzɔwo kple dɔwɔlawo ƒe aɖaŋuɖoɖowo" },
                   { label: language === "fr" ? "Nous Contacter" : "Mía Kadodowo", value: "contact" as const, desc: language === "fr" ? "Support client, WhatsApp et assistance" : "WhatsApp kple kadodo" }
@@ -7574,6 +7600,18 @@ export default function App() {
       <AIAssistantWidget
         onNavigateToTab={(tab) => setActiveTab(tab)}
         onSearchProduct={(q) => setSearchQuery(q)}
+      />
+
+      {/* --- LEGAL POLICIES MODAL --- */}
+      <LegalPoliciesModal
+        isOpen={legalModalOpen}
+        initialTab={legalModalTab}
+        onClose={() => setLegalModalOpen(false)}
+      />
+
+      {/* --- COOKIE CONSENT BANNER --- */}
+      <CookieConsentBanner
+        onOpenLegal={openLegalModal}
       />
 
     </div>

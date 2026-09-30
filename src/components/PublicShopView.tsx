@@ -229,7 +229,7 @@ export const PublicShopView: React.FC<PublicShopViewProps> = ({
                   </div>
                   <div className="flex items-center gap-1 text-amber-600 font-semibold">
                     <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                    <span>{shop.rating ? shop.rating.toFixed(1) : "5.0"} (Artisan certifié)</span>
+                    <span>{shop.rating ? shop.rating.toFixed(1) : "5.0"} (Vendeur certifié)</span>
                   </div>
                 </div>
               </div>
@@ -283,7 +283,7 @@ export const PublicShopView: React.FC<PublicShopViewProps> = ({
               Créations &amp; Articles de la Boutique ({filteredProducts.length})
             </h2>
             <p className="text-xs text-neutral-500 font-sans text-left">
-              Articles confectionnés et expédiés directement par cet artisan partenaire.
+              Articles confectionnés et expédiés directement par ce vendeur partenaire.
             </p>
           </div>
 

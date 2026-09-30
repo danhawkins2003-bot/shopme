@@ -74,7 +74,7 @@ export const HelpCenterModal: React.FC<HelpCenterModalProps> = ({
       id: "h-seller-plans",
       category: "seller",
       question: "Quelles sont les différences entre les abonnements Free, PRO et Business ?",
-      summary: "Trois formules adaptées à chaque stade de croissance de votre activité artisanale.",
+      summary: "Trois formules adaptées à chaque stade de croissance de votre activité de vendeur.",
       details: [
         "• La commission est de 10% sur chaque vente effectuée pour toutes les formules. Chaque vendeur peut publier autant de produits qu'il souhaite (produits illimités pour tous).",
         "• Formule GRATUITE (0 FCFA/mois) : 10% de commission par vente, produits illimités, catalogue et encaissements Mobile Money dans les 7 pays.",
@@ -254,7 +254,7 @@ export const HelpCenterModal: React.FC<HelpCenterModalProps> = ({
                 <Store className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-black uppercase tracking-wider text-white">Vous êtes créateur, artisan ou producteur ?</p>
+                <p className="text-xs font-black uppercase tracking-wider text-white">Vous êtes créateur, vendeur ou producteur ?</p>
                 <p className="text-[11px] text-emerald-100 font-sans">Vendez vos produits à des milliers de clients au Togo et dans 6 pays partenaires.</p>
               </div>
             </div>

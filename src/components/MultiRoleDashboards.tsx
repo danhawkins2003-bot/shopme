@@ -2091,7 +2091,7 @@ export default function MultiRoleDashboards({
         question: "Comment passer une commande sur Miabé Asi ?",
         answer: (
           <div className="space-y-2">
-            <p>Acheter sur Miabé Asi soutient directement l'économie locale et les artisans du terroir. Voici comment procéder :</p>
+            <p>Acheter sur Miabé Asi soutient directement l'économie locale, les créateurs et les vendeurs du terroir. Voici comment procéder :</p>
             <ol className="list-decimal pl-4 space-y-1">
               <li><strong>Parcourez le catalogue :</strong> Utilisez nos catégories (Épices, Miel, Produits alimentaires, Jus naturels, etc.) ou la barre de recherche globale pour trouver des produits authentiques 100% Made in Togo.</li>
               <li><strong>Ajoutez au panier :</strong> Sur la fiche produit, sélectionnez la quantité de votre choix puis cliquez sur <strong>"Ajouter au panier"</strong>.</li>
@@ -2144,7 +2144,7 @@ export default function MultiRoleDashboards({
         question: "Quelles sont les formules d'abonnement vendeur de Miabé Asi ?",
         answer: (
           <div className="space-y-2">
-            <p>Miabé Asi propose trois offres adaptées aux artisans locaux, coopératives et entreprises togolaises :</p>
+            <p>Miabé Asi propose trois offres adaptées aux vendeurs locaux, coopératives et entreprises togolaises :</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-1">
               <div className="border border-neutral-200 p-2 bg-neutral-50 rounded">
                 <p className="font-extrabold text-neutral-900 text-[11px]">Offre Débutant (Offre 1)</p>
@@ -3683,7 +3683,7 @@ export default function MultiRoleDashboards({
                     <div className="space-y-3">
                       {/* Subscription List */}
                       {[
-                        { key: "Offre 1", title: "Offre 1 (Basique)", price: formatPrice(1000, currentShopCurrencyCode), desc: "Idéal pour les petits artisans locaux.", limits: `Articles entre ${formatPrice(500, currentShopCurrencyCode)} et ${formatPrice(1000, currentShopCurrencyCode)}` },
+                        { key: "Offre 1", title: "Offre 1 (Basique)", price: formatPrice(1000, currentShopCurrencyCode), desc: "Idéal pour les petits vendeurs et boutiques locales.", limits: `Articles entre ${formatPrice(500, currentShopCurrencyCode)} et ${formatPrice(1000, currentShopCurrencyCode)}` },
                         { key: "Offre 2", title: "Offre 2 (Standard)", price: formatPrice(3000, currentShopCurrencyCode), desc: "Pour les boutiques d'alimentation et vêtements.", limits: `Articles entre ${formatPrice(1001, currentShopCurrencyCode)} et ${formatPrice(5000, currentShopCurrencyCode)}` },
                         { key: "Offre 3", title: "Offre 3 (Premium)", price: formatPrice(5000, currentShopCurrencyCode), desc: "Formule illimitée pour les grandes vitrines locales.", limits: `Articles au-delà de ${formatPrice(5000, currentShopCurrencyCode)}` }
                       ].map((plan) => (
@@ -4023,7 +4023,7 @@ export default function MultiRoleDashboards({
                 </div>
                 <h4 className="text-base font-black text-neutral-950 uppercase tracking-wider">Programme d'Affiliation Local Miabé Asi</h4>
                 <p className="text-xs text-neutral-500 leading-relaxed max-w-sm mx-auto mt-2 font-sans">
-                  Recommandez les produits de nos artisans locaux, partagez votre lien d'affiliation unique et gagnez <strong className="text-neutral-950">3% de commission</strong> sur chaque vente validée !
+                  Recommandez les produits de nos vendeurs partenaires locaux, partagez votre lien d'affiliation unique et gagnez <strong className="text-neutral-950">3% de commission</strong> sur chaque vente validée !
                 </p>
               </div>
 
@@ -4558,7 +4558,7 @@ export default function MultiRoleDashboards({
                   <DollarSign className="w-12 h-12 text-[#d4af37] mx-auto mb-2" />
                   <h4 className="text-sm font-black text-neutral-950 uppercase tracking-wider">Programme d'Affiliation Local Miabé Asi</h4>
                   <p className="text-xs text-neutral-500 leading-relaxed max-w-sm mx-auto mt-2 font-sans">
-                    Recommandez les produits de nos artisans locaux, partagez votre lien d'affiliation unique et gagnez <strong className="text-neutral-950">3% de commission</strong> sur chaque vente validée !
+                    Recommandez les produits de nos vendeurs partenaires locaux, partagez votre lien d'affiliation unique et gagnez <strong className="text-neutral-950">3% de commission</strong> sur chaque vente validée !
                   </p>
                 </div>
 

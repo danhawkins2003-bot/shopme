@@ -72,7 +72,7 @@ import {
   AlertCircle,
   RefreshCw
 } from "lucide-react";
-import { Product } from "./types";
+import { Product, BlogPost } from "./types";
 import AdminStats from "./components/AdminStats";
 import { InvoiceModal } from "./components/InvoiceModal";
 import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
@@ -83,7 +83,7 @@ import { uploadImageToServer } from "./lib/imageUploadHelper";
 import officialLogoImg from "./assets/images/miabe_asi_official_logo_1787563252544.jpg";
 
 export default function AdminApp() {
-  const [activeTab, setActiveTab] = useState<"catalog" | "analytics" | "requests" | "vendors" | "banners" | "stats" | "settings">("catalog");
+  const [activeTab, setActiveTab] = useState<"catalog" | "analytics" | "requests" | "vendors" | "banners" | "stats" | "settings" | "blogs">("catalog");
   const [adminStatusFilter, setAdminStatusFilter] = useState<"all" | "actif" | "inactif" | "en_rupture">("all");
   const [productAnalytics, setProductAnalytics] = useState<{
     summary: {
@@ -625,6 +625,156 @@ export default function AdminApp() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Blog Management states and handlers
+  const [blogsList, setBlogsList] = useState<BlogPost[]>([]);
+  const [isFetchingBlogs, setIsFetchingBlogs] = useState(false);
+  const [editingBlog, setEditingBlog] = useState<BlogPost | null>(null);
+  const [blogTitre, setBlogTitre] = useState("");
+  const [blogContenu, setBlogContenu] = useState("");
+  const [blogAuteur, setBlogAuteur] = useState("Rédaction Miabé Asi");
+  const [blogImage, setBlogImage] = useState("");
+  const [blogEstSponsorise, setBlogEstSponsorise] = useState(false);
+  const [blogLienSponsorise, setBlogLienSponsorise] = useState("");
+  const [isUploadingBlogImage, setIsUploadingBlogImage] = useState(false);
+  const [blogFormError, setBlogFormError] = useState("");
+  const [blogFormSuccess, setBlogFormSuccess] = useState("");
+  const [isSavingBlog, setIsSavingBlog] = useState(false);
+  const blogFileInputRef = useRef<HTMLInputElement>(null);
+
+  const fetchBlogs = async () => {
+    setIsFetchingBlogs(true);
+    try {
+      const res = await fetch("/api/blogs?t=" + Date.now(), { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setBlogsList(data);
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching blogs:", e);
+    } finally {
+      setIsFetchingBlogs(false);
+    }
+  };
+
+  const handleEditBlog = (blog: BlogPost) => {
+    setEditingBlog(blog);
+    setBlogTitre(blog.titre);
+    setBlogContenu(blog.contenu);
+    setBlogAuteur(blog.auteur || "Rédaction Miabé Asi");
+    setBlogImage(blog.image || "");
+    setBlogEstSponsorise(Boolean(blog.estSponsorise));
+    setBlogLienSponsorise(blog.lienSponsorise || "");
+    setBlogFormError("");
+    setBlogFormSuccess("");
+  };
+
+  const resetBlogForm = () => {
+    setEditingBlog(null);
+    setBlogTitre("");
+    setBlogContenu("");
+    setBlogAuteur("Rédaction Miabé Asi");
+    setBlogImage("");
+    setBlogEstSponsorise(false);
+    setBlogLienSponsorise("");
+    setBlogFormError("");
+    setBlogFormSuccess("");
+  };
+
+  const handleBlogImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingBlogImage(true);
+    setBlogFormError("");
+    try {
+      const uploadRes = await uploadImageToServer(file);
+      if (uploadRes.success && uploadRes.url) {
+        setBlogImage(uploadRes.url);
+      } else {
+        setBlogFormError(uploadRes.error || "Échec du téléversement de la photo.");
+      }
+    } catch (err: any) {
+      setBlogFormError("Erreur upload: " + (err.message || String(err)));
+    } finally {
+      setIsUploadingBlogImage(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleSaveBlog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blogTitre.trim()) {
+      setBlogFormError("Le titre de l'article est obligatoire.");
+      return;
+    }
+    if (!blogContenu.trim()) {
+      setBlogFormError("Le contenu de l'article est obligatoire.");
+      return;
+    }
+    setIsSavingBlog(true);
+    setBlogFormError("");
+    setBlogFormSuccess("");
+
+    try {
+      const adminToken = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const payload = {
+        id: editingBlog?.id || undefined,
+        titre: blogTitre.trim(),
+        contenu: blogContenu.trim(),
+        auteur: blogAuteur.trim() || "Rédaction Miabé Asi",
+        image: blogImage.trim(),
+        estSponsorise: blogEstSponsorise,
+        lienSponsorise: blogLienSponsorise.trim() || undefined,
+        date: editingBlog?.date || new Date().toISOString().split("T")[0],
+        auth: adminToken
+      };
+
+      const res = await fetch("/api/blogs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": adminToken
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setBlogFormSuccess(editingBlog ? "Article mis à jour avec succès !" : "Article publié avec succès sur le blog !");
+        await fetchBlogs();
+        resetBlogForm();
+        setTimeout(() => setBlogFormSuccess(""), 4000);
+      } else {
+        setBlogFormError(data.error || "Erreur lors de l'enregistrement de l'article.");
+      }
+    } catch (err: any) {
+      setBlogFormError("Erreur réseau: " + (err.message || String(err)));
+    } finally {
+      setIsSavingBlog(false);
+    }
+  };
+
+  const handleDeleteBlog = async (id: string, titre: string) => {
+    if (!confirm(`Voulez-vous vraiment supprimer définitivement l'article "${titre}" ?`)) return;
+    try {
+      const adminToken = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
+      const res = await fetch(`/api/blogs/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": adminToken }
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setBlogsList(prev => prev.filter(b => String(b.id) !== String(id)));
+        await fetchBlogs();
+      } else {
+        alert(data.error || "Erreur lors de la suppression de l'article.");
+      }
+    } catch (e: any) {
+      alert("Erreur réseau: " + (e.message || String(e)));
+    }
+  };
+
   // Fetch all products
   const fetchProducts = async () => {
     try {
@@ -895,6 +1045,7 @@ export default function AdminApp() {
   useEffect(() => {
     fetchProducts();
     fetchPartners();
+    fetchBlogs();
     // Check and verify admin session token with server
     const token = sessionStorage.getItem("asime_admin_token");
     if (token) {
@@ -1526,6 +1677,24 @@ export default function AdminApp() {
               >
                 <BarChart3 className="w-4 h-4 text-purple-600" />
                 <span>Finances & Statistiques</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab("blogs");
+                  fetchBlogs();
+                }}
+                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
+                  activeTab === "blogs"
+                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
+                    : "border-transparent text-neutral-500 hover:text-neutral-900"
+                }`}
+              >
+                <BookOpen className="w-4 h-4 text-emerald-700" />
+                <span>Articles de Blog</span>
+                <span className="text-[9px] font-mono bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded-full">
+                  {blogsList.length}
+                </span>
               </button>
 
               <button
@@ -3601,6 +3770,343 @@ export default function AdminApp() {
           </div>
         ) : activeTab === "stats" ? (
           <AdminStats />
+        ) : activeTab === "blogs" ? (
+          <div className="space-y-8 animate-fade-in max-w-5xl mx-auto pb-12">
+            {/* Header Banner */}
+            <div className="bg-white border border-neutral-200 p-6 rounded-sm shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-[#0f5132]/10 p-3 text-[#0f5132] rounded-sm">
+                  <BookOpen className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="font-display font-black text-lg uppercase tracking-wide text-neutral-950 flex items-center gap-2">
+                    <span>Le Journal de Miabé Asi — Espace Rédaction</span>
+                    <span className="bg-amber-100 text-amber-900 text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                      Admin Exclusif
+                    </span>
+                  </h2>
+                  <p className="text-neutral-500 text-xs mt-0.5">
+                    Gérez et publiez les articles du blog visibles sur la boutique. Seul l'administrateur a le droit de rédiger et publier.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={fetchBlogs}
+                  disabled={isFetchingBlogs}
+                  className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-200"
+                  title="Actualiser les articles"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isFetchingBlogs ? "animate-spin text-[#0f5132]" : ""}`} />
+                  <span>Actualiser</span>
+                </button>
+                {editingBlog && (
+                  <button
+                    type="button"
+                    onClick={resetBlogForm}
+                    className="px-3 py-2 bg-neutral-900 hover:bg-black text-white text-xs font-bold rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Nouvel Article</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Editor Form */}
+            <div className="bg-white border border-neutral-200 rounded-sm shadow-sm overflow-hidden" id="blog-editor-form">
+              <div className="bg-neutral-50 border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Edit className="w-4 h-4 text-[#d4af37]" />
+                  <h3 className="font-display font-bold text-sm uppercase tracking-wider text-neutral-900">
+                    {editingBlog ? `Modifier l'article : "${editingBlog.titre}"` : "Rédiger et Publier un Nouvel Article"}
+                  </h3>
+                </div>
+                {editingBlog && (
+                  <button
+                    type="button"
+                    onClick={resetBlogForm}
+                    className="text-xs text-neutral-500 hover:text-neutral-800 underline font-semibold cursor-pointer"
+                  >
+                    Annuler la modification
+                  </button>
+                )}
+              </div>
+
+              <form onSubmit={handleSaveBlog} className="p-6 md:p-8 space-y-6">
+                {/* Form Alerts */}
+                {blogFormError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-sm flex items-center gap-2 animate-fade-in font-medium">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+                    <span>{blogFormError}</span>
+                  </div>
+                )}
+                {blogFormSuccess && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-sm flex items-center gap-2 animate-fade-in font-bold">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+                    <span>{blogFormSuccess}</span>
+                  </div>
+                )}
+
+                {/* Titre */}
+                <div>
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                    Titre de l'article <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={blogTitre}
+                    onChange={(e) => setBlogTitre(e.target.value)}
+                    placeholder="Ex: Les vertus insoupçonnées du Beurre de Karité brut des Savanes"
+                    className="w-full border border-neutral-300 rounded-sm px-4 py-2.5 text-sm font-medium focus:ring-1 focus:ring-[#0f5132] focus:border-[#0f5132] outline-none bg-neutral-50/50 text-neutral-950"
+                    required
+                  />
+                </div>
+
+                {/* Auteur & Options */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                      Auteur de l'article
+                    </label>
+                    <input
+                      type="text"
+                      value={blogAuteur}
+                      onChange={(e) => setBlogAuteur(e.target.value)}
+                      placeholder="Ex: Rédaction Miabé Asi ou Nom du Rédacteur"
+                      className="w-full border border-neutral-300 rounded-sm px-4 py-2.5 text-sm font-medium focus:ring-1 focus:ring-[#0f5132] focus:border-[#0f5132] outline-none bg-neutral-50/50 text-neutral-950"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                      Statut Sponsorisé / Partenaire
+                    </label>
+                    <div className="flex items-center gap-3 h-[42px] px-3 bg-neutral-50 border border-neutral-200 rounded-sm">
+                      <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-neutral-700">
+                        <input
+                          type="checkbox"
+                          checked={blogEstSponsorise}
+                          onChange={(e) => setBlogEstSponsorise(e.target.checked)}
+                          className="w-4 h-4 text-[#0f5132] rounded focus:ring-0 cursor-pointer"
+                        />
+                        <span>Article Partenaire / Sponsorisé</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lien sponsorisé si coché */}
+                {blogEstSponsorise && (
+                  <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-sm animate-fade-in space-y-1">
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-amber-950 mb-1">
+                      Lien de redirection sponsorisée (URL externe ou interne)
+                    </label>
+                    <input
+                      type="url"
+                      value={blogLienSponsorise}
+                      onChange={(e) => setBlogLienSponsorise(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full border border-amber-300 rounded-sm px-4 py-2 text-xs font-mono focus:ring-1 focus:ring-amber-500 outline-none bg-white text-neutral-900"
+                    />
+                    <p className="text-[10px] text-amber-800">
+                      Lorsque les visiteurs cliquent sur cet article, ils seront automatiquement redirigés vers cette adresse.
+                    </p>
+                  </div>
+                )}
+
+                {/* Image de couverture */}
+                <div>
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                    Photo / Bannière de couverture de l'article
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                    <input
+                      type="text"
+                      value={blogImage}
+                      onChange={(e) => setBlogImage(e.target.value)}
+                      placeholder="URL de l'image (Ex: https://images.unsplash.com/...)"
+                      className="flex-1 border border-neutral-300 rounded-sm px-4 py-2.5 text-xs font-mono focus:ring-1 focus:ring-[#0f5132] focus:border-[#0f5132] outline-none bg-neutral-50/50 text-neutral-950"
+                    />
+                    <input
+                      type="file"
+                      ref={blogFileInputRef}
+                      onChange={handleBlogImageUpload}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => blogFileInputRef.current?.click()}
+                      disabled={isUploadingBlogImage}
+                      className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-900 text-white text-xs font-bold rounded-sm flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0"
+                    >
+                      <Upload className={`w-3.5 h-3.5 ${isUploadingBlogImage ? "animate-bounce" : ""}`} />
+                      <span>{isUploadingBlogImage ? "Téléversement..." : "Téléverser photo"}</span>
+                    </button>
+                  </div>
+
+                  {blogImage && (
+                    <div className="mt-3 relative w-full sm:w-64 aspect-[16/9] border border-neutral-200 rounded-sm overflow-hidden bg-neutral-100 group">
+                      <img src={blogImage} alt="Aperçu couverture" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setBlogImage("")}
+                        className="absolute top-2 right-2 bg-neutral-900/80 hover:bg-red-600 text-white p-1 rounded-full text-xs transition-colors cursor-pointer"
+                        title="Retirer la photo"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Contenu complet */}
+                <div>
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                    Contenu complet de l'article <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={10}
+                    value={blogContenu}
+                    onChange={(e) => setBlogContenu(e.target.value)}
+                    placeholder="Rédigez ici le corps de votre article. Vous pouvez structurer vos paragraphes en sautant des lignes..."
+                    className="w-full border border-neutral-300 rounded-sm p-4 text-xs sm:text-sm font-sans leading-relaxed focus:ring-1 focus:ring-[#0f5132] focus:border-[#0f5132] outline-none bg-neutral-50/50 text-neutral-950 resize-y"
+                    required
+                  />
+                  <p className="text-[10px] text-neutral-400 mt-1">
+                    Astuce : Sautez des lignes pour aérer les paragraphes. Le texte sera fidèlement restitué sur la page Blog de la boutique.
+                  </p>
+                </div>
+
+                {/* Submit Actions */}
+                <div className="pt-4 border-t border-neutral-100 flex items-center justify-end gap-3">
+                  {editingBlog && (
+                    <button
+                      type="button"
+                      onClick={resetBlogForm}
+                      disabled={isSavingBlog}
+                      className="px-5 py-2.5 border border-neutral-300 text-neutral-700 hover:bg-neutral-100 text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer"
+                    >
+                      Annuler
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSavingBlog}
+                    className="px-6 py-2.5 bg-[#0f5132] hover:bg-[#0c4027] text-white text-xs font-extrabold uppercase tracking-widest rounded-sm transition-all shadow-sm cursor-pointer flex items-center gap-2"
+                  >
+                    {isSavingBlog ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-[#d4af37]" />
+                        <span>Enregistrement en cours...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 text-[#d4af37]" />
+                        <span>{editingBlog ? "Mettre à jour l'article" : "Publier l'article sur le Blog"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Published Articles List */}
+            <div className="bg-white border border-neutral-200 rounded-sm shadow-xs overflow-hidden">
+              <div className="bg-neutral-50 border-b border-neutral-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-[#0f5132]" />
+                  <h3 className="font-display font-bold text-sm uppercase tracking-wider text-neutral-900">
+                    Articles Publiés sur le Journal ({blogsList.length})
+                  </h3>
+                </div>
+                <span className="text-[10.5px] text-neutral-500 font-mono">
+                  Visibles publiquement dans l'onglet "Blog" de la boutique
+                </span>
+              </div>
+
+              {blogsList.length === 0 ? (
+                <div className="p-12 text-center text-neutral-500">
+                  <BookOpen className="w-10 h-10 mx-auto text-neutral-300 mb-3" />
+                  <p className="text-sm font-bold text-neutral-700">Aucun article publié pour le moment</p>
+                  <p className="text-xs text-neutral-400 mt-1">Utilisez le formulaire ci-dessus pour publier votre premier article.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-neutral-100">
+                  {blogsList.map((blog) => (
+                    <div
+                      key={blog.id}
+                      className="p-5 md:p-6 flex flex-col md:flex-row gap-5 items-start justify-between hover:bg-neutral-50/60 transition-colors"
+                    >
+                      {/* Image Thumbnail */}
+                      <div className="w-full md:w-44 aspect-[16/10] bg-neutral-100 rounded-sm overflow-hidden shrink-0 border border-neutral-200 relative">
+                        {blog.image ? (
+                          <img src={blog.image} alt={blog.titre} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-neutral-300">
+                            <ImageIcon className="w-8 h-8" />
+                          </div>
+                        )}
+                        {blog.estSponsorise && (
+                          <span className="absolute top-2 left-2 bg-neutral-950 text-[#d4af37] text-[8px] font-black uppercase tracking-wider px-2 py-0.5 border border-[#d4af37]/40 shadow-xs">
+                            Sponsorisé
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Content Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-3 text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1.5">
+                          <span className="text-[#0f5132]">{blog.auteur || "Rédaction Miabé Asi"}</span>
+                          <span>•</span>
+                          <span>{blog.date}</span>
+                        </div>
+                        <h4 className="font-display font-bold text-base text-neutral-950 uppercase tracking-tight mb-2">
+                          {blog.titre}
+                        </h4>
+                        <p className="text-neutral-600 text-xs leading-relaxed line-clamp-2">
+                          {blog.contenu}
+                        </p>
+                        {blog.estSponsorise && blog.lienSponsorise && (
+                          <div className="mt-2 flex items-center gap-1 text-[10px] text-[#b8901c] font-mono truncate">
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{blog.lienSponsorise}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex md:flex-col items-center md:items-end gap-2 shrink-0 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-neutral-100 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleEditBlog(blog);
+                            const el = document.getElementById("blog-editor-form");
+                            el?.scrollIntoView({ behavior: "smooth" });
+                          }}
+                          className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-200"
+                        >
+                          <Edit className="w-3.5 h-3.5 text-[#0f5132]" />
+                          <span>Modifier</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBlog(blog.id, blog.titre)}
+                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer border border-red-200"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Supprimer</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
               <div className="bg-white border border-neutral-200 p-8 rounded-sm shadow-sm max-w-3xl mx-auto animate-fade-in">
                 <div className="flex items-center gap-3 mb-6 pb-3 border-b border-neutral-100">
@@ -3728,30 +4234,118 @@ export default function AdminApp() {
                       </div>
                     </div>
 
-                    <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-[11px] text-stone-600 space-y-1.5">
-                      <p className="font-bold text-stone-800">💡 Format recommandé dans votre fichier <code className="bg-stone-200 px-1 py-0.5 rounded text-stone-900">.env</code> :</p>
-                      <pre className="bg-stone-900 text-stone-100 p-2.5 rounded text-[10px] font-mono overflow-x-auto">
-{`PAYDUNYA_MASTER_KEY=votre_cle_principale
-PAYDUNYA_PRIVATE_KEY=votre_cle_privee
-PAYDUNYA_TOKEN=votre_token_public
-PAYDUNYA_MODE=live`}
-                      </pre>
-                      <p className="text-[10px] text-stone-500">
-                        Le serveur recharge automatiquement ces variables lors de chaque transaction.
-                      </p>
+                    {/* Input configuration for PayDunya Gateway */}
+                    <div className="bg-stone-50 border border-stone-200 rounded-lg p-4 space-y-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-neutral-800 uppercase tracking-wider mb-1.5">
+                          Mode de la Passerelle <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPaydunyaMode("live")}
+                            className={`p-3 rounded border text-left cursor-pointer transition-all ${
+                              paydunyaMode === "live"
+                                ? "bg-emerald-950 text-white border-emerald-600 shadow-sm"
+                                : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
+                            }`}
+                          >
+                            <div className="font-bold text-xs flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                              <span>PRODUCTION (Débits Réels)</span>
+                            </div>
+                            <p className="text-[10px] opacity-80 mt-1">
+                              Débit réel sur TMoney, Flooz, Wave, Orange Money et Cartes Bancaires.
+                            </p>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setPaydunyaMode("test")}
+                            className={`p-3 rounded border text-left cursor-pointer transition-all ${
+                              paydunyaMode === "test"
+                                ? "bg-amber-950 text-white border-amber-600 shadow-sm"
+                                : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
+                            }`}
+                          >
+                            <div className="font-bold text-xs flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                              <span>TEST (Sandbox)</span>
+                            </div>
+                            <p className="text-[10px] opacity-80 mt-1">
+                              Environnement d'essai pour tests de validation sans débit d'argent réel.
+                            </p>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                            Clé Principale (PAYDUNYA_MASTER_KEY)
+                          </label>
+                          <input
+                            type="text"
+                            value={paydunyaMasterKey}
+                            onChange={(e) => setPaydunyaMasterKey(e.target.value.trim())}
+                            placeholder="Ex: H93d... (depuis votre dashboard PayDunya)"
+                            className="w-full border border-neutral-300 rounded px-3 py-2 text-xs font-mono bg-white text-neutral-900 focus:ring-1 focus:ring-amber-500 outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                            Clé Privée (PAYDUNYA_PRIVATE_KEY) {paymentGatewayStatus?.hasPrivateKey && <span className="text-emerald-600 font-semibold">(Configurée)</span>}
+                          </label>
+                          <input
+                            type="password"
+                            value={paydunyaPrivateKey}
+                            onChange={(e) => setPaydunyaPrivateKey(e.target.value.trim())}
+                            placeholder={paymentGatewayStatus?.hasPrivateKey ? "******** (Laisser vide pour conserver la clé actuelle)" : "Ex: live_private_... ou test_private_..."}
+                            className="w-full border border-neutral-300 rounded px-3 py-2 text-xs font-mono bg-white text-neutral-900 focus:ring-1 focus:ring-amber-500 outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                            Jeton Public (PAYDUNYA_TOKEN)
+                          </label>
+                          <input
+                            type="text"
+                            value={paydunyaToken}
+                            onChange={(e) => setPaydunyaToken(e.target.value.trim())}
+                            placeholder="Ex: live_token_... ou test_token_..."
+                            className="w-full border border-neutral-300 rounded px-3 py-2 text-xs font-mono bg-white text-neutral-900 focus:ring-1 focus:ring-amber-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="border-t border-stone-200 pt-3">
+                        <p className="text-[10px] text-stone-500 leading-relaxed">
+                          🛡️ <strong>Note pour l'hébergement :</strong> Vos clés sont enregistrées de façon permanente sur le serveur dans <code className="bg-stone-200 px-1 py-0.5 rounded text-stone-800">settings.json</code>. En mode Production, les clients sont automatiquement dirigés vers le guichet officiel PayDunya pour autoriser le prélèvement bancaire ou mobile money.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
                   <button
                     onClick={async () => {
                       try {
+                        const adminToken = sessionStorage.getItem("asime_admin_token") || "asime2026-auth-session";
                         const response = await fetch("/api/settings", {
                           method: "POST",
-                          headers: { "Content-Type": "application/json" },
+                          headers: { 
+                            "Content-Type": "application/json",
+                            "Authorization": adminToken
+                          },
                           body: JSON.stringify({
-                            auth: "asime2026",
+                            auth: adminToken,
                             whatsappMerchantNumber: whatsappDisplaySetting,
-                            activeLogoId: activeLogoId
+                            activeLogoId: activeLogoId,
+                            paydunyaMasterKey: paydunyaMasterKey.trim(),
+                            paydunyaPrivateKey: paydunyaPrivateKey.trim(),
+                            paydunyaToken: paydunyaToken.trim(),
+                            paydunyaMode: paydunyaMode
                           })
                         });
                         
@@ -3762,6 +4356,15 @@ PAYDUNYA_MODE=live`}
                           
                           setSaveConfigSuccess(true);
                           setTimeout(() => setSaveConfigSuccess(false), 5000);
+
+                          // Refresh gateway status
+                          try {
+                            const resStat = await fetch("/api/payments/status?t=" + Date.now());
+                            if (resStat.ok) {
+                              const statData = await resStat.json();
+                              setPaymentGatewayStatus(statData);
+                            }
+                          } catch (e) {}
                         } else {
                           alert("Erreur lors de la sauvegarde des paramètres.");
                         }

@@ -1005,7 +1005,7 @@ export const SellerWorkspace: React.FC<SellerWorkspaceProps> = ({
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
                 <p className="text-[10px] text-stone-500 font-sans hidden sm:block">
-                  Place de Marché Artisanale Miabé Asi
+                  Place de Marché Vendeurs Miabé Asi
                 </p>
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-700 bg-stone-100 px-2 py-0.5 rounded-md border border-stone-200">
                   <span className="text-sm leading-none">{sellerCountry.flagEmoji}</span>
