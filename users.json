@@ -144,5 +144,21 @@
     "boutiqueWhatsapp": "99908169",
     "boutiqueLogo": "",
     "category": "Mode, Vêtements & Tissus (Batik, Pagne)"
+  },
+  {
+    "id": "user_1790684291054_706",
+    "name": "Prince",
+    "email": "dana@gmail.com",
+    "passwordHash": "scrypt:47f9bc125567c7cf727b3dd929755c8c:0c841fd4a040592ac83a2d1eeb66fcd79a8e2bfe38b16e7c941662209d059eda89f5bbe78f7fed2bcbba9b4b36a3d212e9dd059988b0728b3b85f147415a4bc5",
+    "phone": "+228 99908169",
+    "quartier": "Agoè",
+    "role": "client",
+    "boutiqueName": "Prince",
+    "businessName": "Prince",
+    "countryCode": "TG",
+    "country": "Togo",
+    "currencyCode": "XOF",
+    "favorites": [],
+    "createdAt": "2026-09-29T12:18:11.117Z"
   }
 ]

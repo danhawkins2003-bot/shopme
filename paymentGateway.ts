@@ -117,9 +117,10 @@ export interface PaymentSession {
 }
 
 export interface PaymentVerificationResult {
-  status: "success" | "failed" | "pending";
+  status: "success" | "failed" | "pending" | "cancelled";
   transactionId: string;
   amount: number;
+  orderId?: string;
   currencyCode?: string;
   countryCode?: string;
   providerTxId?: string;
@@ -582,39 +583,65 @@ export class PayDunyaProvider implements IPaymentProvider {
 
         if (invoiceStatus === "completed") {
           const customData = resData.custom_data || {};
-          const amount = Number(resData.invoice?.total_amount || 0);
+          const invoiceData = resData.invoice || {};
+          const amount = Number(invoiceData.total_amount ?? customData.amount ?? 0);
+          const orderId = String(customData.order_id || customData.orderId || invoiceData.order_id || resData.order_id || "").trim() || undefined;
+          const currencyCode = String(customData.currency_code || customData.currencyCode || invoiceData.currency_code || invoiceData.currency || "XOF").trim().toUpperCase();
+
           updatePayDunyaInvoiceStatus(transactionId, "completed");
 
           return {
             status: "success",
             transactionId,
             amount,
-            currencyCode: customData.currency_code,
-            countryCode: customData.country_code,
+            orderId,
+            currencyCode,
+            countryCode: customData.country_code || invoiceData.country_code,
             providerTxId: resData.transaction_id || "PD-" + crypto.randomBytes(6).toString("hex").toUpperCase(),
             message: `Paiement PayDunya validé par confirmation serveur (Statut: completed)`
           };
         } else if (invoiceStatus === "cancelled") {
+          const customData = resData.custom_data || {};
+          const invoiceData = resData.invoice || {};
+          const amount = Number(invoiceData.total_amount ?? customData.amount ?? 0);
+          const orderId = String(customData.order_id || customData.orderId || invoiceData.order_id || "").trim() || undefined;
+          const currencyCode = String(customData.currency_code || customData.currencyCode || invoiceData.currency_code || "XOF").trim().toUpperCase();
           updatePayDunyaInvoiceStatus(transactionId, "cancelled");
           return {
             status: "cancelled",
             transactionId,
-            amount: 0,
+            amount,
+            orderId,
+            currencyCode,
             message: "Paiement PayDunya annulé par le client."
           };
         } else if (invoiceStatus === "failed") {
+          const customData = resData.custom_data || {};
+          const invoiceData = resData.invoice || {};
+          const amount = Number(invoiceData.total_amount ?? customData.amount ?? 0);
+          const orderId = String(customData.order_id || customData.orderId || invoiceData.order_id || "").trim() || undefined;
+          const currencyCode = String(customData.currency_code || customData.currencyCode || invoiceData.currency_code || "XOF").trim().toUpperCase();
           updatePayDunyaInvoiceStatus(transactionId, "failed");
           return {
             status: "failed",
             transactionId,
-            amount: 0,
+            amount,
+            orderId,
+            currencyCode,
             message: "Le paiement PayDunya a échoué."
           };
         } else {
+          const customData = resData.custom_data || {};
+          const invoiceData = resData.invoice || {};
+          const amount = Number(invoiceData.total_amount ?? customData.amount ?? 0);
+          const orderId = String(customData.order_id || customData.orderId || invoiceData.order_id || "").trim() || undefined;
+          const currencyCode = String(customData.currency_code || customData.currencyCode || invoiceData.currency_code || "XOF").trim().toUpperCase();
           return {
             status: "pending",
             transactionId,
-            amount: 0,
+            amount,
+            orderId,
+            currencyCode,
             message: `Paiement PayDunya en attente de validation (Statut: ${invoiceStatus || "pending"}).`
           };
         }
@@ -635,12 +662,17 @@ export class PayDunyaProvider implements IPaymentProvider {
       };
     }
 
+    const orderId = record.orderId ? String(record.orderId).trim() : undefined;
+    const amount = Number(record.amount || 0);
+    const currencyCode = String(record.currencyCode || "XOF").trim().toUpperCase();
+
     if (record.status === "completed") {
       return {
         status: "success",
         transactionId: record.token,
-        amount: record.amount,
-        currencyCode: record.currencyCode,
+        amount,
+        orderId,
+        currencyCode,
         countryCode: record.countryCode,
         providerTxId: record.providerTxId || ("PD-" + crypto.randomBytes(6).toString("hex").toUpperCase()),
         message: "Facture PayDunya acquittée et confirmée par le serveur."
@@ -649,21 +681,27 @@ export class PayDunyaProvider implements IPaymentProvider {
       return {
         status: "cancelled",
         transactionId: record.token,
-        amount: record.amount,
+        amount,
+        orderId,
+        currencyCode,
         message: "Facture PayDunya annulée."
       };
     } else if (record.status === "failed") {
       return {
         status: "failed",
         transactionId: record.token,
-        amount: record.amount,
+        amount,
+        orderId,
+        currencyCode,
         message: "Facture PayDunya échouée."
       };
     } else {
       return {
         status: "pending",
         transactionId: record.token,
-        amount: record.amount,
+        amount,
+        orderId,
+        currencyCode,
         message: "Facture PayDunya en attente de paiement."
       };
     }

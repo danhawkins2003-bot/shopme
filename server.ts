@@ -372,7 +372,7 @@ function getUserFromToken(token: string): any | null {
 }
 
 function isAdminAuthorized(req: express.Request): boolean {
-  const authHeader = (req.headers.authorization || (req.headers as any).auth || req.body?.auth || "") as string;
+  const authHeader = (req.headers.authorization || (req.headers as any).auth || req.body?.auth || (req.query as any)?.auth || "") as string;
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
   if (!token) return false;
 
@@ -393,6 +393,20 @@ function isAdminAuthorized(req: express.Request): boolean {
     return true;
   }
   return false;
+}
+
+function isProductionEnvironment(): boolean {
+  const nodeEnv = (process.env.NODE_ENV || "").toLowerCase().trim();
+  let paydunyaMode = (process.env.PAYDUNYA_MODE || "").toLowerCase().trim();
+  if (!paydunyaMode) {
+    try {
+      const settings = readJSONFile<any>(SETTINGS_FILE, {});
+      if (settings?.paydunyaMode) {
+        paydunyaMode = String(settings.paydunyaMode).toLowerCase().trim();
+      }
+    } catch {}
+  }
+  return nodeEnv === "production" || paydunyaMode === "live" || paydunyaMode === "production";
 }
 
 function sanitizeString(input: any): string {
@@ -2741,13 +2755,17 @@ function executeOrderRevenueSplit(orderId: string): boolean {
     actualAffiliateCommission
   );
 
-  // Save updated users and order status
-  order.splitProcessed = true;
-  writeJSONFile(USERS_FILE, users);
-  writeJSONFile(ORDERS_FILE, orders);
-  
-  console.log(`Order split completed for order ${orderId}:`, splitResult);
-  return true;
+  // Save updated users and order status only if ledger split succeeded
+  if (splitResult.success) {
+    order.splitProcessed = true;
+    writeJSONFile(USERS_FILE, users);
+    writeJSONFile(ORDERS_FILE, orders);
+    console.log(`Order split completed for order ${orderId}:`, splitResult);
+    return true;
+  } else {
+    console.warn(`⚠️ [Split Failed] Wallet ledger split failed for order ${orderId}:`, splitResult.logs);
+    return false;
+  }
 }
 
 // Create Order (En attente de paiement, splits and balance processing happens on payment confirmation only)
@@ -3162,14 +3180,14 @@ app.post("/api/payments/initiate", (req, res) => {
 // POST confirm/verify payment
 app.post("/api/payments/confirm", (req, res) => {
   const { transactionId, providerId = "paydunya", orderId } = req.body || {};
-  const tx = transactionId || orderId;
+  const tx = (transactionId || orderId || "").toString().trim();
   if (!tx) {
     return res.status(400).json({ success: false, error: "Identifiant de transaction ou de commande requis." });
   }
 
   const orders = readJSONFile<any[]>(ORDERS_FILE, []);
   // Support lookup by transactionId or orderId
-  const orderIndex = orders.findIndex(o => o.paymentGatewayTxId === tx || o.id === tx || o.id === orderId);
+  const orderIndex = orders.findIndex(o => (orderId && o.id === orderId) || o.paymentGatewayTxId === tx || o.id === tx);
 
   if (orderIndex === -1) {
     return res.status(404).json({ success: false, error: "Commande associée introuvable." });
@@ -3183,7 +3201,65 @@ app.post("/api/payments/confirm", (req, res) => {
   PaymentGateway.getInstance().verifyPayment(providerId, tx)
     .then(result => {
       if (result.status === "success") {
-        const orderCurrency = order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF");
+        // --- VULNERABILITY V1 & V3 FIX: STRICT FINANCIAL & IDENTITY CHECKS ---
+        const paidAmount = Number(result.amount);
+        const paidCurrency = (result.currencyCode || "").toString().trim().toUpperCase();
+        const paidOrderId = (result.orderId || "").toString().trim();
+
+        // 1. Mandatory financial information presence and coherence (Requirement 4)
+        if (isNaN(paidAmount) || paidAmount <= 0 || !paidCurrency || !paidOrderId) {
+          console.warn(`🚨 [Payment Security] Informations financières incomplètes ou incohérentes pour tx=${tx}: amount=${result.amount}, currency=${result.currencyCode}, orderId=${result.orderId}`);
+          return res.status(400).json({
+            success: false,
+            error: "Informations financières de la transaction incomplètes ou incohérentes auprès de la passerelle."
+          });
+        }
+
+        // 2. Order ID exact match (Requirement 2 & 3 - V3 Fix)
+        if (paidOrderId !== order.id) {
+          console.warn(`🚨 [Payment Security] Jeton non associé à cette commande : token associé à "${paidOrderId}", commande ciblée "${order.id}"`);
+          return res.status(400).json({
+            success: false,
+            error: `Jeton de paiement non associé à cette commande (associé à "${paidOrderId}").`
+          });
+        }
+
+        // 3. Amount equality check (Requirement 2 - V1 Fix)
+        const expectedAmount = Number(order.totalAmount || 0);
+        if (Math.abs(paidAmount - expectedAmount) > 0.01) {
+          console.warn(`🚨 [Payment Security] Montant payé non conforme pour #${order.id} : reçu ${paidAmount}, attendu ${expectedAmount}`);
+          return res.status(400).json({
+            success: false,
+            error: `Montant payé (${paidAmount} ${paidCurrency}) non conforme au total de la commande (${expectedAmount} ${order.currencyCode || 'XOF'}).`
+          });
+        }
+
+        // 4. Currency exact match (Requirement 2)
+        const expectedCurrency = (order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF")).toString().trim().toUpperCase();
+        if (paidCurrency !== expectedCurrency) {
+          console.warn(`🚨 [Payment Security] Devise non conforme pour #${order.id} : reçue "${paidCurrency}", attendue "${expectedCurrency}"`);
+          return res.status(400).json({
+            success: false,
+            error: `Devise de la transaction ("${paidCurrency}") non conforme à la commande ("${expectedCurrency}").`
+          });
+        }
+
+        // 5. Anti-reuse / token uniqueness (Requirement 5)
+        const tokenAlreadyUsed = orders.some(o => 
+          o.id !== order.id && 
+          o.paymentGatewayTxId === tx && 
+          o.paymentStatus === "Payé"
+        );
+        if (tokenAlreadyUsed) {
+          console.warn(`🚨 [Payment Security] Tentative de réutilisation du jeton ${tx} déjà associé à une autre commande payée.`);
+          return res.status(400).json({
+            success: false,
+            error: "Ce jeton PayDunya a déjà été utilisé pour valider une autre commande."
+          });
+        }
+
+        // All checks passed!
+        const orderCurrency = expectedCurrency;
         order.paymentStatus = "Payé";
         order.status = "En préparation";
         order.paymentGatewayTxId = tx;
@@ -3301,7 +3377,49 @@ app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) =
     const verification = await PaymentGateway.getInstance().verifyPayment("paydunya", txLookup);
 
     if (verification.status === "success") {
-      const orderCurrency = order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF");
+      // --- VULNERABILITY V1 & V3 FIX: STRICT FINANCIAL & IDENTITY CHECKS ---
+      const paidAmount = Number(verification.amount);
+      const paidCurrency = (verification.currencyCode || "").toString().trim().toUpperCase();
+      const paidOrderId = (verification.orderId || "").toString().trim();
+
+      // 1. Mandatory financial information presence and coherence (Requirement 4)
+      if (isNaN(paidAmount) || paidAmount <= 0 || !paidCurrency || !paidOrderId) {
+        console.warn(`🚨 [PayDunya IPN] Informations financières incomplètes ou incohérentes pour tx=${txLookup}`);
+        return res.status(400).json({ success: false, error: "Informations financières de la transaction incomplètes ou incohérentes." });
+      }
+
+      // 2. Order ID exact match (Requirement 2 & 3 - V3 Fix)
+      if (paidOrderId !== order.id) {
+        console.warn(`🚨 [PayDunya IPN] Incohérence commande : jeton associé à "${paidOrderId}", commande ciblée "${order.id}"`);
+        return res.status(400).json({ success: false, error: `Jeton de paiement associé à une autre commande ("${paidOrderId}").` });
+      }
+
+      // 3. Amount equality check (Requirement 2 - V1 Fix)
+      const expectedAmount = Number(order.totalAmount || 0);
+      if (Math.abs(paidAmount - expectedAmount) > 0.01) {
+        console.warn(`🚨 [PayDunya IPN] Montant payé non conforme pour #${order.id} : reçu ${paidAmount}, attendu ${expectedAmount}`);
+        return res.status(400).json({ success: false, error: "Montant payé non conforme au montant total de la commande." });
+      }
+
+      // 4. Currency exact match (Requirement 2)
+      const expectedCurrency = (order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF")).toString().trim().toUpperCase();
+      if (paidCurrency !== expectedCurrency) {
+        console.warn(`🚨 [PayDunya IPN] Devise non conforme pour #${order.id} : reçue "${paidCurrency}", attendue "${expectedCurrency}"`);
+        return res.status(400).json({ success: false, error: "Devise du paiement non conforme à la commande." });
+      }
+
+      // 5. Anti-reuse / token uniqueness (Requirement 5)
+      const tokenAlreadyUsed = orders.some(o => 
+        o.id !== order.id && 
+        o.paymentGatewayTxId === txLookup && 
+        o.paymentStatus === "Payé"
+      );
+      if (tokenAlreadyUsed) {
+        console.warn(`🚨 [PayDunya IPN] Tentative de réutilisation du jeton ${txLookup} déjà utilisé sur commande payée.`);
+        return res.status(400).json({ success: false, error: "Ce jeton PayDunya a déjà été utilisé pour valider une autre commande." });
+      }
+
+      const orderCurrency = expectedCurrency;
       order.paymentStatus = "Payé";
       order.status = "En préparation";
       order.paymentGatewayTxId = token || txLookup;
@@ -3498,6 +3616,22 @@ app.post("/api/subscriptions/confirm", async (req, res) => {
 
 // POST simulation test endpoint to transition PayDunya invoice status
 app.post("/api/payments/paydunya/test-set-status", (req, res) => {
+  // 1. Strict deactivation in production
+  if (isProductionEnvironment()) {
+    return res.status(403).json({
+      success: false,
+      error: "Accès refusé : Cet endpoint de simulation test est strictement désactivé en environnement de production."
+    });
+  }
+
+  // 2. In development, require admin authorization to manually transition a test invoice
+  if (!isAdminAuthorized(req)) {
+    return res.status(403).json({
+      success: false,
+      error: "Accès refusé : Authentification administrateur requise pour modifier manuellement le statut d'une facture de test."
+    });
+  }
+
   const { token, transactionId, status } = req.body || {};
   const targetId = token || transactionId;
   if (!targetId || !status) {
@@ -3517,6 +3651,11 @@ app.post("/api/payments/paydunya/test-set-status", (req, res) => {
 
 // GET PayDunya simulation test checkout interface
 app.get("/checkout/paydunya-test", (req, res) => {
+  // 1. Strict deactivation in production
+  if (isProductionEnvironment()) {
+    return res.status(404).send("Page introuvable en environnement de production.");
+  }
+
   const token = String(req.query.token || "");
   const orderId = String(req.query.orderId || "");
   const invoice = getPayDunyaInvoice(token) || getPayDunyaInvoice(orderId);
@@ -3535,7 +3674,7 @@ app.get("/checkout/paydunya-test", (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PayDunya - Passerelle de Test Sécurisée</title>
+  <title>PayDunya - Passerelle de Test Sécurisée (Développement)</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0c0d0e; color: #f3f4f6; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
     .card { background: #18191c; border: 1px solid #2a2c33; border-radius: 16px; max-width: 480px; width: 100%; padding: 28px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
@@ -3551,6 +3690,11 @@ app.get("/checkout/paydunya-test", (req, res) => {
     .status-completed { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
     .status-cancelled { background: rgba(156, 163, 175, 0.15); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.3); }
     .status-failed { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .admin-auth-box { background: #121316; border: 1px solid #374151; border-radius: 10px; padding: 12px; margin-bottom: 18px; }
+    .admin-auth-box label { display: block; font-size: 11px; color: #d4af37; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
+    .admin-auth-box input { width: 100%; box-sizing: border-box; background: #1e2025; border: 1px solid #4b5563; border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; outline: none; }
+    .admin-auth-box input:focus { border-color: #10b981; }
+    .error-alert { display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 16px; line-height: 1.4; }
     .btn { display: block; width: 100%; padding: 14px; margin-bottom: 10px; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; transition: transform 0.1s ease; }
     .btn:active { transform: scale(0.98); }
     .btn-success { background: #10b981; color: #fff; }
@@ -3567,8 +3711,8 @@ app.get("/checkout/paydunya-test", (req, res) => {
 <body>
   <div class="card">
     <div class="header">
-      <div class="logo">PayDunya <span style="font-size: 12px; color: #9ca3af; font-weight: normal;">Checkout</span></div>
-      <div class="badge">Environnement Test</div>
+      <div class="logo">PayDunya <span style="font-size: 12px; color: #9ca3af; font-weight: normal;">Checkout (Test)</span></div>
+      <div class="badge">Environnement Sandbox</div>
     </div>
 
     <div class="amount-box">
@@ -3594,8 +3738,16 @@ app.get("/checkout/paydunya-test", (req, res) => {
       </div>
     </div>
 
+    <!-- Contrôle d'authentification administrateur en développement -->
+    <div class="admin-auth-box">
+      <label for="adminAuthKey">🔒 Authentification Administrateur (Requis en développement) :</label>
+      <input type="password" id="adminAuthKey" placeholder="Saisissez votre clé ou jeton d'administrateur" />
+    </div>
+
+    <div id="authErrorAlert" class="error-alert"></div>
+
     <p style="font-size: 12px; color: #9ca3af; margin-bottom: 16px; text-align: center;">
-      Sélectionnez le résultat à simuler pour vérifier le comportement serveur :
+      Sélectionnez le résultat à simuler (action réservée aux administrateurs) :
     </p>
 
     <button class="btn btn-success" onclick="triggerStatus('completed', '${returnUrl}')">
@@ -3612,22 +3764,69 @@ app.get("/checkout/paydunya-test", (req, res) => {
     </button>
 
     <div class="footer">
-      Miabé Asi • Passerelle PayDunya sécurisée (7 pays supportés)
+      Miabé Asi • Passerelle PayDunya sécurisée (Développement)
     </div>
   </div>
 
   <script>
+    // Initialisation automatique du jeton d'authentification depuis la session locale
+    (function initAuth() {
+      const input = document.getElementById('adminAuthKey');
+      const savedToken = localStorage.getItem('asime-admin-token') ||
+                         localStorage.getItem('asime-user-token') ||
+                         new URLSearchParams(window.location.search).get('auth') || '';
+      if (savedToken && input) {
+        input.value = savedToken;
+      }
+    })();
+
     async function triggerStatus(status, redirectTarget) {
+      const errorBox = document.getElementById('authErrorAlert');
+      const authInput = document.getElementById('adminAuthKey');
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+
+      const authToken = (authInput ? authInput.value.trim() : '') ||
+                        localStorage.getItem('asime-admin-token') ||
+                        localStorage.getItem('asime-user-token') ||
+                        new URLSearchParams(window.location.search).get('auth') || '';
+
+      if (!authToken) {
+        errorBox.textContent = "Authentification administrateur requise : Veuillez renseigner une clé administrateur valide pour simuler le statut d'une facture de test.";
+        errorBox.style.display = 'block';
+        return;
+      }
+
       try {
-        await fetch('/api/payments/paydunya/test-set-status', {
+        const response = await fetch('/api/payments/paydunya/test-set-status', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: '${token}', transactionId: '${token}', status: status })
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + authToken
+          },
+          body: JSON.stringify({
+            token: '${token}',
+            transactionId: '${token}',
+            status: status,
+            auth: authToken
+          })
         });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          errorBox.textContent = data.error || "Accès refusé : Authentification administrateur invalide.";
+          errorBox.style.display = 'block';
+          return;
+        }
+
+        // Si authentifié avec succès, rediriger vers l'URL prévue
+        window.location.href = redirectTarget;
       } catch (e) {
         console.error('Error setting test status:', e);
+        errorBox.textContent = "Erreur de connexion avec le serveur.";
+        errorBox.style.display = 'block';
       }
-      window.location.href = redirectTarget;
     }
   </script>
 </body>
