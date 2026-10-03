@@ -1185,40 +1185,87 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Handle return from PayDunya checkout URL (?payment=success or ?payment=cancel)
-    const params = new URLSearchParams(window.location.search);
+    // Handle return from PayDunya checkout URL (?payment=return, ?payment=success, or ?payment=cancel)
+    const rawSearch = window.location.search || "";
+    if (!rawSearch) return;
+
+    // Normalize in case PayDunya appended ?token=... instead of &token=...
+    const normalizedSearch = rawSearch.length > 1
+      ? "?" + rawSearch.slice(1).replace(/\?/g, "&")
+      : rawSearch;
+    const params = new URLSearchParams(normalizedSearch);
     const paymentStatus = params.get("payment");
-    const orderId = params.get("orderId") || params.get("order_id");
+    const orderId = (params.get("orderId") || params.get("order_id") || "").trim();
+    const urlTokens = params
+      .getAll("token")
+      .map(t => t.trim())
+      .filter(t => t && t !== "{token}");
+    const storedToken = orderId
+      ? (
+          sessionStorage.getItem(`paydunya_token_${orderId}`) ||
+          localStorage.getItem(`paydunya_token_${orderId}`) ||
+          ""
+        ).trim()
+      : "";
+    const paymentToken = urlTokens[urlTokens.length - 1] || storedToken;
 
-    if ((paymentStatus === "success" || paymentStatus === "return") && orderId) {
-      showToast("✓ Paiement PayDunya validé ! Votre commande est confirmée.");
-      confetti({
-        particleCount: 150,
-        spread: 80,
-        origin: { y: 0.6 }
-      });
-      // Verify payment with server
-      fetch("/api/payments/confirm", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { "Authorization": token } : {})
-        },
-        body: JSON.stringify({
-          orderId,
-          providerId: "paydunya",
-          transactionId: orderId
-        })
-      }).catch(err => console.error("Error confirming payment on return:", err));
-
+    if ((paymentStatus === "success" || paymentStatus === "return") && (orderId || paymentToken)) {
       try {
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (e) {}
+
+      // Verify payment with server using the real PayDunya token as transactionId.
+      // Only show success toast and confetti AFTER a successful HTTP confirmation from /api/payments/confirm.
+      (async () => {
+        try {
+          const res = await fetch("/api/payments/confirm", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(token ? { "Authorization": token } : {})
+            },
+            body: JSON.stringify({
+              orderId,
+              providerId: "paydunya",
+              transactionId: paymentToken
+            })
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if (res.ok && data.success === true && data.status === "completed") {
+            if (orderId) {
+              try {
+                sessionStorage.removeItem(`paydunya_token_${orderId}`);
+                localStorage.removeItem(`paydunya_token_${orderId}`);
+              } catch (e) {}
+            }
+            setCart([]);
+            showToast("✓ Paiement PayDunya validé ! Votre commande est confirmée.");
+            confetti({
+              particleCount: 150,
+              spread: 80,
+              origin: { y: 0.6 }
+            });
+          } else if (data.status === "pending") {
+            showToast(data.message || "⏳ Le paiement PayDunya est en cours de validation par l'opérateur.");
+          } else if (data.status === "cancelled") {
+            showToast(data.message || "Le paiement PayDunya a été annulé par le client.");
+          } else if (data.status === "failed") {
+            showToast(data.message || "Le paiement PayDunya a échoué ou a été refusé.");
+          } else {
+            showToast(data.error || data.message || "Impossible de confirmer financièrement le paiement.");
+          }
+        } catch (err) {
+          console.error("Error confirming payment on return:", err);
+          showToast("Erreur réseau lors de la vérification du paiement PayDunya.");
+        }
+      })();
     } else if (paymentStatus === "cancel") {
-      showToast("Paiement annulé par l'utilisateur.");
       try {
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (e) {}
+      showToast("Paiement annulé par l'utilisateur.");
     }
   }, [token]);
 
@@ -2283,8 +2330,14 @@ export default function App() {
 
       const payData = await payRes.json();
       if (payData.success) {
-        // Only redirect externally if it is a real live external gateway URL
-        if (payData.session?.redirectUrl && !payData.session.redirectUrl.includes("paydunya-test") && (payData.session.redirectUrl.startsWith("http://") || payData.session.redirectUrl.startsWith("https://"))) {
+        if (orderId && payData.session?.transactionId) {
+          try {
+            sessionStorage.setItem(`paydunya_token_${orderId}`, String(payData.session.transactionId).trim());
+            localStorage.setItem(`paydunya_token_${orderId}`, String(payData.session.transactionId).trim());
+          } catch (e) {}
+        }
+        // Redirect to official external gateway URL
+        if (payData.session?.redirectUrl && (payData.session.redirectUrl.startsWith("http://") || payData.session.redirectUrl.startsWith("https://"))) {
           showToast("Redirection vers le guichet de paiement sécurisé...");
           window.location.href = payData.session.redirectUrl;
           return;

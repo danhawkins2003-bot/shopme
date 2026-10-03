@@ -171,7 +171,8 @@ DECLARE
     v_currency RECORD;
     v_item RECORD;
     v_seller RECORD;
-    v_affiliate RECORD;
+    v_affiliate_profile_id TEXT := NULL;
+    v_affiliate_role TEXT := NULL;
     
     v_order_currency VARCHAR(3);
     v_decimals SMALLINT;
@@ -303,17 +304,17 @@ BEGIN
 
     -- 6. Validation stricte de l'affilié rattaché
     IF v_order.affiliate_id IS NOT NULL AND TRIM(v_order.affiliate_id) <> '' THEN
-        SELECT id, role INTO v_affiliate FROM public.profiles WHERE id = v_order.affiliate_id;
+        SELECT id, role INTO v_affiliate_profile_id, v_affiliate_role FROM public.profiles WHERE id = v_order.affiliate_id;
     ELSIF v_order.affiliate_code IS NOT NULL AND TRIM(v_order.affiliate_code) <> '' THEN
-        SELECT id, role INTO v_affiliate FROM public.profiles WHERE affiliate_code = v_order.affiliate_code;
+        SELECT id, role INTO v_affiliate_profile_id, v_affiliate_role FROM public.profiles WHERE affiliate_code = v_order.affiliate_code;
     END IF;
 
-    IF v_affiliate.id IS NOT NULL 
-       AND v_affiliate.role = 'affilie'
-       AND v_affiliate.id <> v_order.user_id 
-       AND NOT (v_affiliate.id = ANY(v_seller_ids)) THEN
+    IF v_affiliate_profile_id IS NOT NULL 
+       AND v_affiliate_role = 'affilie'
+       AND v_affiliate_profile_id <> v_order.user_id 
+       AND NOT (v_affiliate_profile_id = ANY(v_seller_ids)) THEN
         v_is_valid_affiliate := true;
-        v_resolved_affiliate_id := v_affiliate.id;
+        v_resolved_affiliate_id := v_affiliate_profile_id;
     ELSE
         v_is_valid_affiliate := false;
         v_resolved_affiliate_id := NULL;

@@ -128,7 +128,7 @@ export class WalletManager {
       if (affiliateUserId) {
         affiliateCommission = customAffiliateCommission !== undefined && customAffiliateCommission >= 0
           ? customAffiliateCommission
-          : Math.floor(totalAmount * 0.03); // Taux existant de 3%
+          : Math.round(miabeAsiGrossShare * 0.03); // 3% de la part de la plateforme (10%)
         
         // Prevent double credit
         const doubleCommissionCheck = Object.values(data.wallets[affiliateUserId]?.history || []).some(

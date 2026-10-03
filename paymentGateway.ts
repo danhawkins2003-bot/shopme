@@ -398,12 +398,12 @@ export class PayDunyaProvider implements IPaymentProvider {
     const appBaseUrl = process.env.APP_URL || "http://localhost:3000";
 
     const returnUrl = isSubscription
-      ? `${appBaseUrl}/?payment=sub_return&subId=${orderId}&token={token}`
-      : `${appBaseUrl}/?payment=return&orderId=${orderId}&token={token}`;
+      ? `${appBaseUrl}/?payment=sub_return&subId=${encodeURIComponent(orderId)}`
+      : `${appBaseUrl}/?payment=return&orderId=${encodeURIComponent(orderId)}`;
 
     const cancelUrl = isSubscription
-      ? `${appBaseUrl}/?payment=sub_cancel&subId=${orderId}&token={token}`
-      : `${appBaseUrl}/?payment=cancel&orderId=${orderId}&token={token}`;
+      ? `${appBaseUrl}/?payment=sub_cancel&subId=${encodeURIComponent(orderId)}`
+      : `${appBaseUrl}/?payment=cancel&orderId=${encodeURIComponent(orderId)}`;
 
     const callbackUrl = `${appBaseUrl}/api/payments/paydunya/ipn`;
 
@@ -505,67 +505,21 @@ export class PayDunyaProvider implements IPaymentProvider {
           };
         } else {
           console.warn("[PayDunya API] Échec création facture en ligne:", resData);
-          if (mode === "live") {
-            throw new Error(resData?.response_text || `Erreur PayDunya: ${resData?.response_code || "Inconnue"}`);
-          }
+          throw new Error(resData?.response_text || `Erreur PayDunya: ${resData?.response_code || "Inconnue"}`);
         }
       } catch (err: any) {
-        if (mode === "live") {
-          throw err;
-        }
-        console.warn("[PayDunya API] Bascule vers l'environnement de test sécurisé:", err.message);
+        throw err;
       }
     }
 
-    // If in Production mode, keys MUST be provided to debit real money
-    if (mode === "live" && (!privateKey || !token)) {
-      throw new Error("Paiement réel en direct actif (Mode Production) : les clés API officielles PayDunya (Master Key, Private Key, Token) sont requises pour débiter réellement le client. Veuillez les renseigner dans l'Espace Administrateur > Paramètres ou choisir 'Espèces à la livraison'.");
-    }
-
-    // Test / Sandbox mode with full server-verified lifecycle
-    const testToken = "PD-TOK-" + crypto.randomBytes(6).toString("hex").toUpperCase();
-    const testCheckoutUrl = `${appBaseUrl}/checkout/paydunya-test?token=${testToken}&orderId=${encodeURIComponent(orderId)}`;
-
-    recordPayDunyaInvoice({
-      token: testToken,
-      orderId,
-      amount,
-      currencyCode,
-      countryCode,
-      clientCountryCode,
-      sellerCountryCode,
-      isCrossBorder,
-      status: "pending",
-      type: isSubscription ? "subscription" : "order",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      redirectUrl: testCheckoutUrl,
-      customerName: customer.name,
-      customerPhone: customer.phone,
-      customerEmail: customer.email
-    });
-
-    return {
-      success: true,
-      transactionId: testToken,
-      providerId: this.id,
-      amount,
-      currencyCode,
-      countryCode,
-      clientCountryCode,
-      sellerCountryCode,
-      isCrossBorder,
-      status: "pending",
-      redirectUrl: testCheckoutUrl,
-      instructions: `[MODE TEST/DÉMO] Session PayDunya #${orderId} (${amount} ${currencyCode}) en attente de paiement.`
-    };
+    throw new Error("Paiement PayDunya : Les clés API officielles PayDunya (Master Key, Private Key, Token) sont requises pour initier le paiement sécurisé. Veuillez les renseigner dans l'Espace Administrateur > Paramètres.");
   }
 
   async verifyPayment(transactionId: string): Promise<PaymentVerificationResult> {
     const { masterKey, privateKey, token } = this.getApiKeys();
 
-    // 1. If live keys are present and not a simulated PD-TOK, call PayDunya confirm API
-    if (privateKey && token && !transactionId.startsWith("PD-TOK-") && !transactionId.startsWith("TX-PD-MOCK")) {
+    // 1. If keys are present, call official PayDunya confirm API
+    if (privateKey && token) {
       try {
         const baseUrl = this.getBaseUrl();
         const response = await fetch(`${baseUrl}/checkout-invoice/confirm/${transactionId}`, {

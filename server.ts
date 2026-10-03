@@ -69,7 +69,13 @@ import {
   saveAppData,
   loadAppData,
   recordTombstoneInSupabase,
-  loadTombstonesFromSupabase
+  loadTombstonesFromSupabase,
+  getSupabaseServiceClient,
+  getOrderSplitSummaryFromSupabase,
+  ensureOrderReadyForSupabaseSplit,
+  getWalletFromSupabase,
+  getAllWalletsFromSupabase,
+  getWalletLedgerLogsFromSupabase
 } from "./supabaseHelper";
 
 const app = express();
@@ -395,19 +401,6 @@ function isAdminAuthorized(req: express.Request): boolean {
   return false;
 }
 
-function isProductionEnvironment(): boolean {
-  const nodeEnv = (process.env.NODE_ENV || "").toLowerCase().trim();
-  let paydunyaMode = (process.env.PAYDUNYA_MODE || "").toLowerCase().trim();
-  if (!paydunyaMode) {
-    try {
-      const settings = readJSONFile<any>(SETTINGS_FILE, {});
-      if (settings?.paydunyaMode) {
-        paydunyaMode = String(settings.paydunyaMode).toLowerCase().trim();
-      }
-    } catch {}
-  }
-  return nodeEnv === "production" || paydunyaMode === "live" || paydunyaMode === "production";
-}
 
 function sanitizeString(input: any): string {
   if (typeof input !== "string") return "";
@@ -2628,143 +2621,294 @@ app.post("/api/affiliate/click", (req, res) => {
   res.json({ success: true, affiliateName: affiliate.name });
 });
 
-// Helper function to process automatic marketplace payment split
-function executeOrderRevenueSplit(orderId: string): boolean {
-  const orders = readJSONFile<any[]>(ORDERS_FILE, []);
-  const orderIndex = orders.findIndex(o => o.id === orderId);
-  if (orderIndex === -1) return false;
-  
-  const order = orders[orderIndex];
-  if (order.splitProcessed) {
-    return true; // Already processed
-  }
-  
-  const users = readJSONFile<any[]>(USERS_FILE, []);
-  const orderCurrency = order.currencyCode || (order.destinationCountryCode === "CM" || order.clientCountryCode === "CM" ? "XAF" : "XOF");
-  const totalAmount = Number(order.totalAmount || 0);
+// In-memory promise map to deduplicate concurrent split requests on the same instance
+const inFlightOrderSplits = new Map<
+  string,
+  Promise<{ success: boolean; alreadyProcessed?: boolean; summary?: any; error?: string }>
+>();
 
-  // 1. Validate affiliate attribution
-  // Un affilié gagne une commission UNIQUEMENT lorsqu'un client achète réellement via son lien/code d'affiliation attribué à la vente
-  // et s'il correspond à un utilisateur avec le rôle "affilie"
-  let affiliateUserId: string | null = null;
-  let validAffiliateUser: any = null;
-  
-  if (order.affiliateCode) {
-    const affUser = users.find(u => (u.affiliateCode && u.affiliateCode === order.affiliateCode) || u.id === order.affiliateCode);
-    if (affUser && affUser.role === "affilie") {
-      affiliateUserId = affUser.id;
-      validAffiliateUser = affUser;
+// Helper function to process automatic marketplace payment split.
+// Uses Supabase RPC `process_order_revenue_split` (with strict service_role privileges) as the single financial source of truth.
+// Never falls back to wallets.json or SUPABASE_ANON_KEY, and uses summary.sellers_details exclusively for seller revenue & notifications.
+async function executeOrderRevenueSplit(
+  orderId: string
+): Promise<{ success: boolean; alreadyProcessed?: boolean; summary?: any; error?: string }> {
+  const cleanOrderId = String(orderId || "").trim();
+  if (!cleanOrderId) {
+    return { success: false, error: "Identifiant de commande manquant pour la répartition financière." };
+  }
+
+  const existingInFlight = inFlightOrderSplits.get(cleanOrderId);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  const taskPromise = (async (): Promise<{
+    success: boolean;
+    alreadyProcessed?: boolean;
+    summary?: any;
+    error?: string;
+  }> => {
+    const supabaseServer = getSupabaseServiceClient();
+    if (!supabaseServer) {
+      const msg =
+        "Service financier Supabase indisponible : SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY sont requis (aucun fallback local autorisé).";
+      console.error(`🔴 [Supabase RPC Split] ${msg}`);
+      return { success: false, error: msg };
     }
-  }
 
-  // 2. Exact commission math:
-  // - Vendeur reçoit toujours 90% (jamais diminué par affilié)
-  // - Miabé Asi part brute = 10%
-  // - Sans affilié : Miabé Asi conserve 10% en totalité, affilié = 0
-  // - Avec affilié : affilié = 3% (taux existant), prélevé UNIQUEMENT sur les 10% de Miabé Asi (Miabé Asi net = 10% - 3% = 7%)
-  const sellerTotalEarnings = Math.floor(totalAmount * 0.90);
-  const miabeAsiGrossCommission = Math.floor(totalAmount * 0.10);
-  
-  let actualAffiliateCommission = 0;
-  if (validAffiliateUser) {
-    actualAffiliateCommission = (order.affiliateCommission !== undefined && order.affiliateCommission > 0)
-      ? order.affiliateCommission
-      : Math.floor(totalAmount * 0.03);
+    const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+    const orderIndex = orders.findIndex(o => o.id === cleanOrderId);
+    if (orderIndex === -1) {
+      return { success: false, error: `Commande #${cleanOrderId} introuvable.` };
+    }
 
-    // Update user stats in users.json to keep in sync
-    validAffiliateUser.affiliateStats = validAffiliateUser.affiliateStats || {
-      clicks: 0,
-      visiteurs: 0,
-      ventes: 0,
-      chiffreAffaires: 0,
-      commissionsGagnees: 0,
-      commissionDisponible: 0,
-      commissionRetiree: 0
-    };
-    validAffiliateUser.affiliateStats.ventes += 1;
-    validAffiliateUser.affiliateStats.chiffreAffaires += totalAmount;
-    validAffiliateUser.affiliateStats.commissionsGagnees += actualAffiliateCommission;
-    validAffiliateUser.affiliateStats.commissionDisponible += actualAffiliateCommission;
-    
-    validAffiliateUser.notifications = validAffiliateUser.notifications || [];
-    validAffiliateUser.notifications.unshift({
-      id: "notif_split_aff_" + Date.now().toString(),
-      text: `Félicitations ! Vous avez gagné une commission de ${actualAffiliateCommission.toLocaleString()} ${orderCurrency} (3%) pour la vente affiliée de la commande #${orderId}. (Prélevée sur la part Miabé Asi)`,
-      type: "affiliate",
-      read: false,
-      date: new Date().toISOString()
-    });
-  } else {
-    // No valid affiliate attribution exists
-    actualAffiliateCommission = 0;
-    order.affiliateCode = null;
-  }
+    const order = orders[orderIndex];
+    const users = readJSONFile<any[]>(USERS_FILE, []);
+    const orderCurrency = (
+      order.currencyCode ||
+      (order.destinationCountryCode === "CM" || order.clientCountryCode === "CM" ? "XAF" : "XOF")
+    ).toString().trim().toUpperCase();
+    const totalAmount = Number(order.totalAmount || 0);
 
-  const miabeAsiNetCommission = miabeAsiGrossCommission - actualAffiliateCommission;
+    // 1. Validate affiliate attribution
+    let affiliateUserId: string | null = null;
+    let validAffiliateUser: any = null;
+    let validAffiliateCode: string | null = null;
 
-  // Persist financial breakdown on order
-  order.sellerEarnings = sellerTotalEarnings;
-  order.miabeAsiGrossCommission = miabeAsiGrossCommission;
-  order.affiliateCommission = actualAffiliateCommission;
-  order.miabeAsiNetCommission = miabeAsiNetCommission;
-  order.currencyCode = orderCurrency;
+    if (order.affiliateCode) {
+      const affUser = users.find(
+        u => (u.affiliateCode && u.affiliateCode === order.affiliateCode) || u.id === order.affiliateCode
+      );
+      if (affUser && affUser.role === "affilie") {
+        affiliateUserId = affUser.id;
+        validAffiliateUser = affUser;
+        validAffiliateCode = affUser.affiliateCode || affUser.id;
+      }
+    }
 
-  // 3. Prepare seller credentials mapping
-  const sellerCredentials = users.filter(u => u.role === "vendeur").map(u => ({
-    id: u.id,
-    name: u.name,
-    businessName: u.businessName
-  }));
+    // 2. Ensure order, profiles, and order_items are synced in Supabase in an idempotent, race-free manner
+    const prep = await ensureOrderReadyForSupabaseSplit(
+      supabaseServer,
+      order,
+      users,
+      affiliateUserId,
+      validAffiliateCode
+    );
 
-  // Update seller stats in users.json to keep in sync (Seller gets 90% guaranteed)
-  for (const item of order.items) {
-    const itemTotal = item.product.prix * item.quantity;
-    const sellerEarnings = Math.floor(itemTotal * 0.90);
-    const partnerName = item.product.partenaire || "Boutique en Direct";
-    
-    const sellerUser = users.find(u => u.role === "vendeur" && (u.businessName === partnerName || u.name === partnerName));
-    if (sellerUser) {
-      sellerUser.vendeurStats = sellerUser.vendeurStats || {
-        produitsPublies: 0,
-        produitsVendus: 0,
-        revenusGeneres: 0,
-        stockRestant: 0
+    if (!prep.ready) {
+      const errMsg = prep.error || `Échec de la préparation Supabase pour la commande #${order.id}.`;
+      console.error(`🔴 [Supabase RPC Split] ${errMsg}`);
+      return { success: false, error: errMsg };
+    }
+
+    // 3. Authoritative PostgreSQL RPC execution (holds row-level FOR UPDATE lock across all Vercel instances)
+    const { data: rpcResult, error: rpcError } = await supabaseServer.rpc(
+      "process_order_revenue_split",
+      { p_order_id: order.id }
+    );
+
+    if (rpcError) {
+      console.error(`🔴 [Supabase RPC Split] Erreur RPC sur commande #${order.id}:`, rpcError.message);
+      return {
+        success: false,
+        error: `Erreur RPC Supabase (process_order_revenue_split): ${rpcError.message}`
       };
-      sellerUser.vendeurStats.produitsVendus += item.quantity;
-      sellerUser.vendeurStats.revenusGeneres += sellerEarnings;
-      
-      sellerUser.notifications = sellerUser.notifications || [];
-      sellerUser.notifications.unshift({
-        id: "notif_split_sel_" + Date.now().toString() + "_" + Math.floor(Math.random() * 100),
-        text: `Nouvelle commande payée ! Votre produit "${item.product.nom}" (x${item.quantity}) a été vendu. Votre portefeuille a été crédité de ${sellerEarnings.toLocaleString()} ${orderCurrency} (Part vendeur 90% garantie).`,
-        type: "sale",
-        read: false,
-        date: new Date().toISOString()
-      });
     }
-  }
 
-  // Run the ledger split in wallets.json
-  const splitResult = WalletManager.processOrderSplit(
-    orderId,
-    totalAmount,
-    order.items,
-    sellerCredentials,
-    affiliateUserId,
-    orderCurrency,
-    actualAffiliateCommission
-  );
+    if (!rpcResult || rpcResult.success !== true) {
+      const rpcErrText = rpcResult?.error || "La RPC process_order_revenue_split n'a pas confirmé le traitement.";
+      console.error(`🔴 [Supabase RPC Split] Réponse d'échec RPC sur #${order.id}:`, rpcErrText);
+      return {
+        success: false,
+        error: rpcErrText
+      };
+    }
 
-  // Save updated users and order status only if ledger split succeeded
-  if (splitResult.success) {
+    // 4. Handle already_processed: retrieve existing split_summary from Supabase and never overwrite with undefined
+    if (rpcResult.already_processed === true) {
+      let persisted: Awaited<ReturnType<typeof getOrderSplitSummaryFromSupabase>> = null;
+      try {
+        persisted = await getOrderSplitSummaryFromSupabase(supabaseServer, order.id);
+      } catch (fetchErr: any) {
+        console.warn(`⚠️ [Supabase RPC Split] Lecture split_summary existant (#${order.id}):`, fetchErr.message);
+      }
+
+      const existingSummary =
+        (rpcResult.summary && typeof rpcResult.summary === "object" ? rpcResult.summary : null) ||
+        (persisted?.split_summary && typeof persisted.split_summary === "object" ? persisted.split_summary : null) ||
+        (prep.existingSummary && typeof prep.existingSummary === "object" ? prep.existingSummary : null) ||
+        (order.splitSummary && typeof order.splitSummary === "object" ? order.splitSummary : null);
+
+      if (existingSummary) {
+        order.splitSummary = existingSummary;
+        if (existingSummary.sellers_total !== undefined && existingSummary.sellers_total !== null) {
+          order.sellerEarnings = Number(existingSummary.sellers_total);
+        }
+        if (existingSummary.platform_gross !== undefined && existingSummary.platform_gross !== null) {
+          order.miabeAsiGrossCommission = Number(existingSummary.platform_gross);
+        }
+        if (existingSummary.affiliate_commission !== undefined && existingSummary.affiliate_commission !== null) {
+          order.affiliateCommission = Number(existingSummary.affiliate_commission);
+        }
+        if (existingSummary.platform_net !== undefined && existingSummary.platform_net !== null) {
+          order.miabeAsiNetCommission = Number(existingSummary.platform_net);
+        }
+        if (existingSummary.currency) {
+          order.currencyCode = String(existingSummary.currency).trim().toUpperCase();
+        }
+      } else if (persisted) {
+        if (persisted.seller_earnings !== undefined) order.sellerEarnings = persisted.seller_earnings;
+        if (persisted.platform_gross_commission !== undefined) order.miabeAsiGrossCommission = persisted.platform_gross_commission;
+        if (persisted.affiliate_commission !== undefined) order.affiliateCommission = persisted.affiliate_commission;
+        if (persisted.platform_net_commission !== undefined) order.miabeAsiNetCommission = persisted.platform_net_commission;
+        if (persisted.currency_code) order.currencyCode = persisted.currency_code;
+      }
+
+      order.splitProcessed = true;
+      order.paymentStatus = "Payé";
+      writeJSONFile(ORDERS_FILE, orders);
+      console.log(`ℹ️ [Supabase RPC Split] Commande #${order.id} déjà ventilée (idempotence multi-instance respectée).`);
+      return {
+        success: true,
+        alreadyProcessed: true,
+        summary: order.splitSummary
+      };
+    }
+
+    // 5. First-time RPC split execution: use RPC summary and summary.sellers_details exclusively
+    const summary = rpcResult.summary && typeof rpcResult.summary === "object" ? rpcResult.summary : null;
+    if (!summary) {
+      return {
+        success: false,
+        error: "Réponse RPC invalide : résumé financier (summary) absent."
+      };
+    }
+
+    const sellerTotalEarnings = Number(summary.sellers_total ?? 0);
+    const miabeAsiGrossCommission = Number(summary.platform_gross ?? 0);
+    const actualAffiliateCommission = Number(summary.affiliate_commission ?? 0);
+    const miabeAsiNetCommission = Number(summary.platform_net ?? 0);
+    const resolvedCurrency = String(summary.currency || orderCurrency).trim().toUpperCase();
+
+    order.sellerEarnings = sellerTotalEarnings;
+    order.miabeAsiGrossCommission = miabeAsiGrossCommission;
+    order.affiliateCommission = actualAffiliateCommission;
+    order.miabeAsiNetCommission = miabeAsiNetCommission;
+    order.currencyCode = resolvedCurrency;
+    order.splitSummary = summary;
     order.splitProcessed = true;
+    order.paymentStatus = "Payé";
+
+    // Affiliate stats & notification from RPC summary
+    if (!validAffiliateUser || !summary.affiliate_id || actualAffiliateCommission <= 0) {
+      order.affiliateCode = summary.affiliate_id ? order.affiliateCode : null;
+    } else {
+      validAffiliateUser.affiliateStats = validAffiliateUser.affiliateStats || {
+        clicks: 0,
+        visiteurs: 0,
+        ventes: 0,
+        chiffreAffaires: 0,
+        commissionsGagnees: 0,
+        commissionDisponible: 0,
+        commissionRetiree: 0
+      };
+      validAffiliateUser.affiliateStats.ventes += 1;
+      validAffiliateUser.affiliateStats.chiffreAffaires += Number(summary.order_total ?? totalAmount);
+      validAffiliateUser.affiliateStats.commissionsGagnees += actualAffiliateCommission;
+      validAffiliateUser.affiliateStats.commissionDisponible += actualAffiliateCommission;
+
+      validAffiliateUser.notifications = validAffiliateUser.notifications || [];
+      const affNotifId = `notif_split_aff_${order.id}`;
+      if (!validAffiliateUser.notifications.some((n: any) => n.id === affNotifId)) {
+        validAffiliateUser.notifications.unshift({
+          id: affNotifId,
+          text: `Félicitations ! Vous avez gagné une commission de ${actualAffiliateCommission.toLocaleString()} ${resolvedCurrency} (3% de la part Miabé Asi) pour la commande #${order.id}.`,
+          type: "affiliate",
+          read: false,
+          date: new Date().toISOString()
+        });
+      }
+    }
+
+    // Seller stats & notifications strictly from summary.sellers_details returned by the RPC (never itemTotal * 0.90)
+    const sellersDetails = Array.isArray(summary.sellers_details) ? summary.sellers_details : [];
+    for (const detail of sellersDetails) {
+      const vendeurId = String(detail?.vendeur_id || "").trim();
+      const sellerShare = Number(detail?.seller_share_90 ?? 0);
+      if (!vendeurId) continue;
+
+      const matchingItems = (order.items || []).filter((it: any) => {
+        const prod = it.product || {};
+        const partnerName = String(prod.partenaire || "Boutique en Direct").trim();
+        const itemSellerUser = users.find(
+          u => u.role === "vendeur" && (u.id === prod.vendeurId || u.businessName === partnerName || u.name === partnerName)
+        );
+        const resolvedSellerId = String(
+          prod.vendeurId ||
+          itemSellerUser?.id ||
+          ("seller_" + partnerName.toLowerCase().replace(/[^a-z0-9]+/g, "_"))
+        ).trim();
+        return resolvedSellerId === vendeurId;
+      });
+
+      const sellerUser =
+        users.find(u => u.role === "vendeur" && u.id === vendeurId) ||
+        (matchingItems.length > 0
+          ? users.find(
+              u =>
+                u.role === "vendeur" &&
+                (u.businessName === (matchingItems[0].product?.partenaire || "Boutique en Direct") ||
+                  u.name === (matchingItems[0].product?.partenaire || "Boutique en Direct"))
+            )
+          : undefined);
+
+      if (sellerUser) {
+        const totalQtyForSeller =
+          matchingItems.reduce((sum: number, it: any) => sum + Math.max(1, Number(it.quantity || 1)), 0) || 1;
+        const productNames =
+          matchingItems
+            .map((it: any) => `${it.product?.nom || "Article"} (x${it.quantity || 1})`)
+            .join(", ") || `Commande #${order.id}`;
+
+        sellerUser.vendeurStats = sellerUser.vendeurStats || {
+          produitsPublies: 0,
+          produitsVendus: 0,
+          revenusGeneres: 0,
+          stockRestant: 0
+        };
+        sellerUser.vendeurStats.produitsVendus += totalQtyForSeller;
+        sellerUser.vendeurStats.revenusGeneres += sellerShare;
+
+        sellerUser.notifications = sellerUser.notifications || [];
+        const sellerNotifId = `notif_split_sel_${order.id}_${vendeurId}`;
+        if (!sellerUser.notifications.some((n: any) => n.id === sellerNotifId)) {
+          sellerUser.notifications.unshift({
+            id: sellerNotifId,
+            text: `Nouvelle commande payée ! Produit(s) vendu(s) : ${productNames}. Votre portefeuille Supabase a été crédité de ${sellerShare.toLocaleString()} ${resolvedCurrency} (Part vendeur 90% garantie).`,
+            type: "sale",
+            read: false,
+            date: new Date().toISOString()
+          });
+        }
+      }
+    }
+
     writeJSONFile(USERS_FILE, users);
     writeJSONFile(ORDERS_FILE, orders);
-    console.log(`Order split completed for order ${orderId}:`, splitResult);
-    return true;
-  } else {
-    console.warn(`⚠️ [Split Failed] Wallet ledger split failed for order ${orderId}:`, splitResult.logs);
-    return false;
+    console.log(`✅ [Supabase RPC Split] Répartition financière exécutée via process_order_revenue_split pour #${order.id}:`, summary);
+    return {
+      success: true,
+      alreadyProcessed: false,
+      summary
+    };
+  })();
+
+  inFlightOrderSplits.set(cleanOrderId, taskPromise);
+  try {
+    return await taskPromise;
+  } finally {
+    inFlightOrderSplits.delete(cleanOrderId);
   }
 }
 
@@ -2938,6 +3082,14 @@ app.post("/api/orders/create", checkoutLimiter, (req, res) => {
   const resolvedSellerCity = sellerCity || primaryItem.product?.city || "";
   const resolvedSellerName = sellerName || primaryItem.product?.partenaire || "Vendeur Miabé Asi";
 
+  // Model calculation:
+  // - Vendeur: 90% (jamais réduit par affilié)
+  // - Miabé Asi part brute: 10%
+  // - Affilié: 3% de la part de la plateforme (10%) (si affilié valide)
+  // - Miabé Asi net: solde des 10% (10% brut - commission affilié)
+  const sellerEarnings = Math.round(verifiedTotalAmount * 0.90);
+  const miabeAsiGrossCommission = verifiedTotalAmount - sellerEarnings;
+
   // Affiliate attribution and commission model validation:
   // Un affilié gagne une commission UNIQUEMENT lorsqu'un client achète réellement via son lien/code d'affiliation
   // attribué à la vente et valide dans le système (rôle "affilie").
@@ -2948,18 +3100,11 @@ app.post("/api/orders/create", checkoutLimiter, (req, res) => {
     const affUser = users.find(u => (u.affiliateCode && u.affiliateCode === cleanRef) || u.id === cleanRef);
     if (affUser && affUser.role === "affilie") {
       validAffiliateCode = affUser.affiliateCode || affUser.id;
-      // 3% affiliate commission rate, deducted strictly from Miabé Asi's 10%
-      totalAffiliateCommission = Math.floor(totalAmount * 0.03);
+      // 3% de la part de la plateforme (10%)
+      totalAffiliateCommission = Math.round(miabeAsiGrossCommission * 0.03);
     }
   }
 
-  // Model calculation:
-  // - Vendeur: 90% (jamais réduit par affilié)
-  // - Miabé Asi part brute: 10%
-  // - Affilié: 3% (si affilié valide)
-  // - Miabé Asi net: solde des 10% (10% brut - commission affilié)
-  const sellerEarnings = Math.floor(verifiedTotalAmount * 0.90);
-  const miabeAsiGrossCommission = Math.floor(verifiedTotalAmount * 0.10);
   const miabeAsiNetCommission = miabeAsiGrossCommission - totalAffiliateCommission;
 
   // Save the Order record with complete cross-border and origin details
@@ -3178,110 +3323,163 @@ app.post("/api/payments/initiate", (req, res) => {
 });
 
 // POST confirm/verify payment
-app.post("/api/payments/confirm", (req, res) => {
-  const { transactionId, providerId = "paydunya", orderId } = req.body || {};
-  const tx = (transactionId || orderId || "").toString().trim();
-  if (!tx) {
-    return res.status(400).json({ success: false, error: "Identifiant de transaction ou de commande requis." });
-  }
+app.post("/api/payments/confirm", async (req, res) => {
+  try {
+    const { transactionId, providerId = "paydunya", orderId } = req.body || {};
+    const receivedToken = (transactionId || "").toString().trim();
+    const requestedOrderId = (orderId || "").toString().trim();
 
-  const orders = readJSONFile<any[]>(ORDERS_FILE, []);
-  // Support lookup by transactionId or orderId
-  const orderIndex = orders.findIndex(o => (orderId && o.id === orderId) || o.paymentGatewayTxId === tx || o.id === tx);
+    if (!receivedToken && !requestedOrderId) {
+      return res.status(400).json({ success: false, error: "Identifiant de transaction ou de commande requis." });
+    }
 
-  if (orderIndex === -1) {
-    return res.status(404).json({ success: false, error: "Commande associée introuvable." });
-  }
+    const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+    // Locate the order by orderId or by its recorded PayDunya transaction token (never treating order.id as a PayDunya token)
+    const orderIndex = orders.findIndex(o =>
+      (requestedOrderId && o.id === requestedOrderId) ||
+      (receivedToken && o.paymentGatewayTxId === receivedToken)
+    );
 
-  const order = orders[orderIndex];
-  if (order.paymentStatus === "Payé") {
-    return res.json({ success: true, status: "completed", message: "La commande est déjà confirmée comme payée.", order });
-  }
+    if (orderIndex === -1) {
+      return res.status(404).json({ success: false, error: "Commande associée introuvable." });
+    }
 
-  PaymentGateway.getInstance().verifyPayment(providerId, tx)
-    .then(result => {
-      if (result.status === "success") {
-        // --- VULNERABILITY V1 & V3 FIX: STRICT FINANCIAL & IDENTITY CHECKS ---
-        const paidAmount = Number(result.amount);
-        const paidCurrency = (result.currencyCode || "").toString().trim().toUpperCase();
-        const paidOrderId = (result.orderId || "").toString().trim();
+    const order = orders[orderIndex];
+    const recordedToken = (order.paymentGatewayTxId || "").toString().trim();
 
-        // 1. Mandatory financial information presence and coherence (Requirement 4)
-        if (isNaN(paidAmount) || paidAmount <= 0 || !paidCurrency || !paidOrderId) {
-          console.warn(`🚨 [Payment Security] Informations financières incomplètes ou incohérentes pour tx=${tx}: amount=${result.amount}, currency=${result.currencyCode}, orderId=${result.orderId}`);
-          return res.status(400).json({
-            success: false,
-            error: "Informations financières de la transaction incomplètes ou incohérentes auprès de la passerelle."
-          });
-        }
+    // Ensure order has a valid PayDunya token (never order.id)
+    if (!recordedToken || recordedToken === order.id) {
+      return res.status(400).json({
+        success: false,
+        error: "Aucun jeton de transaction PayDunya valide n'est enregistré pour cette commande."
+      });
+    }
 
-        // 2. Order ID exact match (Requirement 2 & 3 - V3 Fix)
-        if (paidOrderId !== order.id) {
-          console.warn(`🚨 [Payment Security] Jeton non associé à cette commande : token associé à "${paidOrderId}", commande ciblée "${order.id}"`);
-          return res.status(400).json({
-            success: false,
-            error: `Jeton de paiement non associé à cette commande (associé à "${paidOrderId}").`
-          });
-        }
+    // Verify that the received token matches the recorded token for this order
+    if (!receivedToken || receivedToken === "{token}" || receivedToken !== recordedToken) {
+      console.warn(`🚨 [Payment Security] Le jeton reçu ("${receivedToken}") ne correspond pas au jeton enregistré ("${recordedToken}") pour la commande #${order.id}.`);
+      return res.status(400).json({
+        success: false,
+        error: "Le jeton de transaction reçu ne correspond pas au jeton enregistré pour cette commande."
+      });
+    }
 
-        // 3. Amount equality check (Requirement 2 - V1 Fix)
-        const expectedAmount = Number(order.totalAmount || 0);
-        if (Math.abs(paidAmount - expectedAmount) > 0.01) {
-          console.warn(`🚨 [Payment Security] Montant payé non conforme pour #${order.id} : reçu ${paidAmount}, attendu ${expectedAmount}`);
-          return res.status(400).json({
-            success: false,
-            error: `Montant payé (${paidAmount} ${paidCurrency}) non conforme au total de la commande (${expectedAmount} ${order.currencyCode || 'XOF'}).`
-          });
-        }
+    // Idempotence: if already confirmed as paid AND split was processed, return immediately
+    if (order.paymentStatus === "Payé" && order.splitProcessed === true) {
+      const splitCheck = await executeOrderRevenueSplit(order.id);
+      if (!splitCheck.success) {
+        return res.status(503).json({
+          success: false,
+          error: splitCheck.error || "Erreur de vérification de la répartition financière Supabase."
+        });
+      }
+      const updatedOrders = readJSONFile<any[]>(ORDERS_FILE, []);
+      const updatedOrder = updatedOrders.find(o => o.id === order.id) || order;
+      return res.json({
+        success: true,
+        status: "completed",
+        message: "La commande est déjà confirmée comme payée.",
+        order: updatedOrder
+      });
+    }
 
-        // 4. Currency exact match (Requirement 2)
-        const expectedCurrency = (order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF")).toString().trim().toUpperCase();
-        if (paidCurrency !== expectedCurrency) {
-          console.warn(`🚨 [Payment Security] Devise non conforme pour #${order.id} : reçue "${paidCurrency}", attendue "${expectedCurrency}"`);
-          return res.status(400).json({
-            success: false,
-            error: `Devise de la transaction ("${paidCurrency}") non conforme à la commande ("${expectedCurrency}").`
-          });
-        }
+    // Always use order.paymentGatewayTxId (recordedToken) as PayDunya verification reference, never order.id
+    const result = await PaymentGateway.getInstance().verifyPayment(providerId, recordedToken);
 
-        // 5. Anti-reuse / token uniqueness (Requirement 5)
-        const tokenAlreadyUsed = orders.some(o => 
-          o.id !== order.id && 
-          o.paymentGatewayTxId === tx && 
-          o.paymentStatus === "Payé"
-        );
-        if (tokenAlreadyUsed) {
-          console.warn(`🚨 [Payment Security] Tentative de réutilisation du jeton ${tx} déjà associé à une autre commande payée.`);
-          return res.status(400).json({
-            success: false,
-            error: "Ce jeton PayDunya a déjà été utilisé pour valider une autre commande."
-          });
-        }
+    if (result.status === "success") {
+      // --- VULNERABILITY V1 & V3 FIX: STRICT FINANCIAL & IDENTITY CHECKS ---
+      const paidAmount = Number(result.amount);
+      const paidCurrency = (result.currencyCode || "").toString().trim().toUpperCase();
+      const paidOrderId = (result.orderId || "").toString().trim();
 
-        // All checks passed!
-        const orderCurrency = expectedCurrency;
-        order.paymentStatus = "Payé";
-        order.status = "En préparation";
-        order.paymentGatewayTxId = tx;
-        order.paymentGatewayProvider = providerId;
-        order.paymentMethod = PaymentGateway.getInstance().getProvider(providerId)?.name || "PayDunya";
-        order.paymentConfirmedAt = new Date().toISOString();
-        order.currencyCode = orderCurrency;
-        writeJSONFile(ORDERS_FILE, orders);
+      // 1. Mandatory financial information presence and coherence (Requirement 4)
+      if (isNaN(paidAmount) || paidAmount <= 0 || !paidCurrency || !paidOrderId) {
+        console.warn(`🚨 [Payment Security] Informations financières incomplètes ou incohérentes pour tx=${recordedToken}: amount=${result.amount}, currency=${result.currencyCode}, orderId=${result.orderId}`);
+        return res.status(400).json({
+          success: false,
+          error: "Informations financières de la transaction incomplètes ou incohérentes auprès de la passerelle."
+        });
+      }
 
-        // Execute automatic split of funds to seller and affiliate wallets!
-        executeOrderRevenueSplit(order.id);
+      // 2. Order ID exact match (Requirement 2 & 3 - V3 Fix)
+      if (paidOrderId !== order.id) {
+        console.warn(`🚨 [Payment Security] Jeton non associé à cette commande : token associé à "${paidOrderId}", commande ciblée "${order.id}"`);
+        return res.status(400).json({
+          success: false,
+          error: `Jeton de paiement non associé à cette commande (associé à "${paidOrderId}").`
+        });
+      }
 
-        // Only send payment confirmation notification when payment is truly confirmed
-        const clientUserId = order.userId;
-        if (clientUserId && !clientUserId.startsWith("guest_")) {
-          const users = readJSONFile<any[]>(USERS_FILE, []);
-          const clientIndex = users.findIndex(u => u.id === clientUserId);
-          if (clientIndex > -1) {
-            users[clientIndex].notifications = users[clientIndex].notifications || [];
+      // 3. Amount equality check (Requirement 2 - V1 Fix)
+      const expectedAmount = Number(order.totalAmount || 0);
+      if (Math.abs(paidAmount - expectedAmount) > 0.01) {
+        console.warn(`🚨 [Payment Security] Montant payé non conforme pour #${order.id} : reçu ${paidAmount}, attendu ${expectedAmount}`);
+        return res.status(400).json({
+          success: false,
+          error: `Montant payé (${paidAmount} ${paidCurrency}) non conforme au total de la commande (${expectedAmount} ${order.currencyCode || 'XOF'}).`
+        });
+      }
+
+      // 4. Currency exact match (Requirement 2)
+      const expectedCurrency = (order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF")).toString().trim().toUpperCase();
+      if (paidCurrency !== expectedCurrency) {
+        console.warn(`🚨 [Payment Security] Devise non conforme pour #${order.id} : reçue "${paidCurrency}", attendue "${expectedCurrency}"`);
+        return res.status(400).json({
+          success: false,
+          error: `Devise de la transaction ("${paidCurrency}") non conforme à la commande ("${expectedCurrency}").`
+        });
+      }
+
+      // 5. Anti-reuse / token uniqueness (Requirement 5)
+      const tokenAlreadyUsed = orders.some(o =>
+        o.id !== order.id &&
+        o.paymentGatewayTxId === recordedToken &&
+        o.paymentStatus === "Payé"
+      );
+      if (tokenAlreadyUsed) {
+        console.warn(`🚨 [Payment Security] Tentative de réutilisation du jeton ${recordedToken} déjà associé à une autre commande payée.`);
+        return res.status(400).json({
+          success: false,
+          error: "Ce jeton PayDunya a déjà été utilisé pour valider une autre commande."
+        });
+      }
+
+      // 6. Execute authoritative financial split via Supabase RPC BEFORE marking the order as financially processed!
+      const splitOutcome = await executeOrderRevenueSplit(order.id);
+      if (!splitOutcome.success) {
+        return res.status(503).json({
+          success: false,
+          error: splitOutcome.error || "La répartition financière Supabase (process_order_revenue_split) a échoué."
+        });
+      }
+
+      // Reload fresh orders state updated by executeOrderRevenueSplit
+      const refreshedOrders = readJSONFile<any[]>(ORDERS_FILE, []);
+      const refreshedIndex = refreshedOrders.findIndex(o => o.id === order.id);
+      const targetOrder = refreshedIndex > -1 ? refreshedOrders[refreshedIndex] : order;
+
+      const orderCurrency = targetOrder.currencyCode || expectedCurrency;
+      targetOrder.paymentStatus = "Payé";
+      targetOrder.status = "En préparation";
+      targetOrder.paymentGatewayTxId = recordedToken;
+      targetOrder.paymentGatewayProvider = providerId;
+      targetOrder.paymentMethod = PaymentGateway.getInstance().getProvider(providerId)?.name || "PayDunya";
+      targetOrder.paymentConfirmedAt = targetOrder.paymentConfirmedAt || new Date().toISOString();
+      targetOrder.currencyCode = orderCurrency;
+      targetOrder.splitProcessed = true;
+
+      // Send customer payment confirmation notification ONLY once (when not already processed by IPN/concurrent request)
+      const clientUserId = targetOrder.userId;
+      const buyerNotifId = `notif_pay_${targetOrder.id}`;
+      if (!splitOutcome.alreadyProcessed && !targetOrder.paymentNotificationSent && clientUserId && !clientUserId.startsWith("guest_")) {
+        const users = readJSONFile<any[]>(USERS_FILE, []);
+        const clientIndex = users.findIndex(u => u.id === clientUserId);
+        if (clientIndex > -1) {
+          users[clientIndex].notifications = users[clientIndex].notifications || [];
+          if (!users[clientIndex].notifications.some((n: any) => n.id === buyerNotifId)) {
             users[clientIndex].notifications.unshift({
-              id: "notif_pay_" + Date.now().toString(),
-              text: `Paiement confirmé ! Votre commande #${order.id} d'un montant de ${order.totalAmount.toLocaleString()} ${orderCurrency} a été payée avec succès via PayDunya.`,
+              id: buyerNotifId,
+              text: `Paiement confirmé ! Votre commande #${targetOrder.id} d'un montant de ${Number(targetOrder.totalAmount || 0).toLocaleString()} ${orderCurrency} a été payée avec succès via PayDunya.`,
               type: "order",
               read: false,
               date: new Date().toISOString()
@@ -3289,64 +3487,122 @@ app.post("/api/payments/confirm", (req, res) => {
             writeJSONFile(USERS_FILE, users);
           }
         }
-
-        return res.json({ success: true, status: "completed", message: "Paiement PayDunya validé avec succès !", order });
-      } else if (result.status === "pending") {
-        order.paymentStatus = "En attente";
-        writeJSONFile(ORDERS_FILE, orders);
-        return res.status(200).json({ 
-          success: false, 
-          status: "pending", 
-          message: "Le paiement PayDunya est en cours de validation par l'opérateur.",
-          order 
-        });
-      } else if (result.status === "cancelled") {
-        order.paymentStatus = "Annulé";
-        writeJSONFile(ORDERS_FILE, orders);
-        return res.status(200).json({ 
-          success: false, 
-          status: "cancelled", 
-          message: "Le paiement PayDunya a été annulé par le client.",
-          order 
-        });
-      } else {
-        order.paymentStatus = "Échoué";
-        writeJSONFile(ORDERS_FILE, orders);
-        return res.status(200).json({ 
-          success: false, 
-          status: "failed", 
-          message: "Le paiement PayDunya a échoué ou a été refusé.",
-          order 
-        });
+        targetOrder.paymentNotificationSent = true;
       }
-    })
-    .catch(err => {
-      console.error("Payment confirmation error:", err);
-      res.status(500).json({ success: false, error: err.message });
-    });
+
+      writeJSONFile(ORDERS_FILE, refreshedOrders);
+
+      return res.json({
+        success: true,
+        status: "completed",
+        message: "Paiement PayDunya validé avec succès !",
+        order: targetOrder
+      });
+    } else if (result.status === "pending") {
+      order.paymentStatus = "En attente";
+      writeJSONFile(ORDERS_FILE, orders);
+      return res.status(200).json({
+        success: false,
+        status: "pending",
+        message: "Le paiement PayDunya est en cours de validation par l'opérateur.",
+        order
+      });
+    } else if (result.status === "cancelled") {
+      order.paymentStatus = "Annulé";
+      writeJSONFile(ORDERS_FILE, orders);
+      return res.status(200).json({
+        success: false,
+        status: "cancelled",
+        message: "Le paiement PayDunya a été annulé par le client.",
+        order
+      });
+    } else {
+      order.paymentStatus = "Échoué";
+      writeJSONFile(ORDERS_FILE, orders);
+      return res.status(200).json({
+        success: false,
+        status: "failed",
+        message: "Le paiement PayDunya a échoué ou a été refusé.",
+        order
+      });
+    }
+  } catch (err: any) {
+    console.error("Payment confirmation error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // POST PayDunya Instant Payment Notification (IPN Webhook)
 app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) => {
   try {
-    const body = req.body || {};
-    // PayDunya IPN sends data in { data: { invoice: { token, custom_data: { order_id }, state } } }
-    const invoiceData = body.data?.invoice || body.invoice || body;
-    const token = invoiceData.token || req.query.token || body.token;
-    const customData = invoiceData.custom_data || {};
-    const orderId = customData.order_id || body.orderId || req.query.orderId;
-    const isSubscription = Boolean(customData.is_subscription);
+    const rawBody =
+      typeof req.body === "string"
+        ? (() => {
+            try {
+              return JSON.parse(req.body);
+            } catch {
+              return {};
+            }
+          })()
+        : req.body || {};
 
-    console.log(`📡 [PayDunya IPN] Notification reçue : commande=${orderId || 'N/A'}, token=${token || 'N/A'}`);
+    // Parse body.data when it arrives as a JSON string (application/x-www-form-urlencoded) or object
+    let parsedData: any = rawBody.data;
+    if (typeof parsedData === "string") {
+      try {
+        parsedData = JSON.parse(parsedData);
+      } catch {
+        parsedData = {};
+      }
+    }
+    const dataObj = parsedData && typeof parsedData === "object" ? parsedData : rawBody;
+    const invoiceData =
+      dataObj.invoice && typeof dataObj.invoice === "object"
+        ? dataObj.invoice
+        : rawBody.invoice && typeof rawBody.invoice === "object"
+        ? rawBody.invoice
+        : dataObj;
+
+    let customData: any = dataObj.custom_data ?? invoiceData.custom_data ?? rawBody.custom_data ?? {};
+    if (typeof customData === "string") {
+      try {
+        customData = JSON.parse(customData);
+      } catch {
+        customData = {};
+      }
+    }
+
+    const token = String(
+      dataObj?.invoice?.token ||
+        invoiceData?.token ||
+        dataObj?.token ||
+        rawBody?.token ||
+        req.query?.token ||
+        ""
+    ).trim();
+
+    const orderId = String(
+      dataObj?.custom_data?.order_id ||
+        customData?.order_id ||
+        customData?.orderId ||
+        invoiceData?.custom_data?.order_id ||
+        rawBody?.orderId ||
+        rawBody?.order_id ||
+        req.query?.orderId ||
+        ""
+    ).trim();
+
+    const isSubscription = Boolean(customData?.is_subscription);
+
+    console.log(`📡 [PayDunya IPN] Notification reçue : commande=${orderId || "N/A"}, token=${token || "N/A"}`);
 
     if (!token && !orderId) {
       return res.status(400).json({ success: false, error: "Identifiant token ou commande manquant." });
     }
 
-    const txLookup = token || orderId;
-
     if (isSubscription) {
-      const result = await PaymentGateway.getInstance().verifyPayment("paydunya", txLookup);
+      const subToken = token || orderId;
+      const result = await PaymentGateway.getInstance().verifyPayment("paydunya", subToken);
       if (result.status === "success") {
         console.log(`📡 [PayDunya IPN] Souscription vendeur validée via IPN pour ${customData.customer_phone || orderId}`);
       }
@@ -3354,10 +3610,9 @@ app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) =
     }
 
     const orders = readJSONFile<any[]>(ORDERS_FILE, []);
-    const orderIndex = orders.findIndex(o => 
-      (token && o.paymentGatewayTxId === token) || 
+    const orderIndex = orders.findIndex(o =>
       (orderId && o.id === orderId) ||
-      o.id === txLookup
+      (token && o.paymentGatewayTxId === token)
     );
 
     if (orderIndex === -1) {
@@ -3366,15 +3621,38 @@ app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) =
     }
 
     const order = orders[orderIndex];
+    const recordedToken = (order.paymentGatewayTxId || "").toString().trim();
+
+    if (!recordedToken || recordedToken === order.id) {
+      return res.status(400).json({
+        success: false,
+        error: "Aucun jeton de transaction PayDunya valide n'est enregistré pour cette commande."
+      });
+    }
+
+    if (token && token !== recordedToken) {
+      console.warn(`🚨 [PayDunya IPN] Le jeton IPN reçu ("${token}") ne correspond pas au jeton enregistré ("${recordedToken}") pour #${order.id}`);
+      return res.status(400).json({
+        success: false,
+        error: "Le jeton de paiement reçu ne correspond pas au jeton enregistré pour cette commande."
+      });
+    }
 
     // Protection contre double débit et double traitement (idempotence)
-    if (order.paymentStatus === "Payé") {
-      console.log(`ℹ️ [PayDunya IPN] Commande #${order.id} déjà confirmée comme Payé.`);
+    if (order.paymentStatus === "Payé" && order.splitProcessed === true) {
+      const splitCheck = await executeOrderRevenueSplit(order.id);
+      if (!splitCheck.success) {
+        return res.status(503).json({
+          success: false,
+          error: splitCheck.error || "Erreur de vérification de la répartition financière Supabase."
+        });
+      }
+      console.log(`ℹ️ [PayDunya IPN] Commande #${order.id} déjà confirmée et ventilée.`);
       return res.status(200).json({ success: true, message: "Commande déjà confirmée payée.", orderId: order.id });
     }
 
-    // Authoritative verification via PayDunya REST API
-    const verification = await PaymentGateway.getInstance().verifyPayment("paydunya", txLookup);
+    // Authoritative verification via PayDunya REST API using order.paymentGatewayTxId (never order.id)
+    const verification = await PaymentGateway.getInstance().verifyPayment("paydunya", recordedToken);
 
     if (verification.status === "success") {
       // --- VULNERABILITY V1 & V3 FIX: STRICT FINANCIAL & IDENTITY CHECKS ---
@@ -3384,7 +3662,7 @@ app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) =
 
       // 1. Mandatory financial information presence and coherence (Requirement 4)
       if (isNaN(paidAmount) || paidAmount <= 0 || !paidCurrency || !paidOrderId) {
-        console.warn(`🚨 [PayDunya IPN] Informations financières incomplètes ou incohérentes pour tx=${txLookup}`);
+        console.warn(`🚨 [PayDunya IPN] Informations financières incomplètes ou incohérentes pour tx=${recordedToken}`);
         return res.status(400).json({ success: false, error: "Informations financières de la transaction incomplètes ou incohérentes." });
       }
 
@@ -3409,50 +3687,66 @@ app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) =
       }
 
       // 5. Anti-reuse / token uniqueness (Requirement 5)
-      const tokenAlreadyUsed = orders.some(o => 
-        o.id !== order.id && 
-        o.paymentGatewayTxId === txLookup && 
+      const tokenAlreadyUsed = orders.some(o =>
+        o.id !== order.id &&
+        o.paymentGatewayTxId === recordedToken &&
         o.paymentStatus === "Payé"
       );
       if (tokenAlreadyUsed) {
-        console.warn(`🚨 [PayDunya IPN] Tentative de réutilisation du jeton ${txLookup} déjà utilisé sur commande payée.`);
+        console.warn(`🚨 [PayDunya IPN] Tentative de réutilisation du jeton ${recordedToken} déjà utilisé sur commande payée.`);
         return res.status(400).json({ success: false, error: "Ce jeton PayDunya a déjà été utilisé pour valider une autre commande." });
       }
 
-      const orderCurrency = expectedCurrency;
-      order.paymentStatus = "Payé";
-      order.status = "En préparation";
-      order.paymentGatewayTxId = token || txLookup;
-      order.paymentGatewayProvider = "paydunya";
-      order.paymentMethod = "PayDunya Mobile Money / Carte";
-      order.paymentConfirmedAt = new Date().toISOString();
-      order.currencyCode = orderCurrency;
+      // 6. Execute automatic revenue split via Supabase RPC `process_order_revenue_split` BEFORE marking financially processed
+      const splitOutcome = await executeOrderRevenueSplit(order.id);
+      if (!splitOutcome.success) {
+        console.error(`🔴 [PayDunya IPN] Échec de la RPC financière pour #${order.id}:`, splitOutcome.error);
+        return res.status(503).json({
+          success: false,
+          error: splitOutcome.error || "La répartition financière Supabase (process_order_revenue_split) a échoué."
+        });
+      }
 
-      writeJSONFile(ORDERS_FILE, orders);
+      const refreshedOrders = readJSONFile<any[]>(ORDERS_FILE, []);
+      const refreshedIndex = refreshedOrders.findIndex(o => o.id === order.id);
+      const targetOrder = refreshedIndex > -1 ? refreshedOrders[refreshedIndex] : order;
 
-      // Execute automatic revenue split to seller and affiliate wallets
-      executeOrderRevenueSplit(order.id);
+      const orderCurrency = targetOrder.currencyCode || expectedCurrency;
+      targetOrder.paymentStatus = "Payé";
+      targetOrder.status = "En préparation";
+      targetOrder.paymentGatewayTxId = recordedToken;
+      targetOrder.paymentGatewayProvider = "paydunya";
+      targetOrder.paymentMethod = targetOrder.paymentMethod || "PayDunya Mobile Money / Carte";
+      targetOrder.paymentConfirmedAt = targetOrder.paymentConfirmedAt || new Date().toISOString();
+      targetOrder.currencyCode = orderCurrency;
+      targetOrder.splitProcessed = true;
 
-      // Notify customer if authenticated
-      const clientUserId = order.userId;
-      if (clientUserId && !clientUserId.startsWith("guest_")) {
+      // Notify customer ONLY once (never duplicate if Browser Return already processed the order)
+      const clientUserId = targetOrder.userId;
+      const buyerNotifId = `notif_pay_${targetOrder.id}`;
+      if (!splitOutcome.alreadyProcessed && !targetOrder.paymentNotificationSent && clientUserId && !clientUserId.startsWith("guest_")) {
         const users = readJSONFile<any[]>(USERS_FILE, []);
         const clientIndex = users.findIndex(u => u.id === clientUserId);
         if (clientIndex > -1) {
           users[clientIndex].notifications = users[clientIndex].notifications || [];
-          users[clientIndex].notifications.unshift({
-            id: "notif_ipn_" + Date.now().toString(),
-            text: `Paiement confirmé ! Votre commande #${order.id} a été validée avec succès via PayDunya.`,
-            type: "order",
-            read: false,
-            date: new Date().toISOString()
-          });
-          writeJSONFile(USERS_FILE, users);
+          if (!users[clientIndex].notifications.some((n: any) => n.id === buyerNotifId)) {
+            users[clientIndex].notifications.unshift({
+              id: buyerNotifId,
+              text: `Paiement confirmé ! Votre commande #${targetOrder.id} d'un montant de ${Number(targetOrder.totalAmount || 0).toLocaleString()} ${orderCurrency} a été payée avec succès via PayDunya.`,
+              type: "order",
+              read: false,
+              date: new Date().toISOString()
+            });
+            writeJSONFile(USERS_FILE, users);
+          }
         }
+        targetOrder.paymentNotificationSent = true;
       }
 
-      console.log(`✅ [PayDunya IPN] Commande #${order.id} validée et marquée comme Payé.`);
-      return res.status(200).json({ success: true, message: "IPN traitée avec succès.", orderId: order.id });
+      writeJSONFile(ORDERS_FILE, refreshedOrders);
+
+      console.log(`✅ [PayDunya IPN] Commande #${targetOrder.id} validée et ventilée via Supabase RPC.`);
+      return res.status(200).json({ success: true, message: "IPN traitée avec succès.", orderId: targetOrder.id });
     } else {
       console.warn(`⚠️ [PayDunya IPN] Statut vérification non validé: ${verification.status}`);
       return res.status(200).json({ success: false, status: verification.status });
@@ -3614,226 +3908,6 @@ app.post("/api/subscriptions/confirm", async (req, res) => {
   }
 });
 
-// POST simulation test endpoint to transition PayDunya invoice status
-app.post("/api/payments/paydunya/test-set-status", (req, res) => {
-  // 1. Strict deactivation in production
-  if (isProductionEnvironment()) {
-    return res.status(403).json({
-      success: false,
-      error: "Accès refusé : Cet endpoint de simulation test est strictement désactivé en environnement de production."
-    });
-  }
-
-  // 2. In development, require admin authorization to manually transition a test invoice
-  if (!isAdminAuthorized(req)) {
-    return res.status(403).json({
-      success: false,
-      error: "Accès refusé : Authentification administrateur requise pour modifier manuellement le statut d'une facture de test."
-    });
-  }
-
-  const { token, transactionId, status } = req.body || {};
-  const targetId = token || transactionId;
-  if (!targetId || !status) {
-    return res.status(400).json({ success: false, error: "token/transactionId et status requis." });
-  }
-  const allowed = ["completed", "pending", "cancelled", "failed"];
-  if (!allowed.includes(status)) {
-    return res.status(400).json({ success: false, error: `Statut invalide. Autorisés: ${allowed.join(", ")}` });
-  }
-
-  const updated = updatePayDunyaInvoiceStatus(targetId, status);
-  if (!updated) {
-    return res.status(404).json({ success: false, error: "Facture PayDunya introuvable." });
-  }
-  return res.json({ success: true, invoice: updated });
-});
-
-// GET PayDunya simulation test checkout interface
-app.get("/checkout/paydunya-test", (req, res) => {
-  // 1. Strict deactivation in production
-  if (isProductionEnvironment()) {
-    return res.status(404).send("Page introuvable en environnement de production.");
-  }
-
-  const token = String(req.query.token || "");
-  const orderId = String(req.query.orderId || "");
-  const invoice = getPayDunyaInvoice(token) || getPayDunyaInvoice(orderId);
-
-  const isSub = (invoice?.type === "subscription") || orderId.startsWith("SUB-");
-  const returnUrl = isSub ? `/?payment=sub_return&subId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}` : `/?payment=return&orderId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}`;
-  const cancelUrl = isSub ? `/?payment=sub_cancel&subId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}` : `/?payment=cancel&orderId=${encodeURIComponent(orderId || invoice?.orderId || "")}&token=${encodeURIComponent(token)}`;
-
-  const amount = invoice?.amount || (isSub ? 1600 : 5000);
-  const currency = invoice?.currencyCode || "XOF";
-  const country = invoice?.countryCode || "TG";
-  const currentStatus = invoice?.status || "pending";
-
-  const html = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PayDunya - Passerelle de Test Sécurisée (Développement)</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0c0d0e; color: #f3f4f6; margin: 0; padding: 20px; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-    .card { background: #18191c; border: 1px solid #2a2c33; border-radius: 16px; max-width: 480px; width: 100%; padding: 28px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-    .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2a2c33; padding-bottom: 16px; margin-bottom: 20px; }
-    .logo { font-size: 20px; font-weight: 900; color: #10b981; letter-spacing: -0.5px; }
-    .badge { background: #374151; color: #9ca3af; font-size: 11px; padding: 4px 8px; border-radius: 6px; font-weight: 600; text-transform: uppercase; }
-    .detail { background: #22242a; padding: 14px; border-radius: 10px; margin-bottom: 18px; }
-    .detail-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #9ca3af; }
-    .detail-row span:last-child { color: #f3f4f6; font-weight: 600; }
-    .amount-box { text-align: center; padding: 16px 0; font-size: 32px; font-weight: 900; color: #10b981; }
-    .status-badge { display: inline-block; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-    .status-pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
-    .status-completed { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
-    .status-cancelled { background: rgba(156, 163, 175, 0.15); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.3); }
-    .status-failed { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
-    .admin-auth-box { background: #121316; border: 1px solid #374151; border-radius: 10px; padding: 12px; margin-bottom: 18px; }
-    .admin-auth-box label { display: block; font-size: 11px; color: #d4af37; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
-    .admin-auth-box input { width: 100%; box-sizing: border-box; background: #1e2025; border: 1px solid #4b5563; border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; outline: none; }
-    .admin-auth-box input:focus { border-color: #10b981; }
-    .error-alert { display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 10px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 16px; line-height: 1.4; }
-    .btn { display: block; width: 100%; padding: 14px; margin-bottom: 10px; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; text-align: center; text-decoration: none; box-sizing: border-box; transition: transform 0.1s ease; }
-    .btn:active { transform: scale(0.98); }
-    .btn-success { background: #10b981; color: #fff; }
-    .btn-success:hover { background: #059669; }
-    .btn-pending { background: #d97706; color: #fff; }
-    .btn-pending:hover { background: #b45309; }
-    .btn-cancel { background: #4b5563; color: #f3f4f6; }
-    .btn-cancel:hover { background: #374151; }
-    .btn-fail { background: #dc2626; color: #fff; }
-    .btn-fail:hover { background: #b91c1c; }
-    .footer { text-align: center; font-size: 11px; color: #6b7280; margin-top: 16px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="header">
-      <div class="logo">PayDunya <span style="font-size: 12px; color: #9ca3af; font-weight: normal;">Checkout (Test)</span></div>
-      <div class="badge">Environnement Sandbox</div>
-    </div>
-
-    <div class="amount-box">
-      ${amount.toLocaleString()} ${currency}
-    </div>
-
-    <div class="detail">
-      <div class="detail-row">
-        <span>Référence :</span>
-        <span>${orderId || invoice?.orderId || "N/A"}</span>
-      </div>
-      <div class="detail-row">
-        <span>Type :</span>
-        <span>${isSub ? "Abonnement PRO Vendeur" : "Paiement Commande Client"}</span>
-      </div>
-      <div class="detail-row">
-        <span>Pays / Devise :</span>
-        <span>${country} • ${currency}</span>
-      </div>
-      <div class="detail-row">
-        <span>Statut actuel serveur :</span>
-        <span class="status-badge status-${currentStatus}">${currentStatus}</span>
-      </div>
-    </div>
-
-    <!-- Contrôle d'authentification administrateur en développement -->
-    <div class="admin-auth-box">
-      <label for="adminAuthKey">🔒 Authentification Administrateur (Requis en développement) :</label>
-      <input type="password" id="adminAuthKey" placeholder="Saisissez votre clé ou jeton d'administrateur" />
-    </div>
-
-    <div id="authErrorAlert" class="error-alert"></div>
-
-    <p style="font-size: 12px; color: #9ca3af; margin-bottom: 16px; text-align: center;">
-      Sélectionnez le résultat à simuler (action réservée aux administrateurs) :
-    </p>
-
-    <button class="btn btn-success" onclick="triggerStatus('completed', '${returnUrl}')">
-      ✓ Valider le paiement (Completed)
-    </button>
-    <button class="btn btn-pending" onclick="triggerStatus('pending', '${returnUrl}')">
-      ⏳ Laisser en attente (Pending)
-    </button>
-    <button class="btn btn-cancel" onclick="triggerStatus('cancelled', '${cancelUrl}')">
-      ✕ Annuler le paiement (Cancelled)
-    </button>
-    <button class="btn btn-fail" onclick="triggerStatus('failed', '${cancelUrl}')">
-      ⚠️ Simuler un échec (Failed)
-    </button>
-
-    <div class="footer">
-      Miabé Asi • Passerelle PayDunya sécurisée (Développement)
-    </div>
-  </div>
-
-  <script>
-    // Initialisation automatique du jeton d'authentification depuis la session locale
-    (function initAuth() {
-      const input = document.getElementById('adminAuthKey');
-      const savedToken = localStorage.getItem('asime-admin-token') ||
-                         localStorage.getItem('asime-user-token') ||
-                         new URLSearchParams(window.location.search).get('auth') || '';
-      if (savedToken && input) {
-        input.value = savedToken;
-      }
-    })();
-
-    async function triggerStatus(status, redirectTarget) {
-      const errorBox = document.getElementById('authErrorAlert');
-      const authInput = document.getElementById('adminAuthKey');
-      errorBox.style.display = 'none';
-      errorBox.textContent = '';
-
-      const authToken = (authInput ? authInput.value.trim() : '') ||
-                        localStorage.getItem('asime-admin-token') ||
-                        localStorage.getItem('asime-user-token') ||
-                        new URLSearchParams(window.location.search).get('auth') || '';
-
-      if (!authToken) {
-        errorBox.textContent = "Authentification administrateur requise : Veuillez renseigner une clé administrateur valide pour simuler le statut d'une facture de test.";
-        errorBox.style.display = 'block';
-        return;
-      }
-
-      try {
-        const response = await fetch('/api/payments/paydunya/test-set-status', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + authToken
-          },
-          body: JSON.stringify({
-            token: '${token}',
-            transactionId: '${token}',
-            status: status,
-            auth: authToken
-          })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-          errorBox.textContent = data.error || "Accès refusé : Authentification administrateur invalide.";
-          errorBox.style.display = 'block';
-          return;
-        }
-
-        // Si authentifié avec succès, rediriger vers l'URL prévue
-        window.location.href = redirectTarget;
-      } catch (e) {
-        console.error('Error setting test status:', e);
-        errorBox.textContent = "Erreur de connexion avec le serveur.";
-        errorBox.style.display = 'block';
-      }
-    }
-  </script>
-</body>
-</html>`;
-
-  res.send(html);
-});
 
 // POST change vendor plan (e.g. switch between Gratuit, PRO, BUSINESS)
 app.post("/api/users/change-plan", (req, res) => {
@@ -3865,7 +3939,7 @@ app.post("/api/users/change-plan", (req, res) => {
 });
 
 // GET retrieve current user's wallet info (balance and transaction history)
-app.get("/api/wallets/my-wallet", (req, res) => {
+app.get("/api/wallets/my-wallet", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
     return res.status(401).json({ success: false, error: "Non connecté." });
@@ -3886,47 +3960,60 @@ app.get("/api/wallets/my-wallet", (req, res) => {
     return res.status(403).json({ success: false, error: "L'accès au portefeuille exige un compte vendeur ou affilié." });
   }
 
-  const wallet = WalletManager.getWallet(userId, currentUser.role);
-  res.json({ success: true, wallet });
+  const requestedCurrency = String(
+    req.query.currency ||
+      req.query.currencyCode ||
+      currentUser.currencyCode ||
+      (currentUser.countryCode === "CM" ? "XAF" : "XOF")
+  )
+    .trim()
+    .toUpperCase();
+
+  try {
+    // Authoritative single source of truth: Supabase wallets & wallet_ledger (no fallback to wallets.json)
+    const supabaseWallet = await getWalletFromSupabase(userId, currentUser.role, requestedCurrency);
+    return res.json({ success: true, wallet: supabaseWallet });
+  } catch (err: any) {
+    return res.status(503).json({
+      success: false,
+      error: err.message || "Erreur lors de la lecture du portefeuille Supabase."
+    });
+  }
 });
 
 // GET admin retrieve all trace logs (secured)
-app.get("/api/admin/wallets/logs", (req, res) => {
+app.get("/api/admin/wallets/logs", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
     return res.status(403).json({ success: false, error: "Accès refusé." });
   }
 
   try {
-    const WALLETS_FILE = path.join(process.cwd(), "wallets.json");
-    if (!fs.existsSync(WALLETS_FILE)) {
-      return res.json([]);
-    }
-    const content = fs.readFileSync(WALLETS_FILE, "utf-8");
-    const parsed = JSON.parse(content);
-    res.json(parsed.logs || []);
+    const supabaseLogs = await getWalletLedgerLogsFromSupabase();
+    return res.json(supabaseLogs);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(503).json({
+      success: false,
+      error: err.message || "Erreur lors de la lecture du journal financier Supabase."
+    });
   }
 });
 
 // GET admin retrieve all wallets (secured)
-app.get("/api/admin/wallets", (req, res) => {
+app.get("/api/admin/wallets", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
     return res.status(403).json({ success: false, error: "Accès refusé." });
   }
 
   try {
-    const WALLETS_FILE = path.join(process.cwd(), "wallets.json");
-    if (!fs.existsSync(WALLETS_FILE)) {
-      return res.json({});
-    }
-    const content = fs.readFileSync(WALLETS_FILE, "utf-8");
-    const parsed = JSON.parse(content);
-    res.json(parsed.wallets || {});
+    const supabaseWallets = await getAllWalletsFromSupabase();
+    return res.json(supabaseWallets);
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(503).json({
+      success: false,
+      error: err.message || "Erreur lors de la lecture des portefeuilles Supabase."
+    });
   }
 });
 
@@ -4349,7 +4436,7 @@ app.get("/api/admin/orders", (req, res) => {
 });
 
 // Admin validate payment
-app.post("/api/admin/orders/:id/validate-payment", (req, res) => {
+app.post("/api/admin/orders/:id/validate-payment", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader !== "asime2026" && authHeader !== "asime2026-auth-session" && authHeader !== "shopme2026" && authHeader !== "shopme2026-auth-session") {
     return res.status(403).json({ success: false, error: "Accès refusé." });
@@ -4363,31 +4450,46 @@ app.post("/api/admin/orders/:id/validate-payment", (req, res) => {
     return res.status(404).json({ success: false, error: "Commande non trouvée." });
   }
 
-  orders[orderIndex].paymentStatus = "Payé";
-  writeJSONFile(ORDERS_FILE, orders);
+  // An order is only considered financially processed after process_order_revenue_split succeeds
+  const splitOutcome = await executeOrderRevenueSplit(id);
+  if (!splitOutcome.success) {
+    return res.status(503).json({
+      success: false,
+      error: splitOutcome.error || "Échec de la répartition financière Supabase (process_order_revenue_split)."
+    });
+  }
 
-  // Trigger automatic marketplace split!
-  executeOrderRevenueSplit(id);
+  const refreshedOrders = readJSONFile<any[]>(ORDERS_FILE, []);
+  const refreshedIndex = refreshedOrders.findIndex(o => o.id === id);
+  const targetOrder = refreshedIndex > -1 ? refreshedOrders[refreshedIndex] : orders[orderIndex];
+  targetOrder.paymentStatus = "Payé";
+  targetOrder.splitProcessed = true;
 
-  // Notify client
-  const clientUserId = orders[orderIndex].userId;
-  if (clientUserId && !clientUserId.startsWith("guest_")) {
+  // Notify client once
+  const clientUserId = targetOrder.userId;
+  const buyerNotifId = `notif_pay_${id}`;
+  if (!splitOutcome.alreadyProcessed && !targetOrder.paymentNotificationSent && clientUserId && !clientUserId.startsWith("guest_")) {
     const users = readJSONFile<any[]>(USERS_FILE, []);
     const clientIndex = users.findIndex(u => u.id === clientUserId);
     if (clientIndex > -1) {
       users[clientIndex].notifications = users[clientIndex].notifications || [];
-      users[clientIndex].notifications.unshift({
-        id: "notif_" + Date.now().toString(),
-        text: `Le paiement de votre commande #${id} de ${orders[orderIndex].totalAmount.toLocaleString()} FCFA a été validé !`,
-        type: "order",
-        read: false,
-        date: new Date().toISOString()
-      });
-      writeJSONFile(USERS_FILE, users);
+      if (!users[clientIndex].notifications.some((n: any) => n.id === buyerNotifId)) {
+        users[clientIndex].notifications.unshift({
+          id: buyerNotifId,
+          text: `Le paiement de votre commande #${id} de ${Number(targetOrder.totalAmount || 0).toLocaleString()} ${targetOrder.currencyCode || "FCFA"} a été validé !`,
+          type: "order",
+          read: false,
+          date: new Date().toISOString()
+        });
+        writeJSONFile(USERS_FILE, users);
+      }
     }
+    targetOrder.paymentNotificationSent = true;
   }
 
-  res.json({ success: true, order: orders[orderIndex] });
+  writeJSONFile(ORDERS_FILE, refreshedOrders);
+
+  res.json({ success: true, order: targetOrder });
 });
 
 // Admin update order delivery status

@@ -1625,38 +1625,10 @@ function sanitizeUserForResponse(user: any): any {
       const resolvedCurrencyCode = currencyCode || order.currencyCode || (resolvedCountryCode === "CM" ? "XAF" : "XOF");
       const resolvedSellerCountry = (order.sellerCountryCode || order.items?.[0]?.product?.countryCode || "TG").toUpperCase();
       const isCrossBorder = order.isCrossBorder !== undefined ? order.isCrossBorder : (resolvedCountryCode !== resolvedSellerCountry);
-      const token = "PD-TOK-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
-      const redirectUrl = `/checkout/paydunya-test?token=${token}&orderId=${encodeURIComponent(orderId)}`;
-
-      order.paymentGatewayTxId = token;
-      order.paymentGatewayProvider = providerId || "paydunya";
-      order.paymentGatewayCurrencyCode = resolvedCurrencyCode;
-      order.paymentGatewayCountryCode = resolvedCountryCode;
-      order.paymentGatewayInitiatedAt = new Date().toISOString();
-      order.currencyCode = resolvedCurrencyCode;
-      order.clientCountryCode = resolvedCountryCode;
-      order.sellerCountryCode = resolvedSellerCountry;
-      order.isCrossBorder = isCrossBorder;
-      order.paymentStatus = "En attente de paiement";
-      localStorage.setItem("asime_emulated_orders", JSON.stringify(orders));
-
       return makeResponse({
-        success: true,
-        session: {
-          success: true,
-          transactionId: token,
-          providerId: providerId || "paydunya",
-          amount: order.totalAmount,
-          currencyCode: resolvedCurrencyCode,
-          countryCode: resolvedCountryCode,
-          clientCountryCode: resolvedCountryCode,
-          sellerCountryCode: resolvedSellerCountry,
-          isCrossBorder,
-          status: "pending",
-          redirectUrl,
-          instructions: `Veuillez finaliser votre paiement sécurisé de ${order.totalAmount} ${resolvedCurrencyCode} via PayDunya.`
-        }
-      }, 200, true);
+        success: false,
+        error: "Paiement PayDunya : Connexion au serveur requise pour initialiser le guichet officiel PayDunya."
+      }, 503, false);
     }
 
     return makeResponse({

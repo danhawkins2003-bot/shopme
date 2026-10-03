@@ -924,3 +924,517 @@ export function printSetupInstructions() {
   console.log("⚡ [Supabase] Architecture panafricaine prête. Fichier SQL disponible dans /supabase_panafrican_schema.sql");
 }
 
+let serviceRoleClientInstance: SupabaseClient | null = null;
+let currentServiceUrl = "";
+let currentServiceKey = "";
+
+/**
+ * Returns a Supabase client strictly initialized with server privileges (SUPABASE_SERVICE_ROLE_KEY)
+ * required to execute SECURITY DEFINER RPC functions such as process_order_revenue_split.
+ * Never falls back to SUPABASE_ANON_KEY.
+ */
+export function getSupabaseServiceClient(): SupabaseClient | null {
+  loadEnv();
+  let url = (process.env.SUPABASE_URL || "").trim();
+  if (url) {
+    url = url.replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "");
+  }
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+  if (!url || !serviceRoleKey) {
+    return null;
+  }
+
+  if (
+    serviceRoleClientInstance &&
+    currentServiceUrl === url &&
+    currentServiceKey === serviceRoleKey
+  ) {
+    return serviceRoleClientInstance;
+  }
+
+  try {
+    serviceRoleClientInstance = createClient(url, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      }
+    });
+    currentServiceUrl = url;
+    currentServiceKey = serviceRoleKey;
+    return serviceRoleClientInstance;
+  } catch (err) {
+    console.error("🔴 [Supabase Service Role] Échec initialisation client serveur :", err);
+    return null;
+  }
+}
+
+/**
+ * Retrieves the existing split_summary and financial columns for an order directly from Supabase.
+ */
+export async function getOrderSplitSummaryFromSupabase(
+  client: SupabaseClient,
+  orderId: string
+): Promise<{
+  split_processed: boolean;
+  split_summary: any | null;
+  seller_earnings?: number;
+  platform_gross_commission?: number;
+  affiliate_commission?: number;
+  platform_net_commission?: number;
+  currency_code?: string;
+} | null> {
+  const cleanId = String(orderId || "").trim();
+  if (!cleanId) return null;
+
+  const { data, error } = await client
+    .from("orders")
+    .select(
+      "id, split_processed, split_summary, seller_earnings, platform_gross_commission, affiliate_commission, platform_net_commission, currency_code"
+    )
+    .eq("id", cleanId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Erreur lecture split_summary Supabase (#${cleanId}): ${error.message}`);
+  }
+
+  if (!data) return null;
+
+  return {
+    split_processed: Boolean(data.split_processed),
+    split_summary: data.split_summary && typeof data.split_summary === "object" ? data.split_summary : null,
+    seller_earnings: data.seller_earnings !== null && data.seller_earnings !== undefined ? Number(data.seller_earnings) : undefined,
+    platform_gross_commission:
+      data.platform_gross_commission !== null && data.platform_gross_commission !== undefined
+        ? Number(data.platform_gross_commission)
+        : undefined,
+    affiliate_commission:
+      data.affiliate_commission !== null && data.affiliate_commission !== undefined
+        ? Number(data.affiliate_commission)
+        : undefined,
+    platform_net_commission:
+      data.platform_net_commission !== null && data.platform_net_commission !== undefined
+        ? Number(data.platform_net_commission)
+        : undefined,
+    currency_code: data.currency_code || undefined
+  };
+}
+
+/**
+ * Ensures the paid order, its order_items, and related profiles exist in Supabase
+ * so that `process_order_revenue_split(p_order_id)` can execute atomically as source of truth.
+ * Multi-instance safe:
+ * - Never resets split_processed to false on an existing row.
+ * - Uses ON CONFLICT DO NOTHING (ignoreDuplicates: true) for order creation and order_items insertion.
+ */
+export async function ensureOrderReadyForSupabaseSplit(
+  client: SupabaseClient,
+  order: any,
+  users: any[],
+  affiliateUserId: string | null,
+  validAffiliateCode: string | null
+): Promise<{ ready: boolean; alreadyProcessed?: boolean; existingSummary?: any; error?: string }> {
+  const orderId = String(order.id).trim();
+  const orderCurrency = String(
+    order.currencyCode ||
+    (order.destinationCountryCode === "CM" || order.clientCountryCode === "CM" ? "XAF" : "XOF")
+  ).trim().toUpperCase();
+  const totalAmount = Number(order.totalAmount || 0);
+  const countryCode = String(
+    order.destinationCountryCode ||
+    order.clientCountryCode ||
+    order.shippingDetails?.countryCode ||
+    "TG"
+  ).trim().toUpperCase();
+
+  try {
+    // 1. Check if order already exists in public.orders
+    const { data: existingOrder, error: existingOrderErr } = await client
+      .from("orders")
+      .select("id, payment_status, split_processed, split_summary")
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (existingOrderErr) {
+      return {
+        ready: false,
+        error: `Erreur vérification commande Supabase (#${orderId}): ${existingOrderErr.message}`
+      };
+    }
+
+    if (existingOrder?.split_processed === true) {
+      return {
+        ready: true,
+        alreadyProcessed: true,
+        existingSummary:
+          existingOrder.split_summary && typeof existingOrder.split_summary === "object"
+            ? existingOrder.split_summary
+            : undefined
+      };
+    }
+
+    // 2. Resolve buyer, affiliate, and seller profiles so foreign keys and RPC validations succeed
+    const buyerId = String(order.userId || ("buyer_" + orderId)).trim();
+    const clientName = String(order.clientName || order.shippingDetails?.name || "Client Miabé Asi").trim();
+    const clientPhone = String(order.clientPhone || order.shippingDetails?.phone || "+22890000000").trim();
+
+    const profilesToEnsure: Record<string, any>[] = [
+      {
+        id: buyerId,
+        full_name: clientName,
+        role: "client",
+        country_code: countryCode,
+        is_verified: true
+      }
+    ];
+
+    if (affiliateUserId) {
+      const affUser = users.find(u => u.id === affiliateUserId);
+      profilesToEnsure.push({
+        id: affiliateUserId,
+        full_name: String(affUser?.name || "Affilié Miabé Asi").trim(),
+        role: "affilie",
+        country_code: String(affUser?.countryCode || "TG").trim().toUpperCase(),
+        affiliate_code: validAffiliateCode || affUser?.affiliateCode || null,
+        is_verified: true
+      });
+    }
+
+    const items = Array.isArray(order.items) ? order.items : [];
+    const resolvedItems: {
+      id: string;
+      order_id: string;
+      product_id: string | null;
+      product_name: string;
+      vendeur_id: string;
+      unit_price: number;
+      quantity: number;
+      subtotal: number;
+      currency_code: string;
+    }[] = [];
+
+    for (let idx = 0; idx < items.length; idx++) {
+      const item = items[idx];
+      const prod = item.product || {};
+      const partnerName = String(prod.partenaire || "Boutique en Direct").trim();
+      const sellerUser = users.find(
+        u =>
+          u.role === "vendeur" &&
+          (u.id === prod.vendeurId || u.businessName === partnerName || u.name === partnerName)
+      );
+      const sellerId = String(
+        prod.vendeurId ||
+        sellerUser?.id ||
+        ("seller_" + partnerName.toLowerCase().replace(/[^a-z0-9]+/g, "_"))
+      ).trim();
+
+      if (!profilesToEnsure.some(p => p.id === sellerId)) {
+        profilesToEnsure.push({
+          id: sellerId,
+          full_name: String(sellerUser?.businessName || sellerUser?.name || partnerName).trim(),
+          role: "vendeur",
+          country_code: String(sellerUser?.countryCode || prod.countryCode || "TG").trim().toUpperCase(),
+          is_verified: true
+        });
+      }
+
+      const qty = Math.max(1, Number(item.quantity || 1));
+      const unitPrice = Number(prod.prix || 0);
+      resolvedItems.push({
+        id: `${orderId}_item_${idx + 1}`,
+        order_id: orderId,
+        product_id: prod.id ? String(prod.id) : null,
+        product_name: String(prod.nom || `Article ${idx + 1}`).trim(),
+        vendeur_id: sellerId,
+        unit_price: unitPrice,
+        quantity: qty,
+        subtotal: unitPrice * qty,
+        currency_code: orderCurrency
+      });
+    }
+
+    for (const prof of profilesToEnsure) {
+      const { error: profErr } = await client
+        .from("profiles")
+        .upsert(prof, { onConflict: "id", ignoreDuplicates: true });
+      if (profErr) {
+        return {
+          ready: false,
+          error: `Erreur synchronisation profil Supabase (${prof.id}): ${profErr.message}`
+        };
+      }
+    }
+
+    // 3. Create or update the order row in public.orders WITHOUT ever resetting split_processed to false
+    if (!existingOrder) {
+      const fullOrderRow: Record<string, any> = {
+        id: orderId,
+        numero_suivi: String(order.trackingNumber || order.numero_suivi || `TRK-${orderId}`),
+        client_nom: clientName,
+        client_telephone: clientPhone,
+        user_id: buyerId,
+        total_amount: totalAmount,
+        currency_code: orderCurrency,
+        payment_status: "paid",
+        order_status: "completed",
+        destination_country_code: countryCode,
+        affiliate_id: affiliateUserId,
+        affiliate_code: validAffiliateCode
+      };
+
+      const { error: insertOrderErr } = await client
+        .from("orders")
+        .upsert(fullOrderRow, { onConflict: "id", ignoreDuplicates: true });
+
+      if (insertOrderErr) {
+        // Fallback if legacy columns (numero_suivi, client_nom, client_telephone) are not present on target schema
+        // Uses ignoreDuplicates: true (ON CONFLICT DO NOTHING) so it never overwrites split_processed
+        const { error: fallbackOrderErr } = await client.from("orders").upsert(
+          {
+            id: orderId,
+            user_id: buyerId,
+            total_amount: totalAmount,
+            currency_code: orderCurrency,
+            payment_status: "paid",
+            order_status: "completed",
+            destination_country_code: countryCode,
+            affiliate_id: affiliateUserId,
+            affiliate_code: validAffiliateCode
+          },
+          { onConflict: "id", ignoreDuplicates: true }
+        );
+        if (fallbackOrderErr) {
+          return {
+            ready: false,
+            error: `Erreur insertion commande Supabase (#${orderId}): ${fallbackOrderErr.message}`
+          };
+        }
+      }
+    }
+
+    // Transition payment_status to 'paid' ONLY if split_processed is still false
+    const { error: updateOrderErr } = await client
+      .from("orders")
+      .update({
+        payment_status: "paid",
+        affiliate_id: affiliateUserId || null,
+        affiliate_code: validAffiliateCode || null
+      })
+      .eq("id", orderId)
+      .eq("split_processed", false);
+
+    if (updateOrderErr) {
+      return {
+        ready: false,
+        error: `Erreur mise à jour statut commande Supabase (#${orderId}): ${updateOrderErr.message}`
+      };
+    }
+
+    // 4. Idempotent insertion of order_items using ON CONFLICT (id) DO NOTHING
+    for (const itemRow of resolvedItems) {
+      const { error: itemErr } = await client
+        .from("order_items")
+        .upsert(itemRow, { onConflict: "id", ignoreDuplicates: true });
+
+      if (itemErr && itemRow.product_id) {
+        // Retry with product_id = null if product_id is not yet synced in public.products
+        const { error: retryItemErr } = await client
+          .from("order_items")
+          .upsert({ ...itemRow, product_id: null }, { onConflict: "id", ignoreDuplicates: true });
+
+        if (retryItemErr) {
+          return {
+            ready: false,
+            error: `Erreur insertion article commande Supabase (${itemRow.id}): ${retryItemErr.message}`
+          };
+        }
+      } else if (itemErr) {
+        return {
+          ready: false,
+          error: `Erreur insertion article commande Supabase (${itemRow.id}): ${itemErr.message}`
+        };
+      }
+    }
+
+    return { ready: true, alreadyProcessed: false };
+  } catch (err: any) {
+    console.error(`🔴 [Supabase Split Prep] Erreur préparation commande #${orderId}:`, err.message || err);
+    return {
+      ready: false,
+      error: err.message || `Erreur préparation commande Supabase #${orderId}`
+    };
+  }
+}
+
+/**
+ * Reads a user's wallet and ledger history directly from Supabase (`public.wallets` & `public.wallet_ledger`)
+ * for a single requested currency, without ever mixing balances across multiple currencies.
+ */
+export async function getWalletFromSupabase(
+  userId: string,
+  role: "vendeur" | "affilie" = "vendeur",
+  currencyCode: string = "XOF"
+): Promise<any> {
+  const client = getSupabaseServiceClient();
+  if (!client) {
+    throw new Error("Service financier Supabase indisponible (SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY requis).");
+  }
+
+  const targetCurrency = String(currencyCode || "XOF").trim().toUpperCase();
+
+  const { data: walletRow, error: walletErr } = await client
+    .from("wallets")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("wallet_type", role)
+    .eq("currency_code", targetCurrency)
+    .maybeSingle();
+
+  if (walletErr) {
+    throw new Error(`Erreur lecture portefeuille Supabase: ${walletErr.message}`);
+  }
+
+  const { data: ledgerRows, error: ledgerErr } = await client
+    .from("wallet_ledger")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("wallet_type", role)
+    .eq("currency_code", targetCurrency)
+    .order("created_at", { ascending: false });
+
+  if (ledgerErr) {
+    throw new Error(`Erreur lecture journal financier Supabase: ${ledgerErr.message}`);
+  }
+
+  const history = (ledgerRows || []).map((entry: any) => ({
+    id: String(entry.idempotency_key || entry.id),
+    type:
+      entry.operation_type === "CREDIT_COMMISSION_AFFILIE"
+        ? "commission"
+        : entry.operation_type === "DEBIT_RETRAIT"
+        ? "retrait_demande"
+        : entry.operation_type === "CREDIT_REMBOURSEMENT"
+        ? "retrait_rembourse"
+        : "vente",
+    amount: Math.abs(Number(entry.amount || 0)),
+    currencyCode: targetCurrency,
+    orderId: entry.order_id || undefined,
+    date: entry.created_at || new Date().toISOString(),
+    description: entry.description || "",
+    status: "completed"
+  }));
+
+  return {
+    userId,
+    balance: walletRow ? Number(walletRow.balance || 0) : 0,
+    currencyCode: targetCurrency,
+    type: role,
+    history,
+    ledger: history
+  };
+}
+
+/**
+ * Reads all wallets and their ledger histories from Supabase for admin inspection.
+ * Never falls back to local files.
+ */
+export async function getAllWalletsFromSupabase(): Promise<Record<string, any>> {
+  const client = getSupabaseServiceClient();
+  if (!client) {
+    throw new Error("Service financier Supabase indisponible (SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY requis).");
+  }
+
+  const { data: walletRows, error: walletErr } = await client
+    .from("wallets")
+    .select("*");
+
+  if (walletErr) {
+    throw new Error(`Erreur lecture portefeuilles Supabase: ${walletErr.message}`);
+  }
+
+  const { data: ledgerRows, error: ledgerErr } = await client
+    .from("wallet_ledger")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (ledgerErr) {
+    throw new Error(`Erreur lecture journal financier Supabase: ${ledgerErr.message}`);
+  }
+
+  const result: Record<string, any> = {};
+  for (const w of walletRows || []) {
+    const curr = String(w.currency_code || "XOF").trim().toUpperCase();
+    const key = w.user_id ? `${w.user_id}_${w.wallet_type}_${curr}` : `plateforme_${curr}`;
+    const entries = (ledgerRows || []).filter(
+      (l: any) => l.wallet_id === w.id && String(l.currency_code || "XOF").trim().toUpperCase() === curr
+    );
+    const mappedEntries = entries.map((entry: any) => ({
+      id: String(entry.idempotency_key || entry.id),
+      type:
+        entry.operation_type === "CREDIT_COMMISSION_AFFILIE"
+          ? "commission"
+          : entry.operation_type === "DEBIT_RETRAIT"
+          ? "retrait_demande"
+          : entry.operation_type === "CREDIT_REMBOURSEMENT"
+          ? "retrait_rembourse"
+          : "vente",
+      amount: Math.abs(Number(entry.amount || 0)),
+      currencyCode: curr,
+      orderId: entry.order_id || undefined,
+      date: entry.created_at || new Date().toISOString(),
+      description: entry.description || "",
+      status: "completed"
+    }));
+    result[key] = {
+      userId: w.user_id || `plateforme_${curr}`,
+      balance: Number(w.balance || 0),
+      currencyCode: curr,
+      type: w.wallet_type,
+      history: mappedEntries,
+      ledger: mappedEntries
+    };
+  }
+
+  return result;
+}
+
+/**
+ * Reads the immutable financial ledger logs from Supabase (`public.wallet_ledger`).
+ * Never falls back to local files.
+ */
+export async function getWalletLedgerLogsFromSupabase(): Promise<any[]> {
+  const client = getSupabaseServiceClient();
+  if (!client) {
+    throw new Error("Service financier Supabase indisponible (SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY requis).");
+  }
+
+  const { data: ledgerRows, error } = await client
+    .from("wallet_ledger")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`Erreur lecture journal financier Supabase: ${error.message}`);
+  }
+
+  return (ledgerRows || []).map((entry: any) => ({
+    id: String(entry.id),
+    timestamp: entry.created_at || new Date().toISOString(),
+    userId: entry.user_id || "PLATEFORME_MIABE_ASI",
+    action:
+      entry.operation_type === "CREDIT_COMMISSION_AFFILIE"
+        ? "CREDIT_COMMISSION"
+        : entry.operation_type === "DEBIT_RETRAIT"
+        ? "DEBIT_WITHDRAWAL"
+        : entry.operation_type === "CREDIT_REMBOURSEMENT"
+        ? "REFUND_WITHDRAWAL"
+        : "CREDIT_SALE",
+    amount: Number(entry.amount || 0),
+    currencyCode: entry.currency_code || "XOF",
+    orderId: entry.order_id || undefined,
+    txId: String(entry.idempotency_key || entry.id),
+    message: entry.description || ""
+  }));
+}
+
+
