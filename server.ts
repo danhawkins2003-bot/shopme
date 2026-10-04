@@ -49,8 +49,8 @@ for (const envFile of possibleEnvPaths) {
 }
 
 import { GoogleGenAI } from "@google/genai";
-import { PaymentGateway, updatePayDunyaInvoiceStatus, getPayDunyaInvoice, recordPayDunyaInvoice, loadPayDunyaInvoices } from "./paymentGateway";
-import { WalletManager } from "./walletHelper";
+import { PaymentGateway, updatePayDunyaInvoiceStatus, getPayDunyaInvoice, recordPayDunyaInvoice, loadPayDunyaInvoices } from "./paymentGateway.js";
+import { WalletManager } from "./walletHelper.js";
 import { 
   saveToSupabaseStore, 
   loadFromSupabaseStore, 
@@ -76,7 +76,7 @@ import {
   getWalletFromSupabase,
   getAllWalletsFromSupabase,
   getWalletLedgerLogsFromSupabase
-} from "./supabaseHelper";
+} from "./supabaseHelper.js";
 
 const app = express();
 const PORT = 3000;
@@ -921,6 +921,66 @@ function writeJSONFile<T>(filePath: string, data: T): boolean {
   }
 
   return true;
+}
+
+async function loadOrdersWithCloudSync(targetOrderId?: string, targetToken?: string): Promise<any[]> {
+  let orders = readJSONFile<any[]>(ORDERS_FILE, []);
+  if (!isSupabaseConfigured()) {
+    return orders;
+  }
+
+  const foundLocal = orders.find(o =>
+    (targetOrderId && o.id === targetOrderId) ||
+    (targetToken && o.paymentGatewayTxId === targetToken)
+  );
+
+  // Fetch from Supabase if target order is missing locally or lacks its paymentGatewayTxId on a serverless instance
+  if (!foundLocal || (targetToken && !foundLocal.paymentGatewayTxId) || !foundLocal.paymentGatewayTxId) {
+    try {
+      const cloudOrders = await Promise.race([
+        loadFromSupabaseStore<any[]>("orders.json"),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 2500))
+      ]);
+      if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+        const mergedMap = new Map<string, any>();
+        for (const co of cloudOrders) {
+          if (co && co.id) mergedMap.set(co.id, co);
+        }
+        for (const lo of orders) {
+          if (lo && lo.id) {
+            const existing = mergedMap.get(lo.id);
+            if (!existing) {
+              mergedMap.set(lo.id, lo);
+            } else {
+              mergedMap.set(lo.id, {
+                ...existing,
+                ...lo,
+                paymentGatewayTxId: lo.paymentGatewayTxId || existing.paymentGatewayTxId,
+                paymentStatus: existing.paymentStatus === "Payé" ? "Payé" : lo.paymentStatus,
+                splitProcessed: Boolean(existing.splitProcessed || lo.splitProcessed)
+              });
+            }
+          }
+        }
+        orders = Array.from(mergedMap.values());
+        memoryStore.set(ORDERS_FILE, orders);
+      }
+    } catch (e) {}
+  }
+
+  return orders;
+}
+
+async function saveOrdersWithCloudSync(orders: any[]): Promise<void> {
+  writeJSONFile(ORDERS_FILE, orders);
+  if (isSupabaseConfigured()) {
+    try {
+      await Promise.race([
+        saveToSupabaseStore("orders.json", orders),
+        new Promise(resolve => setTimeout(resolve, 2500))
+      ]);
+    } catch (e) {}
+  }
 }
 
 // --- API Endpoints ---
@@ -2657,7 +2717,7 @@ async function executeOrderRevenueSplit(
       return { success: false, error: msg };
     }
 
-    const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+    const orders = await loadOrdersWithCloudSync(cleanOrderId);
     const orderIndex = orders.findIndex(o => o.id === cleanOrderId);
     if (orderIndex === -1) {
       return { success: false, error: `Commande #${cleanOrderId} introuvable.` };
@@ -2913,7 +2973,7 @@ async function executeOrderRevenueSplit(
 }
 
 // Create Order (En attente de paiement, splits and balance processing happens on payment confirmation only)
-app.post("/api/orders/create", checkoutLimiter, (req, res) => {
+app.post("/api/orders/create", checkoutLimiter, async (req, res) => {
   const authHeader = req.headers.authorization;
   let userId = "guest_" + Date.now();
   let users: any[] = [];
@@ -3148,7 +3208,7 @@ app.post("/api/orders/create", checkoutLimiter, (req, res) => {
   };
 
   orders.unshift(newOrder);
-  writeJSONFile(ORDERS_FILE, orders);
+  await saveOrdersWithCloudSync(orders);
 
   // If the client is logged in, push a customer notification
   if (clientIndex > -1) {
@@ -3254,14 +3314,45 @@ app.get("/api/payments/status", (req, res) => {
 });
 
 // POST initiate payment session
-app.post("/api/payments/initiate", (req, res) => {
-  const { orderId, providerId, name, phone, email, countryCode, currencyCode } = req.body;
+app.post("/api/payments/initiate", async (req, res) => {
+  const { orderId, providerId, name, phone, email, countryCode, currencyCode, order: fallbackOrderPayload } = req.body || {};
   if (!orderId || !providerId) {
     return res.status(400).json({ success: false, error: "Identifiant de commande et de prestataire requis." });
   }
 
-  const orders = readJSONFile<any[]>(ORDERS_FILE, []);
-  const orderIndex = orders.findIndex(o => o.id === orderId);
+  const orders = await loadOrdersWithCloudSync(orderId);
+  let orderIndex = orders.findIndex(o => o.id === orderId);
+
+  // Multi-instance / offline creation recovery: if order was created on another container or client cache, reconstruct & verify price on server
+  if (orderIndex === -1 && fallbackOrderPayload && fallbackOrderPayload.id === orderId && Array.isArray(fallbackOrderPayload.items) && fallbackOrderPayload.items.length > 0) {
+    const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+    let calculatedItemsTotal = 0;
+    for (const item of fallbackOrderPayload.items) {
+      const prodId = item.product?.id || item.id;
+      const dbProduct = products.find(p => p.id === prodId);
+      const unitPrice = dbProduct ? Number(dbProduct.prix) : Number(item.product?.prix || item.prix || 0);
+      const qty = Math.max(1, Math.floor(Number(item.quantity || item.quantite || 1)));
+      calculatedItemsTotal += (unitPrice * qty);
+    }
+    const deliveryFee = Number(fallbackOrderPayload.shippingDetails?.deliveryFee || fallbackOrderPayload.shippingDetails?.shippingFee || 0);
+    const serverExpectedTotal = calculatedItemsTotal + (deliveryFee > 0 ? deliveryFee : 0);
+    let verifiedTotalAmount = Math.max(0, Number(fallbackOrderPayload.totalAmount || serverExpectedTotal));
+    if (verifiedTotalAmount < calculatedItemsTotal * 0.7 || verifiedTotalAmount <= 0) {
+      verifiedTotalAmount = serverExpectedTotal;
+    }
+
+    const reconstructedOrder = {
+      ...fallbackOrderPayload,
+      id: orderId,
+      totalAmount: verifiedTotalAmount,
+      paymentStatus: "En attente de paiement",
+      splitProcessed: false,
+      createdAt: fallbackOrderPayload.createdAt || new Date().toISOString()
+    };
+    orders.unshift(reconstructedOrder);
+    orderIndex = 0;
+  }
+
   if (orderIndex === -1) {
     return res.status(404).json({ success: false, error: "Commande non trouvée." });
   }
@@ -3298,27 +3389,22 @@ app.post("/api/payments/initiate", (req, res) => {
       sellerName: order.sellerName
     };
 
-    PaymentGateway.getInstance().initiatePayment(providerId, orderId, order.totalAmount, customer)
-      .then(session => {
-        // Associate the transaction with the order record and preserve multi-country & currency data
-        order.paymentGatewayTxId = session.transactionId;
-        order.paymentGatewayProvider = providerId;
-        order.paymentGatewayCurrencyCode = session.currencyCode || resolvedCurrencyCode;
-        order.paymentGatewayCountryCode = session.countryCode || resolvedCountryCode;
-        order.paymentGatewayInitiatedAt = new Date().toISOString();
-        order.currencyCode = resolvedCurrencyCode;
-        order.clientCountryCode = resolvedCountryCode;
-        order.sellerCountryCode = resolvedSellerCountry;
-        order.isCrossBorder = isCrossBorder;
-        writeJSONFile(ORDERS_FILE, orders);
-        
-        res.json({ success: true, session });
-      })
-      .catch(err => {
-        res.status(500).json({ success: false, error: err.message });
-      });
+    const session = await PaymentGateway.getInstance().initiatePayment(providerId, orderId, order.totalAmount, customer);
+    // Associate the transaction with the order record and preserve multi-country & currency data
+    order.paymentGatewayTxId = session.transactionId;
+    order.paymentGatewayProvider = providerId;
+    order.paymentGatewayCurrencyCode = session.currencyCode || resolvedCurrencyCode;
+    order.paymentGatewayCountryCode = session.countryCode || resolvedCountryCode;
+    order.paymentGatewayInitiatedAt = new Date().toISOString();
+    order.currencyCode = resolvedCurrencyCode;
+    order.clientCountryCode = resolvedCountryCode;
+    order.sellerCountryCode = resolvedSellerCountry;
+    order.isCrossBorder = isCrossBorder;
+    await saveOrdersWithCloudSync(orders);
+
+    return res.json({ success: true, session });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -3333,7 +3419,7 @@ app.post("/api/payments/confirm", async (req, res) => {
       return res.status(400).json({ success: false, error: "Identifiant de transaction ou de commande requis." });
     }
 
-    const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+    const orders = await loadOrdersWithCloudSync(requestedOrderId, receivedToken);
     // Locate the order by orderId or by its recorded PayDunya transaction token (never treating order.id as a PayDunya token)
     const orderIndex = orders.findIndex(o =>
       (requestedOrderId && o.id === requestedOrderId) ||
@@ -3609,7 +3695,7 @@ app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) =
       return res.status(200).json({ success: true, message: "IPN souscription reçue et traitée." });
     }
 
-    const orders = readJSONFile<any[]>(ORDERS_FILE, []);
+    const orders = await loadOrdersWithCloudSync(orderId, token);
     const orderIndex = orders.findIndex(o =>
       (orderId && o.id === orderId) ||
       (token && o.paymentGatewayTxId === token)

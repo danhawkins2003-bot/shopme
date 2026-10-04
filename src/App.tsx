@@ -2324,7 +2324,8 @@ export default function App() {
           name: checkoutName.trim(),
           phone: checkoutPhoneWithCode,
           countryCode: checkoutCountry.code,
-          currencyCode: checkoutCountry.currencyCode
+          currencyCode: checkoutCountry.currencyCode,
+          order: orderData
         })
       });
 

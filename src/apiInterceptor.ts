@@ -1637,206 +1637,13 @@ function sanitizeUserForResponse(user: any): any {
     }, 404, false);
   }
 
-  // --- EMULATED PAYMENTS: CONFIRM & SPLIT FUNDS ---
+  // --- PAYMENTS: CONFIRM & SPLIT FUNDS (Strict Backend Authority Only) ---
   if (cleanRoute === "/api/payments/confirm" && method === "POST") {
-    const { transactionId, providerId, orderId } = bodyData;
-    if (!transactionId || !providerId) {
-      return makeResponse({ success: false, error: "ID de transaction et de prestataire requis." }, 400, false);
-    }
-
-    const orders = JSON.parse(localStorage.getItem("asime_emulated_orders") || "[]");
-    const orderIndex = orders.findIndex((o: any) => o.paymentGatewayTxId === transactionId || o.id === orderId);
-
-    if (orderIndex === -1) {
-      return makeResponse({ success: false, error: "Commande associée introuvable." }, 404, false);
-    }
-
-    const order = orders[orderIndex];
-    if (order.paymentStatus === "Payé") {
-      return makeResponse({ success: true, message: "La commande est déjà confirmée comme payée.", order }, 200, true);
-    }
-
-    const orderCurrency = order.currencyCode || (order.clientCountryCode === "CM" ? "XAF" : "XOF");
-    order.paymentStatus = "Payé";
-    order.paymentGatewayTxId = transactionId;
-    order.paymentGatewayProvider = providerId;
-    order.paymentMethod = "PayDunya";
-    order.currencyCode = orderCurrency;
-    order.paymentConfirmedAt = new Date().toISOString();
-
-    // Definitive Revenue Splitting Logic
-    if (!order.splitProcessed) {
-      const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
-      const wallets = JSON.parse(localStorage.getItem("asime_emulated_wallets") || "{}");
-      const logs = JSON.parse(localStorage.getItem("asime_emulated_wallet_logs") || "[]");
-      const totalAmount = Number(order.totalAmount || 0);
-
-      // 1. Affiliate Validation:
-      // Un affilié gagne une commission UNIQUEMENT lorsqu'un client achète réellement via son lien/code d'affiliation
-      // attribué à la vente et s'il s'agit d'un utilisateur avec le rôle "affilie".
-      let affiliateUserId = null;
-      let validAffiliateUser = null;
-      if (order.affiliateCode) {
-        const affUser = users.find((u: any) => (u.affiliateCode && u.affiliateCode === order.affiliateCode) || u.id === order.affiliateCode);
-        if (affUser && affUser.role === "affilie") {
-          affiliateUserId = affUser.id;
-          validAffiliateUser = affUser;
-        }
-      }
-
-      // 2. Commission Breakdown:
-      // - Vendeur: 90% garanti
-      // - Miabé Asi part brute: 10%
-      // - Affilié: 3% (taux existant) UNIQUEMENT si affilié valide, prélevé exclusivement sur les 10% de Miabé Asi
-      // - Sans affilié: affilié = 0, Miabé Asi conserve 10% en totalité
-      const sellerTotalEarnings = Math.floor(totalAmount * 0.90);
-      const miabeAsiGrossCommission = Math.floor(totalAmount * 0.10);
-
-      let actualAffiliateCommission = 0;
-      if (validAffiliateUser) {
-        actualAffiliateCommission = (order.affiliateCommission !== undefined && order.affiliateCommission > 0)
-          ? order.affiliateCommission
-          : Math.floor(totalAmount * 0.03);
-
-        validAffiliateUser.affiliateStats = validAffiliateUser.affiliateStats || {
-          clicks: 0, Visitors: 0, ventes: 0, chiffreAffaires: 0, commissionsGagnees: 0, commissionDisponible: 0, commissionRetiree: 0
-        };
-        validAffiliateUser.affiliateStats.ventes += 1;
-        validAffiliateUser.affiliateStats.chiffreAffaires += totalAmount;
-        validAffiliateUser.affiliateStats.commissionsGagnees += actualAffiliateCommission;
-        validAffiliateUser.affiliateStats.commissionDisponible += actualAffiliateCommission;
-
-        validAffiliateUser.notifications = validAffiliateUser.notifications || [];
-        validAffiliateUser.notifications.unshift({
-          id: "notif_split_aff_" + Date.now().toString(),
-          text: `Félicitations ! Vous avez gagné une commission de ${actualAffiliateCommission.toLocaleString()} ${orderCurrency} (3%) pour la vente affiliée de la commande #${order.id}. (Prélevée sur la part Miabé Asi)`,
-          type: "affiliate",
-          read: false,
-          date: new Date().toISOString()
-        });
-
-        // Ledger entry for affiliate
-        if (!wallets[affiliateUserId]) {
-          wallets[affiliateUserId] = { userId: affiliateUserId, balance: 0, currencyCode: orderCurrency, type: "affilie", history: [] };
-        }
-        wallets[affiliateUserId].balance += actualAffiliateCommission;
-        wallets[affiliateUserId].currencyCode = orderCurrency;
-        const affTxId = "TX-COMM-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
-        wallets[affiliateUserId].history.unshift({
-          id: affTxId,
-          type: "commission",
-          amount: actualAffiliateCommission,
-          currencyCode: orderCurrency,
-          orderId: order.id,
-          date: new Date().toISOString(),
-          description: `Commission d'affiliation de 3% (${actualAffiliateCommission} ${orderCurrency}) pour la commande #${order.id} (prélevée sur la part Miabé Asi)`,
-          status: "completed"
-        });
-
-        logs.push({
-          id: "log_" + Date.now() + "_" + Math.floor(Math.random() * 100),
-          timestamp: new Date().toISOString(),
-          userId: affiliateUserId,
-          action: "CREDIT_COMMISSION",
-          amount: actualAffiliateCommission,
-          currencyCode: orderCurrency,
-          orderId: order.id,
-          txId: affTxId,
-          message: `Crédit commission d'affilié de 3% (${actualAffiliateCommission} ${orderCurrency}) prélevée sur la part Miabé Asi pour la commande ${order.id}`
-        });
-      } else {
-        actualAffiliateCommission = 0;
-        order.affiliateCode = null;
-      }
-
-      const miabeAsiNetCommission = miabeAsiGrossCommission - actualAffiliateCommission;
-
-      order.sellerEarnings = sellerTotalEarnings;
-      order.miabeAsiGrossCommission = miabeAsiGrossCommission;
-      order.affiliateCommission = actualAffiliateCommission;
-      order.miabeAsiNetCommission = miabeAsiNetCommission;
-
-      // 3. Sellers Earnings Split (90% per item, never reduced)
-      for (const item of order.items) {
-        const itemTotal = item.product.prix * item.quantity;
-        const sellerEarnings = Math.floor(itemTotal * 0.90);
-        const partnerName = item.product.partenaire || "Boutique en Direct";
-
-        const sellerUser = users.find((u: any) => u.role === "vendeur" && (u.businessName === partnerName || u.name === partnerName));
-        if (sellerUser) {
-          const sellerId = sellerUser.id;
-          sellerUser.vendeurStats = sellerUser.vendeurStats || {
-            produitsPublies: 0, produitsVendus: 0, revenusGeneres: 0, stockRestant: 0
-          };
-          sellerUser.vendeurStats.produitsVendus += item.quantity;
-          sellerUser.vendeurStats.revenusGeneres += sellerEarnings;
-
-          sellerUser.notifications = sellerUser.notifications || [];
-          sellerUser.notifications.unshift({
-            id: "notif_split_sel_" + Date.now().toString() + "_" + Math.floor(Math.random() * 100),
-            text: `Nouvelle commande payée ! Votre produit "${item.product.nom}" (x${item.quantity}) a été vendu. Votre portefeuille a été crédité de ${sellerEarnings.toLocaleString()} ${orderCurrency} (Part vendeur 90% garantie).`,
-            type: "sale",
-            read: false,
-            date: new Date().toISOString()
-          });
-
-          if (!wallets[sellerId]) {
-            wallets[sellerId] = { userId: sellerId, balance: 0, currencyCode: orderCurrency, type: "vendeur", history: [] };
-          }
-          wallets[sellerId].balance += sellerEarnings;
-          wallets[sellerId].currencyCode = orderCurrency;
-          const sellerTxId = "TX-SALE-" + Math.floor(Math.random() * 16777215).toString(16).toUpperCase();
-          wallets[sellerId].history.unshift({
-            id: sellerTxId,
-            type: "vente",
-            amount: sellerEarnings,
-            currencyCode: orderCurrency,
-            orderId: order.id,
-            date: new Date().toISOString(),
-            description: `Vente produit : "${item.product.nom}" (x${item.quantity}) - Part vendeur 90% intégrale`,
-            status: "completed"
-          });
-
-          logs.push({
-            id: "log_" + Date.now() + "_" + Math.floor(Math.random() * 100),
-            timestamp: new Date().toISOString(),
-            userId: sellerId,
-            action: "CREDIT_SALE",
-            amount: sellerEarnings,
-            currencyCode: orderCurrency,
-            orderId: order.id,
-            txId: sellerTxId,
-            message: `Crédit vente de ${sellerEarnings} ${orderCurrency} pour "${item.product.nom}" (x${item.quantity}) sur commande ${order.id} - Part vendeur 90% intégrale`
-          });
-        }
-      }
-
-      order.splitProcessed = true;
-      localStorage.setItem("asime_emulated_users", JSON.stringify(users));
-      localStorage.setItem("asime_emulated_wallets", JSON.stringify(wallets));
-      localStorage.setItem("asime_emulated_wallet_logs", JSON.stringify(logs));
-    }
-
-    // Notify buyer
-    const clientUserId = order.userId;
-    if (clientUserId && !clientUserId.startsWith("guest_")) {
-      const users = JSON.parse(localStorage.getItem("asime_emulated_users") || "[]");
-      const clientIndex = users.findIndex((u: any) => u.id === clientUserId);
-      if (clientIndex > -1) {
-        users[clientIndex].notifications = users[clientIndex].notifications || [];
-        users[clientIndex].notifications.unshift({
-          id: "notif_pay_" + Date.now().toString(),
-          text: `Paiement confirmé ! Votre commande #${order.id} d'un montant de ${order.totalAmount.toLocaleString()} ${orderCurrency} a été payée avec succès via ${order.paymentMethod}.`,
-          type: "order",
-          read: false,
-          date: new Date().toISOString()
-        });
-        localStorage.setItem("asime_emulated_users", JSON.stringify(users));
-      }
-    }
-
-    localStorage.setItem("asime_emulated_orders", JSON.stringify(orders));
-    return makeResponse({ success: true, message: "Paiement validé avec succès !", order }, 200, true);
+    return makeResponse({
+      success: false,
+      status: "pending",
+      error: "Connexion au serveur backend requise pour vérifier le paiement PayDunya et exécuter la répartition financière Supabase."
+    }, 503, false);
   }
 
   // --- EMULATED ORDERS: FETCH MY ORDERS ---
@@ -3399,15 +3206,26 @@ function sanitizeUserForResponse(user: any): any {
 // Override the global Window fetch definition
 const customFetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const urlStr = typeof input === "string" ? input : (input instanceof URL ? input.href : (input as Request).url || "");
+  const isCriticalPaymentOrOrderRoute = urlStr.includes("/api/payments/") || urlStr.includes("/api/orders/");
 
   try {
-    const res = await originalFetch(input, init);
+    let res = await originalFetch(input, init);
     const isApiRoute = urlStr.includes("/api/") || urlStr.includes("/auth/") || urlStr.endsWith("/api") || urlStr.endsWith("/auth");
     if (isApiRoute) {
-      const contentType = (res.headers.get("content-type") || "").toLowerCase();
-      // If an API route returned HTML (doctype, Vite SPA fallback, or 502/503 HTML gateway error) or non-JSON when failed:
-      const isHtmlResponse = contentType.includes("text/html");
-      const isNonJsonFailure = !res.ok && !contentType.includes("application/json");
+      let contentType = (res.headers.get("content-type") || "").toLowerCase();
+      let isHtmlResponse = contentType.includes("text/html");
+      let isNonJsonFailure = !res.ok && !contentType.includes("application/json");
+
+      // Retry once on transient cold-start failure for payment/order routes
+      if ((isHtmlResponse || isNonJsonFailure) && isCriticalPaymentOrOrderRoute) {
+        try {
+          await new Promise(r => setTimeout(r, 350));
+          res = await originalFetch(input, init);
+          contentType = (res.headers.get("content-type") || "").toLowerCase();
+          isHtmlResponse = contentType.includes("text/html");
+          isNonJsonFailure = !res.ok && !contentType.includes("application/json");
+        } catch (retryErr) {}
+      }
 
       if (isHtmlResponse || isNonJsonFailure) {
         console.warn(`[API Interceptor] Route ${urlStr} returned Non-JSON (status: ${res.status}, Content-Type: ${contentType}). Falling back to client emulation.`);
@@ -3416,6 +3234,16 @@ const customFetch = async function(input: RequestInfo | URL, init?: RequestInit)
     }
     return res;
   } catch (err) {
+    if (isCriticalPaymentOrOrderRoute) {
+      try {
+        await new Promise(r => setTimeout(r, 350));
+        const retryRes = await originalFetch(input, init);
+        const ct = (retryRes.headers.get("content-type") || "").toLowerCase();
+        if (!ct.includes("text/html") && (retryRes.ok || ct.includes("application/json"))) {
+          return retryRes;
+        }
+      } catch (retryErr) {}
+    }
     console.warn(`[API Interceptor] Fetch to ${urlStr} failed. Falling back to client emulation.`, err);
     const isApiRoute = urlStr.includes("/api/") || urlStr.includes("/auth/") || urlStr.endsWith("/api") || urlStr.endsWith("/auth");
     if (isApiRoute) {

@@ -1,0 +1,686 @@
+[
+  {
+    "id": "ord_10011",
+    "userId": "guest_1791064593001",
+    "items": [
+      {
+        "product": {
+          "id": "prod_pop_84",
+          "nom": "Souliers Prestige Légère",
+          "prix": 38500,
+          "vendeurId": "assisted_merchant",
+          "partenaire": "Boutique en Direct",
+          "countryCode": "TG",
+          "countryOrigin": "TG",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=600"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 38500,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Agoè",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Agoè",
+    "clientName": "Prune",
+    "clientPhone": "+228 999081",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Prune",
+      "phone": "+228 999081",
+      "countryCode": "TG",
+      "city": "Agoè",
+      "quartier": "Agoè",
+      "currencyCode": "XOF",
+      "phoneWithCountryCode": "+228 999081",
+      "notes": "Commande sécurisée payée par EnLigne via Miabé Asi Gateway."
+    },
+    "paymentMethod": "EnLigne",
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 34650,
+    "miabeAsiGrossCommission": 3850,
+    "miabeAsiNetCommission": 3850,
+    "splitProcessed": false,
+    "createdAt": "2026-10-03T21:56:33.003Z"
+  },
+  {
+    "id": "ord_10010",
+    "userId": "guest_1790958169308",
+    "items": [
+      {
+        "product": {
+          "id": "prod_pop_60",
+          "nom": "Derbies Classiques Haute Coutures",
+          "prix": 15100,
+          "vendeurId": "assisted_merchant",
+          "partenaire": "Boutique en Direct",
+          "countryCode": "TG",
+          "countryOrigin": "TG",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=600"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 15100,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lome",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lome",
+    "clientName": "Prince",
+    "clientPhone": "+228 99908169",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Prince",
+      "phone": "+228 99908169",
+      "countryCode": "TG",
+      "city": "Lome",
+      "quartier": "Lome",
+      "currencyCode": "XOF",
+      "phoneWithCountryCode": "+228 99908169",
+      "notes": "Commande sécurisée payée par EnLigne via Miabé Asi Gateway."
+    },
+    "paymentMethod": "EnLigne",
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 13590,
+    "miabeAsiGrossCommission": 1510,
+    "miabeAsiNetCommission": 1510,
+    "splitProcessed": false,
+    "createdAt": "2026-10-02T16:22:49.310Z",
+    "paymentGatewayTxId": "PD-TOK-02753B498D0C",
+    "paymentGatewayProvider": "paydunya",
+    "paymentGatewayCurrencyCode": "XOF",
+    "paymentGatewayCountryCode": "TG",
+    "paymentGatewayInitiatedAt": "2026-10-02T16:22:49.465Z"
+  },
+  {
+    "id": "ord_10009",
+    "userId": "guest_1790897318045",
+    "items": [
+      {
+        "product": {
+          "id": "p1",
+          "nom": "Miel d Anié",
+          "prix": 100000,
+          "partenaire": "Boutique en Direct",
+          "vendeurId": "assisted_merchant",
+          "countryCode": "TG",
+          "countryOrigin": "Togo",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "/placeholder.jpg"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 100000,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lomé",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lomé",
+    "clientName": "Client Test Sécurité",
+    "clientPhone": "+22890000000",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Client Test Sécurité",
+      "phone": "+22890000000",
+      "countryCode": "TG",
+      "city": "Lomé",
+      "currencyCode": "XOF"
+    },
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 90000,
+    "miabeAsiGrossCommission": 10000,
+    "miabeAsiNetCommission": 10000,
+    "splitProcessed": false,
+    "createdAt": "2026-10-01T23:28:38.046Z"
+  },
+  {
+    "id": "ord_10008",
+    "userId": "guest_1790897318010",
+    "items": [
+      {
+        "product": {
+          "id": "p1",
+          "nom": "Miel d Anié",
+          "prix": 50000,
+          "partenaire": "Boutique en Direct",
+          "vendeurId": "assisted_merchant",
+          "countryCode": "TG",
+          "countryOrigin": "Togo",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "/placeholder.jpg"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 50000,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lomé",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lomé",
+    "clientName": "Client Test Sécurité",
+    "clientPhone": "+22890000000",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Client Test Sécurité",
+      "phone": "+22890000000",
+      "countryCode": "TG",
+      "city": "Lomé",
+      "currencyCode": "XOF"
+    },
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 45000,
+    "miabeAsiGrossCommission": 5000,
+    "miabeAsiNetCommission": 5000,
+    "splitProcessed": false,
+    "createdAt": "2026-10-01T23:28:38.020Z"
+  },
+  {
+    "id": "ord_10007",
+    "userId": "guest_1790897317998",
+    "items": [
+      {
+        "product": {
+          "id": "p1",
+          "nom": "Miel d Anié",
+          "prix": 50000,
+          "partenaire": "Boutique en Direct",
+          "vendeurId": "assisted_merchant",
+          "countryCode": "TG",
+          "countryOrigin": "Togo",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "/placeholder.jpg"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 50000,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lomé",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lomé",
+    "clientName": "Client Test Sécurité",
+    "clientPhone": "+22890000000",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Client Test Sécurité",
+      "phone": "+22890000000",
+      "countryCode": "TG",
+      "city": "Lomé",
+      "currencyCode": "XOF"
+    },
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 45000,
+    "miabeAsiGrossCommission": 5000,
+    "miabeAsiNetCommission": 5000,
+    "splitProcessed": false,
+    "createdAt": "2026-10-01T23:28:38.000Z"
+  },
+  {
+    "id": "ord_10006",
+    "userId": "guest_1790897317965",
+    "items": [
+      {
+        "product": {
+          "id": "p1",
+          "nom": "Miel d Anié",
+          "prix": 15000,
+          "partenaire": "Boutique en Direct",
+          "vendeurId": "assisted_merchant",
+          "countryCode": "TG",
+          "countryOrigin": "Togo",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "/placeholder.jpg"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 15000,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lomé",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lomé",
+    "clientName": "Client Test Sécurité",
+    "clientPhone": "+22890000000",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Client Test Sécurité",
+      "phone": "+22890000000",
+      "countryCode": "TG",
+      "city": "Lomé",
+      "currencyCode": "XOF"
+    },
+    "paymentMethod": "Paiement Sécurisé Mobile Money & Carte",
+    "paymentStatus": "Payé",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 13500,
+    "miabeAsiGrossCommission": 1500,
+    "miabeAsiNetCommission": 1500,
+    "splitProcessed": true,
+    "createdAt": "2026-10-01T23:28:37.966Z",
+    "status": "En préparation",
+    "paymentGatewayTxId": "PD-TOK-VALID-1790897317889",
+    "paymentGatewayProvider": "paydunya",
+    "paymentConfirmedAt": "2026-10-01T23:28:37.984Z"
+  },
+  {
+    "id": "ord_10005",
+    "userId": "guest_1790897301409",
+    "items": [
+      {
+        "product": {
+          "id": "p1",
+          "nom": "Miel du Togo",
+          "prix": 5000,
+          "partenaire": "Boutique en Direct",
+          "vendeurId": "assisted_merchant",
+          "countryCode": "TG",
+          "countryOrigin": "Togo",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "/placeholder.jpg"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 5000,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lomé",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lomé",
+    "clientName": "Test Client",
+    "clientPhone": "+22890000000",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Test Client",
+      "phone": "+22890000000",
+      "countryCode": "TG",
+      "city": "Lomé",
+      "currencyCode": "XOF"
+    },
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 4500,
+    "miabeAsiGrossCommission": 500,
+    "miabeAsiNetCommission": 500,
+    "splitProcessed": false,
+    "createdAt": "2026-10-01T23:28:21.413Z"
+  },
+  {
+    "id": "ord_10004",
+    "userId": "guest_1790872794304",
+    "items": [
+      {
+        "product": {
+          "id": "prod_pop_97",
+          "nom": "Sac Tressé Raphia Plateaux d'Or",
+          "prix": 3200,
+          "vendeurId": "assisted_merchant",
+          "partenaire": "Boutique en Direct",
+          "countryCode": "TG",
+          "countryOrigin": "TG",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1524498250077-390f9e378fc0?auto=format&fit=crop&q=80&w=600"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 3200,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Agoè",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Agoè",
+    "clientName": "Prince",
+    "clientPhone": "+228 99908169",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Prince",
+      "phone": "+228 99908169",
+      "countryCode": "TG",
+      "city": "Agoè",
+      "quartier": "Agoè",
+      "currencyCode": "XOF",
+      "phoneWithCountryCode": "+228 99908169",
+      "notes": "Commande sécurisée payée par EnLigne via Miabé Asi Gateway."
+    },
+    "paymentMethod": "Paiement Sécurisé Mobile Money & Carte",
+    "paymentStatus": "Payé",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 2880,
+    "miabeAsiGrossCommission": 320,
+    "miabeAsiNetCommission": 320,
+    "splitProcessed": true,
+    "createdAt": "2026-10-01T16:39:54.306Z",
+    "paymentGatewayTxId": "ord_10004",
+    "paymentGatewayProvider": "paydunya",
+    "paymentGatewayCurrencyCode": "XOF",
+    "paymentGatewayCountryCode": "TG",
+    "paymentGatewayInitiatedAt": "2026-10-01T16:39:54.461Z",
+    "status": "En préparation",
+    "paymentConfirmedAt": "2026-10-01T16:40:26.676Z"
+  },
+  {
+    "id": "ord_10003",
+    "userId": "guest_1790584044894",
+    "items": [
+      {
+        "product": {
+          "id": "prod_pop_84",
+          "nom": "Souliers Prestige Légère",
+          "prix": 38500,
+          "vendeurId": "assisted_merchant",
+          "partenaire": "Boutique en Direct",
+          "countryCode": "TG",
+          "countryOrigin": "TG",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=600"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 38500,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lome",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lome",
+    "clientName": "Prince",
+    "clientPhone": "+228 99908169",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Prince",
+      "phone": "+228 99908169",
+      "countryCode": "TG",
+      "city": "Lome",
+      "quartier": "Lome",
+      "currencyCode": "XOF",
+      "phoneWithCountryCode": "+228 99908169",
+      "notes": "Commande sécurisée payée par EnLigne via Miabé Asi Gateway."
+    },
+    "paymentMethod": "EnLigne",
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 34650,
+    "miabeAsiGrossCommission": 3850,
+    "miabeAsiNetCommission": 3850,
+    "splitProcessed": false,
+    "createdAt": "2026-09-28T08:27:24.896Z",
+    "paymentGatewayTxId": "PD-TOK-B6D59C42CFC3",
+    "paymentGatewayProvider": "paydunya",
+    "paymentGatewayCurrencyCode": "XOF",
+    "paymentGatewayCountryCode": "TG",
+    "paymentGatewayInitiatedAt": "2026-09-28T08:27:25.062Z"
+  },
+  {
+    "id": "ord_10002",
+    "userId": "guest_1790583888692",
+    "items": [
+      {
+        "product": {
+          "id": "prod_pop_12",
+          "nom": "Sneakers Sport Impériale",
+          "prix": 13300,
+          "vendeurId": "assisted_merchant",
+          "partenaire": "Boutique en Direct",
+          "countryCode": "TG",
+          "countryOrigin": "TG",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "https://images.unsplash.com/photo-1549298916-b41d501d3772?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=600"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 13300,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lome",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lome",
+    "clientName": "Prince",
+    "clientPhone": "+228 99908169",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Prince",
+      "phone": "+228 99908169",
+      "countryCode": "TG",
+      "city": "Lome",
+      "quartier": "Lome",
+      "currencyCode": "XOF",
+      "phoneWithCountryCode": "+228 99908169",
+      "notes": "Commande sécurisée payée par Espèces via Miabé Asi Gateway."
+    },
+    "paymentMethod": "Espèces",
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 11970,
+    "miabeAsiGrossCommission": 1330,
+    "miabeAsiNetCommission": 1330,
+    "splitProcessed": false,
+    "createdAt": "2026-09-28T08:24:48.694Z"
+  },
+  {
+    "id": "ord_10001",
+    "userId": "guest_1790414325227",
+    "items": [
+      {
+        "product": {
+          "id": "prod_pop_73",
+          "nom": "Huile Essentielle Citronnelle Tradition Douce",
+          "prix": 10400,
+          "vendeurId": "assisted_merchant",
+          "partenaire": "Boutique en Direct",
+          "countryCode": "TG",
+          "countryOrigin": "TG",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&q=80&w=600"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 10400,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lome",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lome",
+    "clientName": "Prince",
+    "clientPhone": "+228 99908169",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Boutique en Direct",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Prince",
+      "phone": "+228 99908169",
+      "countryCode": "TG",
+      "city": "Lome",
+      "quartier": "Lome",
+      "currencyCode": "XOF",
+      "phoneWithCountryCode": "+228 99908169",
+      "notes": "Commande sécurisée payée par EnLigne via Miabé Asi Gateway."
+    },
+    "paymentMethod": "EnLigne",
+    "paymentStatus": "En attente",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 9360,
+    "miabeAsiGrossCommission": 1040,
+    "miabeAsiNetCommission": 1040,
+    "splitProcessed": false,
+    "createdAt": "2026-09-26T09:18:45.229Z",
+    "paymentGatewayTxId": "PD-TOK-DB2DA312A20B",
+    "paymentGatewayProvider": "paydunya",
+    "paymentGatewayCurrencyCode": "XOF",
+    "paymentGatewayCountryCode": "TG",
+    "paymentGatewayInitiatedAt": "2026-09-26T09:18:45.423Z"
+  }
+]
