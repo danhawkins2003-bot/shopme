@@ -780,6 +780,8 @@ export async function checkSupabaseHealth(): Promise<{
   url?: string;
   tableExists?: boolean;
   tables?: { products: boolean; asime_store: boolean };
+  panafricanTables?: Record<string, boolean>;
+  allTablesReady?: boolean;
   error?: string;
   message?: string;
 }> {

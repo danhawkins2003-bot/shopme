@@ -74,6 +74,8 @@ import {
 } from "lucide-react";
 import { Product, BlogPost } from "./types";
 import AdminStats from "./components/AdminStats";
+import AdminOverviewDashboard, { AdminTabType } from "./components/AdminOverviewDashboard";
+import AdminSaaSLayout from "./components/AdminSaaSLayout";
 import { InvoiceModal } from "./components/InvoiceModal";
 import { INITIAL_PROMO_SLIDES, PromoSlide } from "./data/promoBanners";
 import { DEFAULT_HERO_CARDS, DEFAULT_GALLERY_CARDS, ShowcaseCard } from "./data/showcaseCards";
@@ -83,7 +85,7 @@ import { uploadImageToServer } from "./lib/imageUploadHelper";
 import officialLogoImg from "./assets/images/miabe_asi_official_logo_1787563252544.jpg";
 
 export default function AdminApp() {
-  const [activeTab, setActiveTab] = useState<"catalog" | "analytics" | "requests" | "vendors" | "banners" | "stats" | "settings" | "blogs">("catalog");
+  const [activeTab, setActiveTab] = useState<AdminTabType>("overview");
   const [adminStatusFilter, setAdminStatusFilter] = useState<"all" | "actif" | "inactif" | "en_rupture">("all");
   const [productAnalytics, setProductAnalytics] = useState<{
     summary: {
@@ -1438,294 +1440,181 @@ export default function AdminApp() {
     }
   };
 
+  const pendingAlertsCount =
+    orders.filter(o => o.paymentStatus !== "Payé" && o.paymentMethod !== "Espèces").length +
+    withdrawals.filter(w => w.status === "En attente").length +
+    usersList.filter(u => u.vendeurStatus === "En attente d'activation").length +
+    bannerRequests.filter(b => b.status === "pending").length +
+    featuredRequests.filter(p => p.phareStatus === "pending").length;
+
+  const sellersCount = usersList.filter(u => u.role === "vendeur" || u.vendeurSubscription).length;
+
+  const handleGlobalSearchChange = (val: string) => {
+    setAdminSearchQuery(val);
+    if (activeTab === "analytics") {
+      setAnalyticsSearchQuery(val);
+    }
+  };
+
+  const handleRefreshAll = () => {
+    fetchAdminData();
+    fetchProducts();
+    fetchAdminRequests();
+    fetchBlogs();
+    if (activeTab === "analytics") {
+      fetchProductAnalytics();
+    }
+    showToast("✓ Données synchronisées en direct");
+  };
+
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-neutral-900 font-sans">
-      
-      {/* Top Banner Administration Header */}
-      <nav className="bg-neutral-950 text-white py-3 px-6 shadow-md border-b border-[#d4af37]/35">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg overflow-hidden border border-[#d4af37]/50 bg-white p-0.5 shrink-0 shadow-xs">
-              <img src={officialLogoImg} alt="Miabé Asi Logo" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
-            </div>
-            <span className="font-display font-black text-sm uppercase tracking-widest text-[#d4af37]">Miabé Asi</span>
-            <span className="bg-[#d4af37]/15 text-[#d4af37] border border-[#d4af37]/30 text-[9px] font-bold px-2 py-0.5 uppercase tracking-widest rounded-sm ml-1">Console Administration</span>
-          </div>
-          <a 
-            href="/" 
-            className="text-xs text-neutral-400 hover:text-white transition-colors uppercase tracking-widest border border-neutral-800 px-3 py-1.5 rounded-sm"
-          >
-            Retour au site public →
-          </a>
-        </div>
-      </nav>
+      <AdminSaaSLayout
+        isAdminAuthenticated={isAdminAuthenticated}
+        adminPassword={adminPassword}
+        setAdminPassword={setAdminPassword}
+        adminAuthError={adminAuthError}
+        handleAdminLogin={handleAdminLogin}
+        handleAdminLogout={handleAdminLogout}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        officialLogoImg={officialLogoImg}
+        productsCount={products.length}
+        sellersCount={sellersCount}
+        pendingAlertsCount={pendingAlertsCount}
+        blogsCount={blogsList.length}
+        searchQuery={activeTab === "analytics" ? analyticsSearchQuery : adminSearchQuery}
+        onSearchChange={handleGlobalSearchChange}
+        isRefreshing={isRefreshing}
+        onRefreshAll={handleRefreshAll}
+        onQuickAddProduct={() => {
+          resetForm();
+          setActiveTab("catalog");
+        }}
+        onSelectAnalyticsTab={() => {
+          setActiveTab("analytics");
+          fetchProductAnalytics();
+        }}
+        onSelectBlogsTab={() => {
+          setActiveTab("blogs");
+          fetchBlogs();
+        }}
+      >
+        <div className="space-y-8 animate-fade-in">
+          {activeTab === "overview" ? (
+            <AdminOverviewDashboard
+              products={products}
+              orders={orders}
+              withdrawals={withdrawals}
+              usersList={usersList}
+              bannerRequests={bannerRequests}
+              featuredRequests={featuredRequests}
+              formatFCFA={formatFCFA}
+              setActiveTab={setActiveTab}
+              setAdminStatusFilter={setAdminStatusFilter}
+              handleValidatePayment={handleValidatePayment}
+              handleUpdateOrderStatus={handleUpdateOrderStatus}
+              handleApproveWithdrawal={handleApproveWithdrawal}
+              handleRejectWithdrawal={handleRejectWithdrawal}
+              handleApproveSeller={handleApproveSeller}
+              handleRejectSeller={handleRejectSeller}
+              handleApproveBanner={handleApproveBanner}
+              handleApproveFeatured={handleApproveFeatured}
+              onOpenInvoice={(order) => {
+                setSelectedInvoiceOrder(order);
+                setIsInvoiceModalOpen(true);
+              }}
+              globalSearchQuery={adminSearchQuery}
+            />
+          ) : activeTab === "catalog" ? (
+            <>
+              {/* Quick Status KPI Summary Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div 
+                  onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("all"); }}
+                  className="bg-white p-4 border border-neutral-200/90 rounded-2xl hover:border-[#d4af37] transition-all cursor-pointer shadow-2xs group"
+                >
+                  <div className="flex items-center justify-between text-neutral-500 mb-1">
+                    <span className="text-xs font-semibold">Catalogue Total</span>
+                    <Package className="w-4 h-4 text-[#d4af37]" />
+                  </div>
+                  <div className="text-2xl font-bold font-mono tabular-nums text-neutral-950">{products.length}</div>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">Articles enregistrés</p>
+                </div>
 
-      <div className="py-10 px-4 max-w-7xl mx-auto">
-        <div className="text-center mb-10">
-          <span className="text-[#d4af37] text-xs font-semibold tracking-widest uppercase mb-1 block">Console de gestion intégrée</span>
-          <h1 className="font-display text-2xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 uppercase">Administration Catalogue</h1>
-          <div className="w-16 h-1 bg-[#d4af37] mx-auto mt-3"></div>
-        </div>
+                <div 
+                  onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("actif"); }}
+                  className="bg-white p-4 border border-neutral-200/90 rounded-2xl hover:border-emerald-600 transition-all cursor-pointer shadow-2xs group"
+                >
+                  <div className="flex items-center justify-between text-emerald-800 mb-1">
+                    <span className="text-xs font-semibold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span>Actifs (En Ligne)</span>
+                    </span>
+                    <Eye className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="text-2xl font-bold font-mono tabular-nums text-emerald-700">
+                    {products.filter(p => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length}
+                  </div>
+                  <p className="text-[11px] text-emerald-600 mt-0.5">Visibles et achetables</p>
+                </div>
 
-        {!isAdminAuthenticated ? (
-          <div className="max-w-md mx-auto bg-white border border-neutral-200 p-8 rounded-sm shadow-sm text-center">
-            <Lock className="w-12 h-12 text-[#d4af37] mx-auto mb-4 animate-bounce" />
-            <h2 className="font-display font-bold text-xl uppercase text-neutral-950 mb-2">Accès Sécurisé</h2>
-            <p className="text-neutral-500 text-xs mb-6">Veuillez entrer le mot de passe d'administration pour gérer les stocks et modifier les produits.</p>
-            
-            <form onSubmit={handleAdminLogin} className="space-y-4">
-              <div>
-                <input 
-                  type="password" 
-                  required
-                  placeholder="Mot de passe d'administration" 
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  className="w-full border border-neutral-300 rounded-sm px-4 py-2.5 text-xs text-center focus:ring-1 focus:ring-[#d4af37] outline-none bg-neutral-50"
-                />
+                <div 
+                  onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("inactif"); }}
+                  className="bg-white p-4 border border-neutral-200/90 rounded-2xl hover:border-neutral-500 transition-all cursor-pointer shadow-2xs group"
+                >
+                  <div className="flex items-center justify-between text-neutral-600 mb-1">
+                    <span className="text-xs font-semibold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-neutral-400"></span>
+                      <span>Inactifs (Masqués)</span>
+                    </span>
+                    <Power className="w-4 h-4 text-neutral-500" />
+                  </div>
+                  <div className="text-2xl font-bold font-mono tabular-nums text-neutral-800">
+                    {products.filter(p => p.status === "inactif").length}
+                  </div>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">Retirés du site (conservés)</p>
+                </div>
+
+                <div 
+                  onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("en_rupture"); }}
+                  className="bg-white p-4 border border-neutral-200/90 rounded-2xl hover:border-rose-500 transition-all cursor-pointer shadow-2xs group"
+                >
+                  <div className="flex items-center justify-between text-rose-800 mb-1">
+                    <span className="text-xs font-semibold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                      <span>En Rupture</span>
+                    </span>
+                    <AlertCircle className="w-4 h-4 text-rose-600" />
+                  </div>
+                  <div className="text-2xl font-bold font-mono tabular-nums text-rose-700">
+                    {products.filter(p => p.status === "en_rupture" || (p.stock || 0) <= 0).length}
+                  </div>
+                  <p className="text-[11px] text-rose-600 mt-0.5">Stock épuisé ou déclaré</p>
+                </div>
               </div>
-              {adminAuthError && (
-                <div className="text-red-650 bg-red-50 text-xs p-2 text-red-600 rounded-sm font-semibold">
-                  {adminAuthError}
-                </div>
-              )}
-              <button 
-                type="submit" 
-                className="w-full bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 py-2.5 rounded-sm font-bold text-xs uppercase tracking-widest transition-colors cursor-pointer"
-              >
-                S'authentifier
-              </button>
-            </form>
-            <p className="text-[10px] text-neutral-400 mt-6 uppercase tracking-wider">Indice : Utilisez "miabeasi2026" ou "asime2026" pour vous connecter.</p>
-          </div>
-        ) : (
-          <div className="space-y-8 animate-fade-in">
-            
-            {/* Session Info card */}
-            <div className="bg-neutral-950 text-white p-6 rounded-sm border border-[#d4af37]/35 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Unlock className="w-5 h-5 text-[#d4af37]" />
-                  <h2 className="font-display font-extrabold text-lg uppercase tracking-wider">Console d'Administration Globale</h2>
-                </div>
-                <p className="text-xs text-neutral-300 mt-1">Supervisez le catalogue panafricain, activez/désactivez des produits en direct, analysez les performances et gérez les abonnements vendeurs.</p>
-              </div>
-              <button 
-                onClick={handleAdminLogout}
-                className="border border-white/20 text-white hover:bg-white/10 font-bold text-[10px] uppercase tracking-widest px-4 py-2 rounded-sm transition-colors cursor-pointer"
-              >
-                Se Déconnecter
-              </button>
-            </div>
 
-            {/* Quick Status KPI Summary Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div 
-                onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("all"); }}
-                className="bg-white p-3.5 border border-neutral-200 rounded-sm hover:border-[#d4af37] transition-all cursor-pointer shadow-2xs group"
-              >
-                <div className="flex items-center justify-between text-neutral-500 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Catalogue Total</span>
-                  <Package className="w-4 h-4 text-[#d4af37]" />
-                </div>
-                <div className="text-xl font-black font-mono text-neutral-950">{products.length}</div>
-                <p className="text-[9.5px] text-neutral-400 mt-0.5">Articles enregistrés</p>
-              </div>
-
-              <div 
-                onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("actif"); }}
-                className="bg-white p-3.5 border border-emerald-200 rounded-sm hover:border-emerald-500 transition-all cursor-pointer shadow-2xs group bg-gradient-to-br from-white to-emerald-50/20"
-              >
-                <div className="flex items-center justify-between text-emerald-800 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>Actifs (En Ligne)</span>
-                  </span>
-                  <Eye className="w-4 h-4 text-emerald-600" />
-                </div>
-                <div className="text-xl font-black font-mono text-emerald-700">
-                  {products.filter(p => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length}
-                </div>
-                <p className="text-[9.5px] text-emerald-600 mt-0.5">Visibles et achetables</p>
-              </div>
-
-              <div 
-                onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("inactif"); }}
-                className="bg-white p-3.5 border border-neutral-300 rounded-sm hover:border-neutral-500 transition-all cursor-pointer shadow-2xs group bg-gradient-to-br from-white to-neutral-100/30"
-              >
-                <div className="flex items-center justify-between text-neutral-600 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-neutral-400"></span>
-                    <span>Inactifs (Masqués)</span>
-                  </span>
-                  <Power className="w-4 h-4 text-neutral-500" />
-                </div>
-                <div className="text-xl font-black font-mono text-neutral-800">
-                  {products.filter(p => p.status === "inactif").length}
-                </div>
-                <p className="text-[9.5px] text-neutral-500 mt-0.5">Retirés du site (conservés)</p>
-              </div>
-
-              <div 
-                onClick={() => { setActiveTab("catalog"); setAdminStatusFilter("en_rupture"); }}
-                className="bg-white p-3.5 border border-rose-200 rounded-sm hover:border-rose-500 transition-all cursor-pointer shadow-2xs group bg-gradient-to-br from-white to-rose-50/20"
-              >
-                <div className="flex items-center justify-between text-rose-800 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                    <span>En Rupture</span>
-                  </span>
-                  <AlertCircle className="w-4 h-4 text-rose-600" />
-                </div>
-                <div className="text-xl font-black font-mono text-rose-700">
-                  {products.filter(p => p.status === "en_rupture" || (p.stock || 0) <= 0).length}
-                </div>
-                <p className="text-[9.5px] text-rose-600 mt-0.5">Stock épuisé ou déclaré</p>
-              </div>
-            </div>
-
-            {/* Tabs Navigation */}
-            <div className="flex border-b border-neutral-200 gap-1.5 overflow-x-auto pb-px scrollbar-none">
-              <button
-                onClick={() => setActiveTab("catalog")}
-                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "catalog"
-                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
-                    : "border-transparent text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                <Database className="w-4 h-4 text-[#d4af37]" />
-                <span>Catalogue & Statuts</span>
-                <span className="text-[9px] font-mono bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded-full">
-                  {products.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab("analytics");
-                  fetchProductAnalytics();
-                }}
-                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "analytics"
-                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
-                    : "border-transparent text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                <TrendingUp className="w-4 h-4 text-blue-600" />
-                <span>Analytics par Produit</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("vendors")}
-                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "vendors"
-                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
-                    : "border-transparent text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                <Users className="w-4 h-4 text-emerald-600" />
-                <span>Vendeurs & Abonnements</span>
-                {usersList.filter(u => u.role === "vendeur" || u.vendeurSubscription).length > 0 && (
-                  <span className="text-[9px] font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">
-                    {usersList.filter(u => u.role === "vendeur" || u.vendeurSubscription).length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveTab("banners")}
-                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "banners"
-                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
-                    : "border-transparent text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                <ImageIcon className="w-4 h-4 text-[#d4af37]" />
-                <span>Bannières & Vitrines</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("requests")}
-                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "requests"
-                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
-                    : "border-transparent text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                <Bell className="w-4 h-4 text-amber-500" />
-                <span>Alertes & Demandes</span>
-                {(orders.filter(o => o.paymentStatus !== "Payé" && o.paymentMethod !== "Espèces").length + 
-                  withdrawals.filter(w => w.status === "En attente").length + 
-                  usersList.filter(u => u.vendeurStatus === "En attente d'activation").length) > 0 && (
-                  <span className="bg-red-500 text-white font-mono text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                    {orders.filter(o => o.paymentStatus !== "Payé" && o.paymentMethod !== "Espèces").length + 
-                     withdrawals.filter(w => w.status === "En attente").length + 
-                     usersList.filter(u => u.vendeurStatus === "En attente d'activation").length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                id="tab-btn-stats"
-                onClick={() => setActiveTab("stats")}
-                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "stats"
-                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
-                    : "border-transparent text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                <BarChart3 className="w-4 h-4 text-purple-600" />
-                <span>Finances & Statistiques</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveTab("blogs");
-                  fetchBlogs();
-                }}
-                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "blogs"
-                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
-                    : "border-transparent text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                <BookOpen className="w-4 h-4 text-emerald-700" />
-                <span>Articles de Blog</span>
-                <span className="text-[9px] font-mono bg-neutral-100 text-neutral-700 px-1.5 py-0.5 rounded-full">
-                  {blogsList.length}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab("settings")}
-                className={`py-3 px-4 text-xs font-bold uppercase tracking-wider flex items-center gap-2 border-b-2 transition-all duration-200 cursor-pointer shrink-0 ${
-                  activeTab === "settings"
-                    ? "border-[#d4af37] text-neutral-950 font-black bg-white shadow-xs"
-                    : "border-transparent text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                <Settings className="w-4 h-4 text-neutral-500" />
-                <span>Paramètres & Logo</span>
-              </button>
-            </div>
-
-            {activeTab === "catalog" ? (
-              <>
-                {/* Split view */}
+              {/* Split view */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               
               {/* Product Form Grid */}
-              <div className="lg:col-span-5 bg-white p-6 border border-neutral-200 rounded-sm shadow-xs">
-                <div className="flex items-center justify-between mb-4 pb-2 border-b border-neutral-100">
-                  <h3 className="font-display font-bold text-sm uppercase tracking-wider text-neutral-950 flex items-center gap-1.5">
-                    <Edit className="w-4 h-4 text-[#d4af37]" />
-                    <span>{editingProduct ? "Modifier le Produit" : "Ajouter un Nouveau Produit"}</span>
-                  </h3>
+              <div className="lg:col-span-5 bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs">
+                <div className="flex items-center justify-between mb-5 pb-3 border-b border-neutral-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-[#d4af37]/15 border border-[#d4af37]/40 flex items-center justify-center text-[#b8901c]">
+                      <Edit className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-neutral-950">
+                        {editingProduct ? "Modifier le Produit" : "Ajouter un Nouveau Produit"}
+                      </h3>
+                      <p className="text-[10px] text-neutral-400 font-medium">Fiche catalogue officielle Miabé Asi</p>
+                    </div>
+                  </div>
                   {editingProduct && (
                     <button 
                       onClick={resetForm} 
-                      className="text-neutral-500 hover:text-neutral-955 text-xs font-semibold uppercase tracking-wider flex items-center gap-0.5 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       <X className="w-3.5 h-3.5" />
                       <span>Annuler</span>
@@ -1735,60 +1624,60 @@ export default function AdminApp() {
 
                 <form onSubmit={handleSaveProduct} className="space-y-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Nom du produit <span className="text-red-500">*</span></label>
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Nom du produit <span className="text-red-500">*</span></label>
                     <input 
                       type="text" 
                       required
                       value={formName}
                       onChange={(e) => setFormName(e.target.value)}
                       placeholder="Ex: Miel de Kpalimé"
-                      className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-neutral-50"
+                      className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-medium text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none bg-neutral-50/70 focus:bg-white transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Description <span className="text-red-500">*</span></label>
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Description <span className="text-red-500">*</span></label>
                     <textarea 
                       rows={3}
                       required
                       value={formDescription}
                       onChange={(e) => setFormDescription(e.target.value)}
                       placeholder="Caractéristiques, avantages..."
-                      className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-neutral-50 resize-none"
+                      className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-medium text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none bg-neutral-50/70 focus:bg-white transition-all resize-none"
                     ></textarea>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Prix en FCFA <span className="text-red-500">*</span></label>
+                      <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Prix en FCFA <span className="text-red-500">*</span></label>
                       <input 
                         type="number" 
                         required
                         value={formPrix}
                         onChange={(e) => setFormPrix(e.target.value)}
                         placeholder="6500"
-                        className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-neutral-50"
+                        className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none bg-neutral-50/70 focus:bg-white transition-all"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Prix Barré (Optionnel / FCFA)</label>
+                      <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Prix Barré (FCFA)</label>
                       <input 
                         type="number" 
                         value={formPrixBarre}
                         onChange={(e) => setFormPrixBarre(e.target.value)}
                         placeholder="8000"
-                        className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-neutral-50"
+                        className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none bg-neutral-50/70 focus:bg-white transition-all"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Catégorie</label>
+                      <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Catégorie</label>
                       <select 
                         value={formCategory}
                         onChange={(e) => setFormCategory(e.target.value)}
-                        className="w-full border border-neutral-300 rounded-sm px-2 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-white font-medium"
+                        className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none bg-neutral-50/70 focus:bg-white transition-all cursor-pointer"
                       >
                         <option value="Vêtements & Mode">Vêtements & Mode</option>
                         <option value="Chaussures Premium">Chaussures Premium</option>
@@ -1801,30 +1690,30 @@ export default function AdminApp() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Stock Initial</label>
+                      <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">Stock Initial</label>
                       <input 
                         type="number" 
                         required
                         value={formStock}
                         onChange={(e) => setFormStock(e.target.value)}
                         placeholder="10"
-                        className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-neutral-50/50"
+                        className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none bg-neutral-50/70 focus:bg-white transition-all"
                       />
                     </div>
                   </div>
 
                   {/* Statut de Publication (Actif / Inactif / En Rupture) */}
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
                       Statut de Publication sur le site <span className="text-red-500">*</span>
                     </label>
                     <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => setFormStatus("actif")}
-                        className={`py-2 px-2 text-center rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                        className={`py-2.5 px-2 text-center rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                           formStatus === "actif"
-                            ? "border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-600 font-black"
+                            ? "border-[#0f5132] bg-[#0f5132] text-white shadow-xs font-black"
                             : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:bg-neutral-100"
                         }`}
                       >
@@ -1833,9 +1722,9 @@ export default function AdminApp() {
                       <button
                         type="button"
                         onClick={() => setFormStatus("inactif")}
-                        className={`py-2 px-2 text-center rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                        className={`py-2.5 px-2 text-center rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                           formStatus === "inactif"
-                            ? "border-neutral-800 bg-neutral-800 text-white ring-1 ring-neutral-800 font-black"
+                            ? "border-neutral-900 bg-neutral-900 text-white shadow-xs font-black"
                             : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:bg-neutral-100"
                         }`}
                       >
@@ -1844,29 +1733,29 @@ export default function AdminApp() {
                       <button
                         type="button"
                         onClick={() => setFormStatus("en_rupture")}
-                        className={`py-2 px-2 text-center rounded-sm border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                        className={`py-2.5 px-2 text-center rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
                           formStatus === "en_rupture"
-                            ? "border-rose-600 bg-rose-50 text-rose-800 ring-1 ring-rose-600 font-black"
+                            ? "border-rose-600 bg-rose-600 text-white shadow-xs font-black"
                             : "border-neutral-200 bg-neutral-50 text-neutral-600 hover:bg-neutral-100"
                         }`}
                       >
                         🔴 En Rupture
                       </button>
                     </div>
-                    <p className="text-[9px] text-neutral-500 mt-1">
+                    <p className="text-[10px] text-neutral-500 mt-1.5 leading-relaxed">
                       • Inactif : retire le produit du site client sans le supprimer de la base.<br/>
                       • En Rupture : indique que le stock est épuisé tout en conservant la fiche visible.
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-1.5">
                       Boutique / Vendeur Propriétaire <span className="text-red-500">*</span>
                     </label>
                     <select 
                       value={formPartenaire}
                       onChange={(e) => setFormPartenaire(e.target.value)}
-                      className="w-full border border-neutral-300 rounded-sm px-2 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none bg-white font-medium"
+                      className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none bg-neutral-50/70 focus:bg-white transition-all cursor-pointer"
                     >
                       <option value="Boutique en Direct">Boutique en Direct (Administration)</option>
                       {usersList.filter(u => u.role === "vendeur").map(u => {
@@ -1881,15 +1770,15 @@ export default function AdminApp() {
                         <option value={formPartenaire}>{formPartenaire}</option>
                       )}
                     </select>
-                    <p className="text-[9px] text-neutral-400 mt-1 uppercase">
-                      Associez ce produit à la Boutique Directe d'administration ou à l'un des vendeurs inscrits sur votre plateforme.
+                    <p className="text-[10px] text-neutral-400 mt-1">
+                      Associez ce produit à la Boutique Directe d'administration ou à l'un des vendeurs inscrits.
                     </p>
                   </div>
 
                   {formPartenaire !== "Boutique en Direct" && (
-                    <div className="bg-red-50/40 border border-red-100 p-3 rounded-sm space-y-1">
-                      <label className="block text-[10px] font-bold text-red-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                        <ExternalLink className="w-3.5 h-3.5 text-red-500" />
+                    <div className="bg-amber-50/50 border border-[#d4af37]/30 p-3.5 rounded-xl space-y-1.5">
+                      <label className="block text-[10px] font-bold text-amber-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <ExternalLink className="w-3.5 h-3.5 text-[#b8901c]" />
                         <span>Lien d'Affiliation (Optionnel pour vos clients locaux)</span>
                       </label>
                       <input 
@@ -1897,45 +1786,47 @@ export default function AdminApp() {
                         value={formLienAffilie}
                         onChange={(e) => setFormLienAffilie(e.target.value)}
                         placeholder="https://..."
-                        className="w-full border border-neutral-300 rounded-sm px-3 py-2 text-xs outline-none bg-white"
+                        className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-xs outline-none bg-white focus:border-[#d4af37]"
                       />
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2 py-1">
+                  <div className="flex items-center gap-2.5 py-2 px-3 bg-neutral-50 rounded-xl border border-neutral-200/80">
                     <input 
                       type="checkbox" 
                       id="phare_chk" 
                       checked={formPhare}
                       onChange={(e) => setFormPhare(e.target.checked)}
-                      className="w-4 h-4 accent-amber-500 rounded-sm"
+                      className="w-4 h-4 accent-[#0f5132] rounded cursor-pointer"
                     />
-                    <label htmlFor="phare_chk" className="text-[10px] font-bold text-neutral-700 uppercase tracking-wider cursor-pointer">Mettre en avant de la page d'accueil</label>
+                    <label htmlFor="phare_chk" className="text-[11px] font-bold text-neutral-800 uppercase tracking-wider cursor-pointer select-none">Mettre en avant sur la page d'accueil</label>
                   </div>
 
                   {/* Image picker (Strictly device upload, no URL input) */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider">
-                        Photos du produit <span className="text-red-500">* (Obligatoire — 1 à 4 photos réelles)</span>
+                      <span className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider">
+                        Photos du produit <span className="text-red-500">* (1 à 4 photos)</span>
                       </span>
-                      <span className="text-[10px] text-neutral-500 font-semibold">{formImages.length}/4</span>
+                      <span className="text-[10px] text-neutral-500 font-mono font-bold bg-neutral-100 px-2 py-0.5 rounded-md">{formImages.length}/4</span>
                     </div>
 
                     <div 
                       onClick={handleTriggerFileInput}
-                      className={`border-2 border-dashed py-4 px-4 text-center rounded-sm cursor-pointer transition-colors ${
+                      className={`border-2 border-dashed py-5 px-4 text-center rounded-2xl cursor-pointer transition-all ${
                         formImages.length === 0
-                          ? "border-amber-400 bg-amber-50/40 hover:bg-amber-100/60 hover:border-amber-500"
-                          : "border-neutral-300 hover:border-amber-500 bg-neutral-50 hover:bg-amber-50/10"
+                          ? "border-[#d4af37] bg-amber-50/30 hover:bg-amber-50/70"
+                          : "border-neutral-300 hover:border-[#d4af37] bg-neutral-50/70 hover:bg-amber-50/20"
                       }`}
                     >
-                      <ImageIcon className="w-7 h-7 text-neutral-600 mx-auto mb-1.5" />
-                      <p className="text-[10px] font-bold text-neutral-800 uppercase tracking-wide">
+                      <div className="w-10 h-10 rounded-xl bg-white border border-neutral-200 shadow-2xs flex items-center justify-center mx-auto mb-2 text-[#b8901c]">
+                        <ImageIcon className="w-5 h-5" />
+                      </div>
+                      <p className="text-[11px] font-bold text-neutral-900 uppercase tracking-wide">
                         {formImages.length === 0 ? "Ajouter des photos depuis votre appareil" : "Ajouter d'autres photos"}
                       </p>
-                      <p className="text-[9px] text-neutral-500 mt-0.5">
-                        Fichiers JPG, PNG ou WEBP acceptés — Sélection multiple possible (Aucune URL requise)
+                      <p className="text-[10px] text-neutral-500 mt-0.5">
+                        JPG, PNG ou WEBP acceptés — Sélection multiple possible
                       </p>
                     </div>
 
@@ -1949,18 +1840,18 @@ export default function AdminApp() {
                     />
 
                     {formImages.length === 0 && (
-                      <p className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-sm mt-2 font-medium">
+                      <p className="text-[10.5px] text-rose-700 bg-rose-50 border border-rose-200 p-2.5 rounded-xl mt-2 font-medium">
                         ⚠️ L'ajout d'au moins une photo réelle du produit est obligatoire.
                       </p>
                     )}
 
                     {formImages.length > 0 && (
-                      <div className="grid grid-cols-4 gap-2 mt-3">
+                      <div className="grid grid-cols-4 gap-2.5 mt-3">
                         {formImages.map((src, idx) => (
-                          <div key={idx} className="relative aspect-square border border-neutral-300 rounded-sm overflow-hidden bg-neutral-100 group">
+                          <div key={idx} className="relative aspect-square border border-neutral-200 rounded-xl overflow-hidden bg-neutral-100 group shadow-2xs">
                             <img src={src} alt="Preview" className="w-full h-full object-cover" />
                             {idx === 0 && (
-                              <span className="absolute bottom-1 left-1 right-1 bg-neutral-950/85 text-white text-[7.5px] font-bold text-center py-0.5 uppercase tracking-wider">
+                              <span className="absolute bottom-1 left-1 right-1 bg-neutral-950/85 text-[#d4af37] text-[8px] font-bold text-center py-0.5 rounded-md uppercase tracking-wider">
                                 ★ Principale
                               </span>
                             )}
@@ -1978,34 +1869,38 @@ export default function AdminApp() {
                     )}
                   </div>
 
-                  {formError && <div className="text-xs text-red-650 bg-red-50 p-2.5 rounded-sm">{formError}</div>}
-                  {formSuccess && <div className="text-xs text-emerald-700 bg-emerald-50 p-2.5 rounded-sm">{formSuccess}</div>}
+                  {formError && <div className="text-xs text-red-700 bg-red-50 border border-red-200 p-3 rounded-xl font-medium">{formError}</div>}
+                  {formSuccess && <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 p-3 rounded-xl font-bold">{formSuccess}</div>}
 
                   <button 
                     type="submit"
-                    className="w-full bg-[#d4af37] text-neutral-950 hover:bg-neutral-950 hover:text-white py-3 rounded-sm font-bold text-xs uppercase tracking-widest transition-colors duration-300 shadow cursor-pointer"
+                    className="w-full bg-neutral-950 text-[#d4af37] hover:bg-[#0f5132] hover:text-white py-3.5 rounded-xl font-display font-extrabold text-xs uppercase tracking-widest transition-all duration-200 shadow-md cursor-pointer border border-[#d4af37]/40"
                   >
-                    {editingProduct ? "Modifier le produit" : "Ajouter le produit"}
+                    {editingProduct ? "Enregistrer les modifications" : "Publier le produit au catalogue"}
                   </button>
                 </form>
               </div>
 
               {/* Database list of items */}
-              <div className="lg:col-span-7 bg-white p-6 border border-neutral-200 rounded-sm shadow-xs">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 border-b border-neutral-100 mb-3 gap-3">
-                  <div className="space-y-0.5">
-                    <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-neutral-950 flex items-center gap-2">
-                      <Database className="w-4 h-4 text-[#d4af37]" />
-                      <span>Catalogue & Gestion des Statuts ({products.length})</span>
-                    </h3>
-                    <p className="text-[9.5px] text-neutral-400 uppercase tracking-wider font-semibold">Activez, masquez ou déclarez la rupture de vos produits en direct</p>
+              <div className="lg:col-span-7 bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 border-b border-neutral-100 mb-4 gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-[#0f5132]/10 border border-[#0f5132]/25 flex items-center justify-center text-[#0f5132]">
+                      <Database className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-neutral-950">
+                        Catalogue & Gestion des Statuts ({products.length})
+                      </h3>
+                      <p className="text-[10px] text-neutral-400 font-medium">Activez, masquez ou déclarez la rupture de vos produits en direct</p>
+                    </div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                     {/* Partner Selector Filter */}
                     <select
                       value={adminPartnerFilter}
                       onChange={(e) => setAdminPartnerFilter(e.target.value)}
-                      className="border border-neutral-300 rounded-sm px-2.5 py-1.5 text-xs outline-none bg-white font-sans text-neutral-800 font-semibold tracking-wide uppercase cursor-pointer"
+                      className="border border-neutral-200 rounded-xl px-3 py-2 text-xs outline-none bg-neutral-50/70 focus:bg-white focus:border-[#d4af37] font-sans text-neutral-800 font-semibold cursor-pointer transition-all"
                     >
                       <option value="Tous">Tous les vendeurs</option>
                       {Array.from(new Set(products.map(p => p.partenaire || "Boutique en Direct"))).filter(Boolean).map(partName => (
@@ -2014,26 +1909,26 @@ export default function AdminApp() {
                     </select>
 
                     {/* Search query input */}
-                    <div className="relative w-full sm:w-44">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
+                    <div className="relative w-full sm:w-48">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
                       <input 
                         type="text" 
-                        placeholder="Rechercher..." 
+                        placeholder="Rechercher produit..." 
                         value={adminSearchQuery}
                         onChange={(e) => setAdminSearchQuery(e.target.value)}
-                        className="border border-neutral-300 rounded-sm pl-8 pr-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-500 w-full bg-white"
+                        className="border border-neutral-200 rounded-xl pl-8 pr-3 py-2 text-xs outline-none focus:ring-2 focus:ring-[#d4af37]/20 focus:border-[#d4af37] w-full bg-neutral-50/70 focus:bg-white transition-all"
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* Status Segmented Filter Pills */}
-                <div className="flex flex-wrap items-center gap-1.5 mb-3 bg-neutral-100/70 p-1 rounded-sm border border-neutral-200">
+                <div className="flex flex-wrap items-center gap-1.5 mb-4 bg-neutral-100/80 p-1.5 rounded-xl border border-neutral-200/80">
                   <button
                     type="button"
                     onClick={() => setAdminStatusFilter("all")}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
-                      adminStatusFilter === "all" ? "bg-neutral-900 text-white shadow-xs font-black" : "text-neutral-600 hover:text-neutral-900"
+                    className={`px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      adminStatusFilter === "all" ? "bg-neutral-950 text-[#d4af37] shadow-2xs font-black" : "text-neutral-600 hover:text-neutral-900"
                     }`}
                   >
                     Tous ({products.length})
@@ -2041,28 +1936,28 @@ export default function AdminApp() {
                   <button
                     type="button"
                     onClick={() => setAdminStatusFilter("actif")}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-all cursor-pointer ${
-                      adminStatusFilter === "actif" ? "bg-emerald-700 text-white shadow-xs font-black" : "text-emerald-700 hover:bg-emerald-50"
+                    className={`px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                      adminStatusFilter === "actif" ? "bg-[#0f5132] text-white shadow-2xs font-black" : "text-emerald-800 hover:bg-emerald-50"
                     }`}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                    <span>Actifs en ligne ({products.filter(p => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length})</span>
+                    <span>Actifs ({products.filter(p => (p.status || "actif") === "actif" && (p.stock || 0) > 0).length})</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdminStatusFilter("inactif")}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-all cursor-pointer ${
-                      adminStatusFilter === "inactif" ? "bg-neutral-800 text-white shadow-xs font-black" : "text-neutral-600 hover:bg-neutral-200"
+                    className={`px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                      adminStatusFilter === "inactif" ? "bg-neutral-800 text-white shadow-2xs font-black" : "text-neutral-600 hover:bg-neutral-200/70"
                     }`}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
-                    <span>Inactifs masqués ({products.filter(p => p.status === "inactif").length})</span>
+                    <span>Inactifs ({products.filter(p => p.status === "inactif").length})</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdminStatusFilter("en_rupture")}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm flex items-center gap-1.5 transition-all cursor-pointer ${
-                      adminStatusFilter === "en_rupture" ? "bg-rose-700 text-white shadow-xs font-black" : "text-rose-700 hover:bg-rose-50"
+                    className={`px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                      adminStatusFilter === "en_rupture" ? "bg-rose-700 text-white shadow-2xs font-black" : "text-rose-700 hover:bg-rose-50"
                     }`}
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
@@ -2070,19 +1965,19 @@ export default function AdminApp() {
                   </button>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto rounded-xl border border-neutral-200/80">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="border-b border-neutral-200 bg-neutral-50 font-bold uppercase tracking-wider text-neutral-600 text-[10px]">
-                        <th className="py-2.5 px-3">Produit</th>
-                        <th className="py-2.5 px-2">Catégorie</th>
-                        <th className="py-2.5 px-2 text-right">Prix</th>
-                        <th className="py-2.5 px-2 text-center">Stock</th>
-                        <th className="py-2.5 px-2 text-center">Statut Site</th>
-                        <th className="py-2.5 px-3 text-right">Actions Rapides</th>
+                      <tr className="border-b border-neutral-200 bg-neutral-50/90 font-bold uppercase tracking-wider text-neutral-500 text-[10px]">
+                        <th className="py-3 px-3.5">Produit</th>
+                        <th className="py-3 px-2">Catégorie</th>
+                        <th className="py-3 px-2 text-right">Prix</th>
+                        <th className="py-3 px-2 text-center">Stock</th>
+                        <th className="py-3 px-2 text-center">Statut Site</th>
+                        <th className="py-3 px-3.5 text-right">Actions Rapides</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-neutral-100">
                       {products
                         .filter(p => {
                           const matchesSearch = p.nom.toLowerCase().includes(adminSearchQuery.toLowerCase());
@@ -2103,16 +1998,16 @@ export default function AdminApp() {
                           const isRupture = prod.status === "en_rupture" || (prod.stock || 0) <= 0;
 
                           return (
-                          <tr key={prod.id} className="border-b border-neutral-100 hover:bg-neutral-50/50">
-                            <td className="py-3 px-3">
-                              <div className="flex items-center gap-2">
-                                <div className="w-10 h-10 rounded-sm overflow-hidden bg-neutral-100 shrink-0">
+                          <tr key={prod.id} className="hover:bg-neutral-50/70 transition-colors">
+                            <td className="py-3 px-3.5">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-xl overflow-hidden bg-neutral-100 border border-neutral-200/80 shrink-0">
                                   <img src={prod.images[0]} alt={prod.nom} className="w-full h-full object-cover" />
                                 </div>
                                 <div>
                                   <div className="font-bold text-neutral-900 line-clamp-1">{prod.nom}</div>
                                   <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                    <span className="text-[8px] bg-amber-50 text-amber-700 border border-[#d4af37]/25 font-black px-1 py-0.1 select-none rounded-[1px] uppercase tracking-wider">
+                                    <span className="text-[8.5px] bg-amber-50 text-amber-800 border border-[#d4af37]/30 font-extrabold px-1.5 py-0.5 select-none rounded-md uppercase tracking-wider">
                                       {prod.partenaire || "Boutique en Direct"}
                                     </span>
                                     <span className="text-[9px] text-neutral-400 font-mono tracking-wider">{prod.id}</span>
@@ -2120,7 +2015,7 @@ export default function AdminApp() {
                                 </div>
                               </div>
                             </td>
-                            <td className="py-3 px-2 text-[#b8901c] font-medium uppercase tracking-wider text-[10.5px] font-sans">
+                            <td className="py-3 px-2 text-[#b8901c] font-bold uppercase tracking-wider text-[10px] font-sans">
                               {prod.categorie.split(" ")[0]}
                             </td>
                             <td className="py-3 px-2 text-right font-bold text-neutral-900 font-mono">
@@ -2130,12 +2025,12 @@ export default function AdminApp() {
                               )}
                             </td>
                             <td className="py-3 px-2 text-center">
-                              <div className="inline-flex items-center gap-1 bg-stone-50 border border-stone-200 px-1.5 py-0.5 rounded-md">
+                              <div className="inline-flex items-center gap-1 bg-neutral-50 border border-neutral-200 px-1.5 py-0.5 rounded-lg">
                                 <button
                                   type="button"
                                   title="Diminuer stock"
                                   onClick={() => handleQuickAdjustStock(prod, -1)}
-                                  className="w-4 h-4 rounded text-[10px] font-bold bg-white text-stone-600 hover:bg-stone-200 flex items-center justify-center cursor-pointer"
+                                  className="w-4 h-4 rounded-md text-[10px] font-bold bg-white text-neutral-600 hover:bg-neutral-200 flex items-center justify-center cursor-pointer border border-neutral-200/60"
                                 >
                                   -
                                 </button>
@@ -2148,7 +2043,7 @@ export default function AdminApp() {
                                   type="button"
                                   title="Augmenter stock"
                                   onClick={() => handleQuickAdjustStock(prod, 1)}
-                                  className="w-4 h-4 rounded text-[10px] font-bold bg-white text-stone-600 hover:bg-stone-200 flex items-center justify-center cursor-pointer"
+                                  className="w-4 h-4 rounded-md text-[10px] font-bold bg-white text-neutral-600 hover:bg-neutral-200 flex items-center justify-center cursor-pointer border border-neutral-200/60"
                                 >
                                   +
                                 </button>
@@ -2158,32 +2053,32 @@ export default function AdminApp() {
                             {/* Statut Site Column */}
                             <td className="py-3 px-2 text-center">
                               {isInactif ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-neutral-100 text-neutral-700 border border-neutral-300">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-neutral-100 text-neutral-700 border border-neutral-300">
                                   <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
-                                  <span>Inactif (Masqué)</span>
+                                  <span>Inactif</span>
                                 </span>
                               ) : isRupture ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200">
                                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                                   <span>En Rupture</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                  <span>Actif (En ligne)</span>
+                                  <span>En ligne</span>
                                 </span>
                               )}
                             </td>
 
                             {/* Actions Column */}
-                            <td className="py-3 px-3 text-right">
+                            <td className="py-3 px-3.5 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 {isInactif ? (
                                   <button
                                     type="button"
                                     onClick={() => handleToggleProductStatus(prod, "actif")}
                                     title="Remettre en ligne sur le site"
-                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
+                                    className="px-2.5 py-1 bg-[#0f5132] hover:bg-emerald-800 text-white rounded-lg text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors shadow-2xs"
                                   >
                                     <Eye className="w-3 h-3" />
                                     <span>Activer</span>
@@ -2193,7 +2088,7 @@ export default function AdminApp() {
                                     type="button"
                                     onClick={() => handleToggleProductStatus(prod, "inactif")}
                                     title="Retirer du site sans supprimer"
-                                    className="px-2 py-1 bg-neutral-200 hover:bg-neutral-800 hover:text-white text-neutral-800 rounded text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                                    className="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-900 hover:text-white text-neutral-700 rounded-lg text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors border border-neutral-200"
                                   >
                                     <Power className="w-3 h-3" />
                                     <span>Masquer</span>
@@ -2205,7 +2100,7 @@ export default function AdminApp() {
                                     type="button"
                                     onClick={() => handleToggleProductStatus(prod, "en_rupture", 0)}
                                     title="Déclarer le stock épuisé"
-                                    className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
                                   >
                                     <AlertCircle className="w-3 h-3" />
                                     <span>Rupture</span>
@@ -2215,7 +2110,7 @@ export default function AdminApp() {
                                     type="button"
                                     onClick={() => handleToggleProductStatus(prod, "actif", 10)}
                                     title="Réapprovisionner avec 10 unités"
-                                    className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                                    className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[9.5px] font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
                                   >
                                     <Package className="w-3 h-3" />
                                     <span>+10 Stock</span>
@@ -2226,7 +2121,7 @@ export default function AdminApp() {
                                   type="button"
                                   onClick={() => startEditProduct(prod)}
                                   title="Modifier"
-                                  className="p-1 text-neutral-600 hover:text-amber-600 hover:bg-amber-50 cursor-pointer border border-neutral-200 rounded transition-colors"
+                                  className="p-1.5 text-neutral-600 hover:text-[#b8901c] hover:bg-amber-50 cursor-pointer border border-neutral-200 rounded-lg transition-colors"
                                 >
                                   <Edit className="w-3.5 h-3.5" />
                                 </button>
@@ -2234,7 +2129,7 @@ export default function AdminApp() {
                                   type="button"
                                   onClick={() => handleDeleteProduct(prod.id, prod.nom)}
                                   title="Supprimer"
-                                  className="p-1 text-red-600 hover:text-white hover:bg-red-600 cursor-pointer border border-neutral-200 rounded transition-colors"
+                                  className="p-1.5 text-red-600 hover:text-white hover:bg-red-600 cursor-pointer border border-neutral-200 rounded-lg transition-colors"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -2252,23 +2147,27 @@ export default function AdminApp() {
         ) : activeTab === "analytics" ? (
           <div className="space-y-6 animate-fade-in text-xs">
             {/* Header & Export Bar */}
-            <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div>
-                <h3 className="font-display font-extrabold text-base uppercase tracking-wider text-neutral-950 flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-blue-600" />
-                  <span>Analytics & Performances par Produit</span>
-                </h3>
-                <p className="text-xs text-neutral-500 font-sans mt-0.5">
-                  Suivez en direct les consultations (vues), les ventes réelles, le chiffre d'affaires et le taux de conversion de chaque produit.
-                </p>
+            <div className="bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#0f5132]/10 border border-[#0f5132]/25 flex items-center justify-center text-[#0f5132] shrink-0">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-extrabold text-base uppercase tracking-wider text-neutral-950">
+                    Analytics & Performances par Produit
+                  </h3>
+                  <p className="text-xs text-neutral-500 font-sans mt-0.5">
+                    Suivez en direct les consultations (vues), les ventes réelles, le chiffre d'affaires et le taux de conversion de chaque produit.
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={fetchProductAnalytics}
-                  className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-sm font-bold text-[10.5px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors"
+                  className="px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-xl font-bold text-[11px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors border border-neutral-200/80"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? "animate-spin" : ""}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? "animate-spin text-[#0f5132]" : ""}`} />
                   <span>Actualiser</span>
                 </button>
                 <button
@@ -2298,7 +2197,7 @@ export default function AdminApp() {
                     link.click();
                     document.body.removeChild(link);
                   }}
-                  className="px-3.5 py-2 bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-950 rounded-sm font-bold text-[10.5px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                  className="px-4 py-2 bg-neutral-950 hover:bg-[#0f5132] text-[#d4af37] hover:text-white rounded-xl font-bold text-[11px] uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs border border-[#d4af37]/30"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Exporter CSV</span>
@@ -2307,65 +2206,73 @@ export default function AdminApp() {
             </div>
 
             {/* KPI Summary Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-blue-500">
-                <div className="flex items-center justify-between text-neutral-400 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Vues Cumulées</span>
-                  <Eye className="w-4 h-4 text-blue-500" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white border border-neutral-200/90 p-5 rounded-2xl shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Vues Cumulées</span>
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600">
+                    <Eye className="w-4 h-4" />
+                  </div>
                 </div>
                 <div className="text-2xl font-black font-mono text-neutral-950">
                   {productAnalytics?.summary?.totalViews ?? products.reduce((acc, p) => acc + (p.views || 0), 0)}
                 </div>
-                <p className="text-[10px] text-neutral-400 mt-1">Consultations de fiches</p>
+                <p className="text-[11px] text-neutral-400 mt-1">Consultations de fiches</p>
               </div>
 
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-emerald-500">
-                <div className="flex items-center justify-between text-neutral-400 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Ventes Confirmées</span>
-                  <ShoppingBag className="w-4 h-4 text-emerald-500" />
+              <div className="bg-white border border-neutral-200/90 p-5 rounded-2xl shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Ventes Confirmées</span>
+                  <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-[#0f5132]">
+                    <ShoppingBag className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-2xl font-black font-mono text-emerald-700">
+                <div className="text-2xl font-black font-mono text-[#0f5132]">
                   {productAnalytics?.summary?.totalSales ?? products.reduce((acc, p) => acc + (p.salesCount || 0), 0)}
                 </div>
-                <p className="text-[10px] text-emerald-600 mt-1">Articles commandés</p>
+                <p className="text-[11px] text-emerald-700 font-medium mt-1">Articles commandés</p>
               </div>
 
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-[#d4af37]">
-                <div className="flex items-center justify-between text-neutral-400 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Chiffre d'Affaires</span>
-                  <CreditCard className="w-4 h-4 text-[#d4af37]" />
+              <div className="bg-white border border-neutral-200/90 p-5 rounded-2xl shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Chiffre d'Affaires</span>
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 border border-[#d4af37]/40 flex items-center justify-center text-[#b8901c]">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
                 </div>
                 <div className="text-2xl font-black font-mono text-neutral-950">
                   {formatFCFA(productAnalytics?.summary?.totalRevenue ?? products.reduce((acc, p) => acc + ((p.salesCount || 0) * (p.prix || 0)), 0))}
                 </div>
-                <p className="text-[10px] text-neutral-400 mt-1">Généré par les produits</p>
+                <p className="text-[11px] text-neutral-400 mt-1">Généré par les produits</p>
               </div>
 
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-purple-500">
-                <div className="flex items-center justify-between text-neutral-400 mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Taux de Conversion</span>
-                  <TrendingUp className="w-4 h-4 text-purple-500" />
+              <div className="bg-white border border-neutral-200/90 p-5 rounded-2xl shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Taux de Conversion</span>
+                  <div className="w-9 h-9 rounded-xl bg-neutral-900 border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37]">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
                 </div>
-                <div className="text-2xl font-black font-mono text-purple-700">
+                <div className="text-2xl font-black font-mono text-neutral-950">
                   {productAnalytics?.summary?.overallConversionRate ?? "0"}%
                 </div>
-                <p className="text-[10px] text-purple-600 mt-1">Moyenne globale commandes/vues</p>
+                <p className="text-[11px] text-neutral-500 mt-1">Moyenne globale commandes/vues</p>
               </div>
             </div>
 
             {/* Analytics Table with Filters and Sorting */}
-            <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs space-y-4">
+            <div className="bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs space-y-4">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
-                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
                   {/* Search input */}
-                  <div className="relative w-full sm:w-56">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
+                  <div className="relative w-full sm:w-60">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
                     <input
                       type="text"
                       placeholder="Rechercher par nom..."
                       value={analyticsSearchQuery}
                       onChange={(e) => setAnalyticsSearchQuery(e.target.value)}
-                      className="border border-neutral-300 rounded-sm pl-8 pr-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-500 w-full bg-white"
+                      className="border border-neutral-200 rounded-xl pl-8 pr-3 py-2 text-xs outline-none focus:ring-2 focus:ring-[#d4af37]/20 focus:border-[#d4af37] w-full bg-neutral-50/70 focus:bg-white transition-all"
                     />
                   </div>
 
@@ -2373,7 +2280,7 @@ export default function AdminApp() {
                   <select
                     value={analyticsPartnerFilter}
                     onChange={(e) => setAnalyticsPartnerFilter(e.target.value)}
-                    className="border border-neutral-300 rounded-sm px-2.5 py-1.5 text-xs outline-none bg-white font-sans text-neutral-800 uppercase tracking-wide cursor-pointer"
+                    className="border border-neutral-200 rounded-xl px-3 py-2 text-xs outline-none bg-neutral-50/70 focus:bg-white focus:border-[#d4af37] font-sans text-neutral-800 font-semibold cursor-pointer transition-all"
                   >
                     <option value="Tous">Tous les vendeurs</option>
                     {Array.from(new Set(products.map(p => p.partenaire || "Boutique en Direct"))).filter(Boolean).map(p => (
@@ -2385,7 +2292,7 @@ export default function AdminApp() {
                   <select
                     value={analyticsSortBy}
                     onChange={(e) => setAnalyticsSortBy(e.target.value as any)}
-                    className="border border-neutral-300 rounded-sm px-2.5 py-1.5 text-xs outline-none bg-white font-sans text-neutral-800 uppercase tracking-wide cursor-pointer"
+                    className="border border-neutral-200 rounded-xl px-3 py-2 text-xs outline-none bg-neutral-50/70 focus:bg-white focus:border-[#d4af37] font-sans text-neutral-800 font-semibold cursor-pointer transition-all"
                   >
                     <option value="views">Trier par Vues (Décroissant)</option>
                     <option value="sales">Trier par Ventes (Décroissant)</option>
@@ -2394,28 +2301,28 @@ export default function AdminApp() {
                   </select>
                 </div>
 
-                <div className="text-[11px] text-neutral-500 font-mono">
+                <div className="text-[11px] text-neutral-500 font-mono bg-neutral-100 px-3 py-1 rounded-lg font-semibold">
                   {products.length} produit(s) analysé(s)
                 </div>
               </div>
 
               {/* Table */}
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-xl border border-neutral-200/80">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-neutral-200 bg-neutral-50 font-bold uppercase tracking-wider text-neutral-600 text-[10px]">
-                      <th className="py-2.5 px-3">Produit</th>
-                      <th className="py-2.5 px-2">Boutique</th>
-                      <th className="py-2.5 px-2 text-center">Statut</th>
-                      <th className="py-2.5 px-2 text-center">Vues</th>
-                      <th className="py-2.5 px-2 text-center">Ventes</th>
-                      <th className="py-2.5 px-2 text-right">CA Généré</th>
-                      <th className="py-2.5 px-3 text-center">Taux Conv.</th>
-                      <th className="py-2.5 px-2 text-center">Stock</th>
-                      <th className="py-2.5 px-3 text-right">Action Rapide</th>
+                    <tr className="border-b border-neutral-200 bg-neutral-50/90 font-bold uppercase tracking-wider text-neutral-500 text-[10px]">
+                      <th className="py-3 px-3.5">Produit</th>
+                      <th className="py-3 px-2">Boutique</th>
+                      <th className="py-3 px-2 text-center">Statut</th>
+                      <th className="py-3 px-2 text-center">Vues</th>
+                      <th className="py-3 px-2 text-center">Ventes</th>
+                      <th className="py-3 px-2 text-right">CA Généré</th>
+                      <th className="py-3 px-3 text-center">Taux Conv.</th>
+                      <th className="py-3 px-2 text-center">Stock</th>
+                      <th className="py-3 px-3.5 text-right">Action Rapide</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-neutral-100">
                     {(productAnalytics?.products || products)
                       .filter((p: any) => {
                         const matchesSearch = (p.nom || "").toLowerCase().includes(analyticsSearchQuery.toLowerCase());
@@ -2438,10 +2345,10 @@ export default function AdminApp() {
                         const isRupture = prod.status === "en_rupture" || (prod.stock || 0) <= 0;
 
                         return (
-                          <tr key={prod.id} className="border-b border-neutral-100 hover:bg-neutral-50/50">
-                            <td className="py-3 px-3">
-                              <div className="flex items-center gap-2">
-                                <div className="w-10 h-10 rounded-sm overflow-hidden bg-neutral-100 shrink-0">
+                          <tr key={prod.id} className="hover:bg-neutral-50/70 transition-colors">
+                            <td className="py-3 px-3.5">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-10 h-10 rounded-xl overflow-hidden bg-neutral-100 border border-neutral-200/80 shrink-0">
                                   <img src={prod.images?.[0]} alt={prod.nom} className="w-full h-full object-cover" />
                                 </div>
                                 <div>
@@ -2452,24 +2359,24 @@ export default function AdminApp() {
                             </td>
 
                             <td className="py-3 px-2">
-                              <span className="text-[9px] font-bold text-neutral-700 bg-neutral-100 px-1.5 py-0.5 rounded uppercase">
+                              <span className="text-[9.5px] font-bold text-neutral-700 bg-neutral-100 border border-neutral-200/80 px-2 py-0.5 rounded-lg uppercase">
                                 {prod.partenaire || "Boutique en Direct"}
                               </span>
                             </td>
 
                             <td className="py-3 px-2 text-center">
                               {isInactif ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-neutral-100 text-neutral-700 border border-neutral-300">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-neutral-100 text-neutral-700 border border-neutral-300">
                                   <span className="w-1.5 h-1.5 rounded-full bg-neutral-400"></span>
                                   <span>Inactif</span>
                                 </span>
                               ) : isRupture ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200">
                                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
                                   <span>Rupture</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                                   <span>Actif</span>
                                 </span>
@@ -2477,14 +2384,14 @@ export default function AdminApp() {
                             </td>
 
                             <td className="py-3 px-2 text-center font-mono font-bold text-neutral-900">
-                              <div className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
+                              <div className="inline-flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-lg">
                                 <Eye className="w-3 h-3 text-blue-500" />
                                 <span>{views}</span>
                               </div>
                             </td>
 
                             <td className="py-3 px-2 text-center font-mono font-bold text-neutral-900">
-                              <div className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
+                              <div className="inline-flex items-center gap-1 text-emerald-800 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-lg">
                                 <ShoppingBag className="w-3 h-3 text-emerald-600" />
                                 <span>{sales}</span>
                               </div>
@@ -2497,7 +2404,7 @@ export default function AdminApp() {
                             <td className="py-3 px-3 text-center">
                               <div className="inline-flex flex-col items-center">
                                 <span className={`text-[10px] font-mono font-black ${
-                                  conv >= 10 ? "text-emerald-700" : conv >= 3 ? "text-blue-700" : "text-stone-500"
+                                  conv >= 10 ? "text-emerald-700" : conv >= 3 ? "text-blue-700" : "text-neutral-500"
                                 }`}>
                                   {conv}%
                                 </span>
@@ -2512,19 +2419,19 @@ export default function AdminApp() {
 
                             <td className="py-3 px-2 text-center font-mono">
                               <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                (prod.stock || 0) > 10 ? "bg-green-100 text-green-700" : (prod.stock || 0) > 0 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                                (prod.stock || 0) > 10 ? "bg-emerald-100 text-emerald-800" : (prod.stock || 0) > 0 ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800"
                               }`}>
                                 {prod.stock || 0}
                               </span>
                             </td>
 
-                            <td className="py-3 px-3 text-right">
+                            <td className="py-3 px-3.5 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 {isInactif ? (
                                   <button
                                     type="button"
                                     onClick={() => handleToggleProductStatus(prod, "actif")}
-                                    className="px-2 py-1 bg-emerald-600 text-white rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-emerald-700"
+                                    className="px-2.5 py-1 bg-[#0f5132] text-white rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-emerald-800 transition-colors"
                                   >
                                     Activer
                                   </button>
@@ -2532,7 +2439,7 @@ export default function AdminApp() {
                                   <button
                                     type="button"
                                     onClick={() => handleToggleProductStatus(prod, "inactif")}
-                                    className="px-2 py-1 bg-neutral-200 text-neutral-800 rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-neutral-800 hover:text-white"
+                                    className="px-2.5 py-1 bg-neutral-100 text-neutral-700 border border-neutral-200 rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-neutral-900 hover:text-white transition-colors"
                                   >
                                     Masquer
                                   </button>
@@ -2542,7 +2449,7 @@ export default function AdminApp() {
                                   <button
                                     type="button"
                                     onClick={() => handleToggleProductStatus(prod, "en_rupture", 0)}
-                                    className="px-2 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-rose-100"
+                                    className="px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-rose-100 transition-colors"
                                   >
                                     Rupture
                                   </button>
@@ -2550,7 +2457,7 @@ export default function AdminApp() {
                                   <button
                                     type="button"
                                     onClick={() => handleToggleProductStatus(prod, "actif", 10)}
-                                    className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-100"
+                                    className="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer hover:bg-blue-100 transition-colors"
                                   >
                                     +10 Stock
                                   </button>
@@ -2568,15 +2475,19 @@ export default function AdminApp() {
         ) : activeTab === "vendors" ? (
           <div className="space-y-6 animate-fade-in text-xs">
             {/* Header */}
-            <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <div>
-                <h3 className="font-display font-extrabold text-base uppercase tracking-wider text-neutral-950 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-emerald-600" />
-                  <span>Gestion des Espaces Vendeurs & Répartition par Offres</span>
-                </h3>
-                <p className="text-xs text-neutral-500 font-sans mt-0.5">
-                  Supervisez les boutiques vérifiées, les formules d'abonnement (Offre 1, 2 ou 3) et les droits d'accès associés.
-                </p>
+            <div className="bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#0f5132]/10 border border-[#0f5132]/25 flex items-center justify-center text-[#0f5132] shrink-0">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-extrabold text-base uppercase tracking-wider text-neutral-950">
+                    Gestion des Espaces Vendeurs & Répartition par Offres
+                  </h3>
+                  <p className="text-xs text-neutral-500 font-sans mt-0.5">
+                    Supervisez les boutiques vérifiées, les formules d'abonnement (Offre 1, 2 ou 3) et les droits d'accès associés.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -2584,20 +2495,20 @@ export default function AdminApp() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div 
                 onClick={() => setVendorOfferFilter(vendorOfferFilter === "Offre 1" ? "all" : "Offre 1")}
-                className={`bg-white p-5 rounded-sm border transition-all cursor-pointer shadow-xs ${
-                  vendorOfferFilter === "Offre 1" ? "border-stone-800 ring-2 ring-stone-800" : "border-neutral-200 hover:border-stone-400"
+                className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-2xs ${
+                  vendorOfferFilter === "Offre 1" ? "border-neutral-900 ring-2 ring-neutral-900" : "border-neutral-200/90 hover:border-neutral-400"
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded bg-stone-100 text-stone-800 border border-stone-200">
+                  <span className="text-[10px] font-mono font-black uppercase px-2.5 py-0.5 rounded-lg bg-neutral-100 text-neutral-800 border border-neutral-200">
                     Offre 1 • Formule Gratuite
                   </span>
-                  <span className="text-xs font-mono font-bold text-stone-600">0 FCFA/mois</span>
+                  <span className="text-xs font-mono font-bold text-neutral-600">0 FCFA/mois</span>
                 </div>
-                <div className="text-2xl font-black font-mono text-stone-900 mt-2">
+                <div className="text-2xl font-black font-mono text-neutral-950 mt-2">
                   {usersList.filter(u => (u.vendeurSubscription || "Offre 1") === "Offre 1" && u.role === "vendeur").length} Vendeurs
                 </div>
-                <ul className="text-[11px] text-stone-600 space-y-1 mt-3 border-t border-stone-100 pt-2 font-sans">
+                <ul className="text-[11px] text-neutral-600 space-y-1.5 mt-3 border-t border-neutral-100 pt-3 font-sans">
                   <li>• Produits illimités au catalogue</li>
                   <li>• Commission standard 10% sur les ventes</li>
                   <li>• Analytics essentiels (vues, ventes réelles)</li>
@@ -2607,20 +2518,20 @@ export default function AdminApp() {
 
               <div 
                 onClick={() => setVendorOfferFilter(vendorOfferFilter === "Offre 2" ? "all" : "Offre 2")}
-                className={`bg-white p-5 rounded-sm border transition-all cursor-pointer shadow-xs ${
-                  vendorOfferFilter === "Offre 2" ? "border-blue-600 ring-2 ring-blue-600" : "border-blue-200 hover:border-blue-400 bg-gradient-to-br from-white to-blue-50/20"
+                className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-2xs ${
+                  vendorOfferFilter === "Offre 2" ? "border-[#0f5132] ring-2 ring-[#0f5132]" : "border-emerald-200 hover:border-[#0f5132] bg-gradient-to-br from-white to-emerald-50/30"
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded bg-blue-100 text-blue-800 border border-blue-200">
+                  <span className="text-[10px] font-mono font-black uppercase px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-300">
                     Offre 2 • Formule PRO
                   </span>
-                  <span className="text-xs font-mono font-bold text-blue-700">1 600 FCFA/mois</span>
+                  <span className="text-xs font-mono font-bold text-[#0f5132]">1 600 FCFA/mois</span>
                 </div>
-                <div className="text-2xl font-black font-mono text-blue-900 mt-2">
+                <div className="text-2xl font-black font-mono text-[#0f5132] mt-2">
                   {usersList.filter(u => u.vendeurSubscription === "Offre 2" && u.role === "vendeur").length} Vendeurs
                 </div>
-                <ul className="text-[11px] text-blue-950 space-y-1 mt-3 border-t border-blue-100 pt-2 font-sans">
+                <ul className="text-[11px] text-emerald-950 space-y-1.5 mt-3 border-t border-emerald-100 pt-3 font-sans">
                   <li>• Tous les avantages Offre 1</li>
                   <li>• <strong>Badge Vendeur Vérifié</strong> officiel</li>
                   <li>• <strong>Taux de conversion & statistiques détaillées</strong></li>
@@ -2630,20 +2541,20 @@ export default function AdminApp() {
 
               <div 
                 onClick={() => setVendorOfferFilter(vendorOfferFilter === "Offre 3" ? "all" : "Offre 3")}
-                className={`bg-white p-5 rounded-sm border transition-all cursor-pointer shadow-xs ${
-                  vendorOfferFilter === "Offre 3" ? "border-[#d4af37] ring-2 ring-[#d4af37]" : "border-[#d4af37]/40 hover:border-[#d4af37] bg-gradient-to-br from-white to-amber-50/30"
+                className={`bg-white p-5 rounded-2xl border transition-all cursor-pointer shadow-2xs ${
+                  vendorOfferFilter === "Offre 3" ? "border-[#d4af37] ring-2 ring-[#d4af37]" : "border-[#d4af37]/50 hover:border-[#d4af37] bg-gradient-to-br from-white to-amber-50/30"
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                  <span className="text-[10px] font-mono font-black uppercase px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-900 border border-amber-300">
                     Offre 3 • Formule BUSINESS (VIP)
                   </span>
-                  <span className="text-xs font-mono font-bold text-amber-800">3 200 FCFA/mois</span>
+                  <span className="text-xs font-mono font-bold text-[#b8901c]">3 200 FCFA/mois</span>
                 </div>
-                <div className="text-2xl font-black font-mono text-amber-900 mt-2">
+                <div className="text-2xl font-black font-mono text-amber-950 mt-2">
                   {usersList.filter(u => u.vendeurSubscription === "Offre 3" && u.role === "vendeur").length} Vendeurs
                 </div>
-                <ul className="text-[11px] text-amber-950 space-y-1 mt-3 border-t border-amber-200 pt-2 font-sans">
+                <ul className="text-[11px] text-amber-950 space-y-1.5 mt-3 border-t border-amber-200/70 pt-3 font-sans">
                   <li>• Tous les avantages Offre 1 & PRO</li>
                   <li>• <strong>Bannières publicitaires d'accueil dédiées</strong></li>
                   <li>• Vitrine personnalisée & URL VIP</li>
@@ -2653,14 +2564,14 @@ export default function AdminApp() {
             </div>
 
             {/* Vendors Filter Pills & List */}
-            <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs space-y-4">
+            <div className="bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5 bg-neutral-100/80 p-1.5 rounded-xl border border-neutral-200/80">
                   <button
                     type="button"
                     onClick={() => setVendorOfferFilter("all")}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
-                      vendorOfferFilter === "all" ? "bg-neutral-900 text-white font-black shadow-xs" : "bg-neutral-100 text-neutral-600 hover:text-neutral-900"
+                    className={`px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      vendorOfferFilter === "all" ? "bg-neutral-950 text-[#d4af37] font-black shadow-2xs" : "text-neutral-600 hover:text-neutral-900"
                     }`}
                   >
                     Tous les Vendeurs ({usersList.filter(u => u.role === "vendeur").length})
@@ -2668,8 +2579,8 @@ export default function AdminApp() {
                   <button
                     type="button"
                     onClick={() => setVendorOfferFilter("Offre 1")}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
-                      vendorOfferFilter === "Offre 1" ? "bg-stone-800 text-white font-black shadow-xs" : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                    className={`px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      vendorOfferFilter === "Offre 1" ? "bg-neutral-800 text-white font-black shadow-2xs" : "text-neutral-700 hover:bg-neutral-200/70"
                     }`}
                   >
                     Offre 1 - Gratuit ({usersList.filter(u => (u.vendeurSubscription || "Offre 1") === "Offre 1" && u.role === "vendeur").length})
@@ -2677,8 +2588,8 @@ export default function AdminApp() {
                   <button
                     type="button"
                     onClick={() => setVendorOfferFilter("Offre 2")}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
-                      vendorOfferFilter === "Offre 2" ? "bg-blue-700 text-white font-black shadow-xs" : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                    className={`px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      vendorOfferFilter === "Offre 2" ? "bg-[#0f5132] text-white font-black shadow-2xs" : "text-emerald-800 hover:bg-emerald-50"
                     }`}
                   >
                     Offre 2 - PRO ({usersList.filter(u => u.vendeurSubscription === "Offre 2" && u.role === "vendeur").length})
@@ -2686,8 +2597,8 @@ export default function AdminApp() {
                   <button
                     type="button"
                     onClick={() => setVendorOfferFilter("Offre 3")}
-                    className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider rounded-sm transition-all cursor-pointer ${
-                      vendorOfferFilter === "Offre 3" ? "bg-amber-700 text-white font-black shadow-xs" : "bg-amber-100 text-amber-900 hover:bg-amber-200"
+                    className={`px-3.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                      vendorOfferFilter === "Offre 3" ? "bg-[#d4af37] text-neutral-950 font-black shadow-2xs" : "text-amber-900 hover:bg-amber-50"
                     }`}
                   >
                     Offre 3 - BUSINESS ({usersList.filter(u => u.vendeurSubscription === "Offre 3" && u.role === "vendeur").length})
@@ -2696,19 +2607,19 @@ export default function AdminApp() {
               </div>
 
               {/* Vendors Table */}
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-xl border border-neutral-200/80">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-neutral-200 bg-neutral-50 font-bold uppercase tracking-wider text-neutral-600 text-[10px]">
-                      <th className="py-2.5 px-3">Vendeur & Boutique</th>
-                      <th className="py-2.5 px-2">Contact</th>
-                      <th className="py-2.5 px-2 text-center">Offre / Plan</th>
-                      <th className="py-2.5 px-2 text-center">Articles</th>
-                      <th className="py-2.5 px-2 text-center">Statut Espace</th>
-                      <th className="py-2.5 px-3 text-right">Actions</th>
+                    <tr className="border-b border-neutral-200 bg-neutral-50/90 font-bold uppercase tracking-wider text-neutral-500 text-[10px]">
+                      <th className="py-3 px-3.5">Vendeur & Boutique</th>
+                      <th className="py-3 px-2">Contact</th>
+                      <th className="py-3 px-2 text-center">Offre / Plan</th>
+                      <th className="py-3 px-2 text-center">Articles</th>
+                      <th className="py-3 px-2 text-center">Statut Espace</th>
+                      <th className="py-3 px-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-neutral-100">
                     {usersList
                       .filter(u => u.role === "vendeur")
                       .filter(u => vendorOfferFilter === "all" || (u.vendeurSubscription || "Offre 1") === vendorOfferFilter)
@@ -2719,25 +2630,25 @@ export default function AdminApp() {
                         const ruptureProds = vendorProducts.filter(p => p.status === "en_rupture" || (p.stock || 0) <= 0).length;
 
                         return (
-                          <tr key={vendor.id} className="border-b border-neutral-100 hover:bg-neutral-50/50">
-                            <td className="py-3 px-3">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center shrink-0 uppercase">
+                          <tr key={vendor.id} className="hover:bg-neutral-50/70 transition-colors">
+                            <td className="py-3.5 px-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl bg-[#0f5132]/15 border border-[#0f5132]/30 text-[#0f5132] font-display font-black flex items-center justify-center shrink-0 uppercase">
                                   {vendor.name?.charAt(0) || "V"}
                                 </div>
                                 <div>
                                   <div className="font-bold text-neutral-900">{vendor.businessName || vendor.name}</div>
-                                  <div className="text-[10px] text-neutral-400 font-sans">{vendor.name} • {vendor.email}</div>
+                                  <div className="text-[10.5px] text-neutral-400 font-sans">{vendor.name} • {vendor.email}</div>
                                 </div>
                               </div>
                             </td>
 
-                            <td className="py-3 px-2 font-mono text-neutral-700">
-                              <div>{vendor.contactPhone || vendor.phone || "Non renseigné"}</div>
-                              <div className="text-[9.5px] text-neutral-400">{vendor.city || vendor.quartier || "Togo"}</div>
+                            <td className="py-3.5 px-2 font-mono text-neutral-700">
+                              <div className="font-semibold">{vendor.contactPhone || vendor.phone || "Non renseigné"}</div>
+                              <div className="text-[10px] text-neutral-400">{vendor.city || vendor.quartier || "Togo"}</div>
                             </td>
 
-                            <td className="py-3 px-2 text-center">
+                            <td className="py-3.5 px-2 text-center">
                               <select
                                 value={vendor.vendeurSubscription || "Offre 1"}
                                 onChange={async (e) => {
@@ -2754,12 +2665,12 @@ export default function AdminApp() {
                                     showToast("Erreur de mise à jour.");
                                   }
                                 }}
-                                className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border cursor-pointer ${
+                                className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1.5 rounded-xl border cursor-pointer outline-none transition-all ${
                                   vendor.vendeurSubscription === "Offre 3"
-                                    ? "bg-amber-50 text-amber-900 border-amber-300 font-black"
+                                    ? "bg-amber-50 text-amber-900 border-[#d4af37] font-black"
                                     : vendor.vendeurSubscription === "Offre 2"
-                                    ? "bg-blue-50 text-blue-900 border-blue-300 font-black"
-                                    : "bg-stone-50 text-stone-800 border-stone-300"
+                                    ? "bg-emerald-50 text-emerald-900 border-emerald-300 font-black"
+                                    : "bg-neutral-50 text-neutral-800 border-neutral-200"
                                 }`}
                               >
                                 <option value="Offre 1">Offre 1 (Gratuit)</option>
@@ -2768,30 +2679,30 @@ export default function AdminApp() {
                               </select>
                             </td>
 
-                            <td className="py-3 px-2 text-center font-mono">
+                            <td className="py-3.5 px-2 text-center font-mono">
                               <div className="font-bold text-neutral-900">{vendorProducts.length} articles</div>
-                              <div className="text-[9px] text-neutral-500 mt-0.5">
-                                <span className="text-emerald-600 font-bold">{activeProds} actifs</span>
+                              <div className="text-[9.5px] text-neutral-500 mt-0.5">
+                                <span className="text-emerald-700 font-bold">{activeProds} actifs</span>
                                 {inactiveProds > 0 && <span className="text-neutral-500 ml-1">• {inactiveProds} inactifs</span>}
                                 {ruptureProds > 0 && <span className="text-rose-600 ml-1">• {ruptureProds} rupture</span>}
                               </div>
                             </td>
 
-                            <td className="py-3 px-2 text-center">
+                            <td className="py-3.5 px-2 text-center">
                               {vendor.vendeurStatus === "Actif" ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
                                   <Check className="w-3 h-3 text-emerald-600" />
                                   <span>Actif</span>
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200">
                                   <AlertTriangle className="w-3 h-3 text-amber-600" />
                                   <span>En attente</span>
                                 </span>
                               )}
                             </td>
 
-                            <td className="py-3 px-3 text-right">
+                            <td className="py-3.5 px-3.5 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 {vendor.vendeurStatus !== "Actif" && (
                                   <button
@@ -2800,7 +2711,7 @@ export default function AdminApp() {
                                       await handleApproveSeller(vendor.id);
                                       fetchAdminData();
                                     }}
-                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[9.5px] font-bold uppercase tracking-wider cursor-pointer"
+                                    className="px-3 py-1.5 bg-[#0f5132] hover:bg-emerald-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider cursor-pointer transition-colors"
                                   >
                                     Activer
                                   </button>
@@ -2811,9 +2722,9 @@ export default function AdminApp() {
                                     setAdminPartnerFilter(vendor.businessName || vendor.name);
                                     setActiveTab("catalog");
                                   }}
-                                  className="px-2 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded text-[9.5px] font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1"
+                                  className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-950 text-neutral-800 hover:text-[#d4af37] border border-neutral-200/80 rounded-xl text-[10px] font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 transition-colors"
                                 >
-                                  <Package className="w-3 h-3 text-[#d4af37]" />
+                                  <Package className="w-3.5 h-3.5 text-[#d4af37]" />
                                   <span>Voir Produits</span>
                                 </button>
                               </div>
@@ -2829,37 +2740,57 @@ export default function AdminApp() {
         ) : activeTab === "requests" ? (
           <div className="space-y-6 animate-fade-in text-xs">
             {/* Quick stats panel */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-blue-500">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Commandes Totales</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white border border-neutral-200/90 p-5 rounded-2xl shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Commandes Totales</p>
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600">
+                    <ShoppingBag className="w-4 h-4" />
+                  </div>
+                </div>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-display font-black text-2xl text-neutral-955">{orders.length}</span>
-                  <span className="text-[10px] text-neutral-500 uppercase font-sans">enregistrées</span>
+                  <span className="font-mono font-black text-2xl text-neutral-950">{orders.length}</span>
+                  <span className="text-[10px] text-neutral-400 uppercase font-sans font-semibold">enregistrées</span>
                 </div>
               </div>
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-amber-500">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Paiements en Attente</p>
+              <div className="bg-white border border-neutral-200/90 p-5 rounded-2xl shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Paiements en Attente</p>
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 border border-[#d4af37]/40 flex items-center justify-center text-[#b8901c]">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                </div>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-display font-black text-2xl text-amber-700">
+                  <span className="font-mono font-black text-2xl text-amber-700">
                     {orders.filter(o => o.paymentStatus !== "Payé" && o.paymentMethod !== "Espèces").length}
                   </span>
-                  <span className="text-[10px] text-amber-600 font-semibold uppercase font-sans">À valider</span>
+                  <span className="text-[10px] text-amber-600 font-bold uppercase font-sans">À valider</span>
                 </div>
               </div>
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-red-500">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest font-sans">Retraits en Attente</p>
+              <div className="bg-white border border-neutral-200/90 p-5 rounded-2xl shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Retraits en Attente</p>
+                  <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                </div>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-display font-black text-2xl text-red-700">
+                  <span className="font-mono font-black text-2xl text-rose-700">
                     {withdrawals.filter(w => w.status === "En attente").length}
                   </span>
-                  <span className="text-[10px] text-red-500 font-semibold uppercase font-sans">demandes</span>
+                  <span className="text-[10px] text-rose-500 font-bold uppercase font-sans">demandes</span>
                 </div>
               </div>
-              <div className="bg-white border border-neutral-200 p-4 rounded-sm shadow-xs border-l-4 border-emerald-500">
-                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest font-sans font-sans">Membres Actifs</p>
+              <div className="bg-white border border-neutral-200/90 p-5 rounded-2xl shadow-2xs flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider">Membres Actifs</p>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-[#0f5132]">
+                    <Users className="w-4 h-4" />
+                  </div>
+                </div>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="font-display font-black text-2xl text-neutral-955">{usersList.length}</span>
-                  <span className="text-[10px] text-emerald-600 font-semibold uppercase font-sans font-sans">Utilisateurs</span>
+                  <span className="font-mono font-black text-2xl text-neutral-950">{usersList.length}</span>
+                  <span className="text-[10px] text-emerald-700 font-bold uppercase font-sans">Utilisateurs</span>
                 </div>
               </div>
             </div>
@@ -2871,13 +2802,13 @@ export default function AdminApp() {
               <div className="lg:col-span-5 space-y-6">
                 
                 {/* Withdrawal requests card */}
-                <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs">
-                  <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-                    <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-red-500" />
+                <div className="bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs">
+                  <div className="flex items-center justify-between pb-3.5 border-b border-neutral-100 mb-4">
+                    <h3 className="font-display font-extrabold text-xs uppercase tracking-wider text-neutral-950 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-rose-600" />
                       <span>Demandes de Retraits Portefeuille</span>
                     </h3>
-                    <span className="bg-red-100 text-red-700 font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase">
+                    <span className="bg-rose-50 border border-rose-200 text-rose-700 font-mono text-[9.5px] font-bold px-2.5 py-0.5 rounded-full uppercase">
                       {withdrawals.filter(w => w.status === "En attente").length} en attente
                     </span>
                   </div>
@@ -2892,31 +2823,31 @@ export default function AdminApp() {
                         const userObj = usersList.find(u => u.id === w.userId);
                         const displayName = userObj?.businessName || userObj?.name || w.userId;
                         return (
-                          <div key={w.id} className="p-3 border border-neutral-200 rounded-sm bg-neutral-50 flex flex-col justify-between gap-3">
+                          <div key={w.id} className="p-4 border border-neutral-200/90 rounded-xl bg-neutral-50/70 flex flex-col justify-between gap-3">
                             <div>
-                              <div className="flex justify-between items-start mb-1">
-                                <span className="font-bold text-neutral-900 uppercase text-[10.5px] tracking-wide">{displayName}</span>
-                                <strong className="text-red-700 font-mono text-xs">{formatFCFA(w.amount)}</strong>
+                              <div className="flex justify-between items-start mb-1.5">
+                                <span className="font-bold text-neutral-900 uppercase text-[11px] tracking-wide">{displayName}</span>
+                                <strong className="text-rose-700 font-mono text-xs">{formatFCFA(w.amount)}</strong>
                               </div>
                               <p className="text-[10px] text-neutral-500 uppercase tracking-wide">
-                                ID Retrait: <code className="bg-white px-1 border border-neutral-200 font-mono text-[9px]">{w.id}</code>
+                                ID Retrait: <code className="bg-white px-1.5 py-0.5 rounded-md border border-neutral-200 font-mono text-[9px]">{w.id}</code>
                               </p>
-                              <div className="mt-2 text-[10px] text-neutral-700 space-y-0.5">
+                              <div className="mt-2.5 text-[10.5px] text-neutral-700 space-y-0.5">
                                 <p><strong>Mode :</strong> Mobile Money ({w.method})</p>
                                 <p><strong>Téléphone :</strong> <span className="font-mono font-bold text-neutral-900">+{w.phone}</span></p>
                                 <p><strong>Date :</strong> {new Date(w.createdAt).toLocaleString("fr-FR")}</p>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-200/60">
+                            <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-neutral-200/70">
                               <button
                                 onClick={() => handleApproveWithdrawal(w.id)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                                className="bg-[#0f5132] hover:bg-emerald-800 text-white py-2 px-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer text-center"
                               >
                                 Approuver & Payer
                               </button>
                               <button
                                 onClick={() => handleRejectWithdrawal(w.id)}
-                                className="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                                className="bg-rose-600 hover:bg-rose-700 text-white py-2 px-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer text-center"
                               >
                                 Rejeter
                               </button>
@@ -2930,18 +2861,18 @@ export default function AdminApp() {
                   {/* Historic withdrawals sub-list */}
                   {withdrawals.filter(w => w.status !== "En attente").length > 0 && (
                     <div className="mt-4 pt-4 border-t border-neutral-100">
-                      <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Historique récent des retraits</p>
-                      <div className="max-h-36 overflow-y-auto space-y-1.5 font-mono text-[9px]">
+                      <p className="text-[9.5px] font-bold text-neutral-400 uppercase tracking-wider mb-2">Historique récent des retraits</p>
+                      <div className="max-h-36 overflow-y-auto space-y-1.5 font-mono text-[9.5px]">
                         {withdrawals.filter(w => w.status !== "En attente").slice(0, 5).map(w => {
                           const userObj = usersList.find(u => u.id === w.userId);
                           const name = userObj?.businessName || userObj?.name || w.userId;
                           return (
-                            <div key={w.id} className="flex justify-between items-center bg-white p-1.5 border border-neutral-150 rounded-xs">
-                              <span className="truncate max-w-[120px] font-bold text-neutral-700 uppercase">{name}</span>
-                              <div className="flex items-center gap-1.5">
+                            <div key={w.id} className="flex justify-between items-center bg-neutral-50/80 p-2 border border-neutral-200/70 rounded-xl">
+                              <span className="truncate max-w-[130px] font-bold text-neutral-700 uppercase">{name}</span>
+                              <div className="flex items-center gap-2">
                                 <span className="font-bold text-neutral-900">{formatFCFA(w.amount)}</span>
-                                <span className={`px-1 rounded-sm text-[8px] font-black uppercase tracking-wider ${
-                                  w.status === "Payé" ? "bg-emerald-100 text-emerald-800" : "bg-neutral-200 text-neutral-600"
+                                <span className={`px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase tracking-wider ${
+                                  w.status === "Payé" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-neutral-200 text-neutral-700"
                                 }`}>
                                   {w.status}
                                 </span>
@@ -2956,47 +2887,47 @@ export default function AdminApp() {
 
                 {/* Pending Sellers Activation Requests Card */}
                 {usersList.filter(u => u.vendeurStatus === "En attente d'activation").length > 0 && (
-                  <div className="bg-white p-5 border-2 border-amber-400 rounded-sm shadow-xs mb-6">
-                    <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-                      <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  <div className="bg-white p-6 border-2 border-[#d4af37] rounded-2xl shadow-2xs mb-6">
+                    <div className="flex items-center justify-between pb-3.5 border-b border-neutral-100 mb-4">
+                      <h3 className="font-display font-extrabold text-xs uppercase tracking-wider text-neutral-950 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-[#b8901c]" />
                         <span>Demandes d'activation de Boutique</span>
                       </h3>
-                      <span className="bg-amber-100 text-amber-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase">
+                      <span className="bg-amber-100 text-amber-900 font-mono text-[9.5px] font-bold px-2.5 py-0.5 rounded-full uppercase">
                         {usersList.filter(u => u.vendeurStatus === "En attente d'activation").length} En attente
                       </span>
                     </div>
 
                     <div className="space-y-3">
                       {usersList.filter(u => u.vendeurStatus === "En attente d'activation").map((u) => (
-                        <div key={u.id} className="p-3 border border-amber-200 bg-amber-50/20 rounded-sm space-y-2">
+                        <div key={u.id} className="p-4 border border-amber-200/80 bg-amber-50/30 rounded-xl space-y-2.5">
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="font-bold text-neutral-900 text-[11px] uppercase">{u.businessName || u.name}</p>
                               <p className="text-[10px] text-neutral-500 font-mono">{u.email}</p>
                               {u.phone && <p className="text-[10px] text-neutral-700 font-bold">📞 +{u.phone}</p>}
                             </div>
-                            <span className="bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded-xs text-[8px] font-black uppercase tracking-widest">
+                            <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-widest">
                               {u.vendeurSubscription || "Offre 1"}
                             </span>
                           </div>
 
-                          <div className="bg-white border border-neutral-150 p-2 rounded-xs font-mono text-[10px] text-neutral-700 space-y-0.5">
+                          <div className="bg-white border border-neutral-200/80 p-2.5 rounded-xl font-mono text-[10px] text-neutral-700 space-y-0.5">
                             <p><strong>Mode :</strong> {u.vendeurMode === "autonome" ? "Autonome (Boutique gérée en propre)" : "Assisté (Produits publiés via administrateurs)"}</p>
                             <p><strong>Paiement :</strong> {u.vendeurPaymentMethod} ({u.vendeurPaymentMethod === "TMoney" ? "T-Money" : u.vendeurPaymentMethod === "Flooz" ? "Flooz" : "Autre"})</p>
-                            <p><strong>ID Transaction :</strong> <code className="bg-amber-50 px-1 border border-amber-100 font-bold text-amber-800">{u.vendeurPaymentTxId || "Non fourni"}</code></p>
+                            <p><strong>ID Transaction :</strong> <code className="bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-bold text-amber-900">{u.vendeurPaymentTxId || "Non fourni"}</code></p>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 pt-1">
                             <button
                               onClick={() => handleApproveSeller(u.id)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                              className="bg-[#0f5132] hover:bg-emerald-800 text-white py-2 px-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer text-center"
                             >
                               Activer la boutique
                             </button>
                             <button
                               onClick={() => handleRejectSeller(u.id)}
-                              className="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                              className="bg-rose-600 hover:bg-rose-700 text-white py-2 px-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer text-center"
                             >
                               Rejeter
                             </button>
@@ -3009,33 +2940,33 @@ export default function AdminApp() {
 
                 {/* Banner Requests from BUSINESS Sellers */}
                 {bannerRequests.filter(b => b.status === "pending").length > 0 && (
-                  <div className="bg-white p-5 border-2 border-[#d4af37] rounded-sm shadow-xs mb-6">
-                    <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-                      <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                  <div className="bg-white p-6 border-2 border-[#d4af37] rounded-2xl shadow-2xs mb-6">
+                    <div className="flex items-center justify-between pb-3.5 border-b border-neutral-100 mb-4">
+                      <h3 className="font-display font-extrabold text-xs uppercase tracking-wider text-neutral-950 flex items-center gap-2">
                         <ImageIcon className="w-4 h-4 text-[#d4af37]" />
                         <span>Bannières Accueil Soumises (Vendeurs BUSINESS)</span>
                       </h3>
-                      <span className="bg-[#d4af37]/20 text-[#b8901c] font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase">
+                      <span className="bg-[#d4af37]/20 text-[#b8901c] font-mono text-[9.5px] font-bold px-2.5 py-0.5 rounded-full uppercase">
                         {bannerRequests.filter(b => b.status === "pending").length} en attente
                       </span>
                     </div>
 
                     <div className="space-y-3">
                       {bannerRequests.filter(b => b.status === "pending").map((b) => (
-                        <div key={b.id} className="p-3 border border-neutral-200 bg-[#FAF8F5] rounded-sm space-y-2">
+                        <div key={b.id} className="p-4 border border-neutral-200 bg-neutral-50/70 rounded-xl space-y-2.5">
                           <div className="flex justify-between items-start">
                             <div>
                               <p className="font-bold text-neutral-900 text-[11px] uppercase">{b.boutiqueName || b.vendeurName}</p>
-                              <p className="text-[10px] text-neutral-600 font-medium">{b.title}</p>
-                              {b.subtitle && <p className="text-[9px] text-neutral-400 italic">{b.subtitle}</p>}
+                              <p className="text-[10.5px] text-neutral-700 font-medium">{b.title}</p>
+                              {b.subtitle && <p className="text-[9.5px] text-neutral-400 italic">{b.subtitle}</p>}
                             </div>
-                            <span className="bg-neutral-950 text-[#d4af37] px-1.5 py-0.5 rounded-xs text-[8px] font-black uppercase tracking-widest">
+                            <span className="bg-neutral-950 text-[#d4af37] px-2 py-0.5 rounded-lg text-[8.5px] font-black uppercase tracking-widest">
                               BUSINESS
                             </span>
                           </div>
 
                           {b.imageUrl && (
-                            <div className="h-24 w-full rounded-xs overflow-hidden border border-neutral-200">
+                            <div className="h-24 w-full rounded-xl overflow-hidden border border-neutral-200">
                               <img src={b.imageUrl} alt={b.title} className="w-full h-full object-cover" />
                             </div>
                           )}
@@ -3043,13 +2974,13 @@ export default function AdminApp() {
                           <div className="grid grid-cols-2 gap-2 pt-1">
                             <button
                               onClick={() => handleApproveBanner(b.id)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                              className="bg-[#0f5132] hover:bg-emerald-800 text-white py-2 px-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer text-center"
                             >
                               Approuver &amp; Publier
                             </button>
                             <button
                               onClick={() => handleRejectBanner(b.id)}
-                              className="bg-red-600 hover:bg-red-700 text-white py-1.5 px-3 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer text-center"
+                              className="bg-rose-600 hover:bg-rose-700 text-white py-2 px-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer text-center"
                             >
                               Refuser le visuel
                             </button>
@@ -3062,30 +2993,30 @@ export default function AdminApp() {
 
                 {/* Featured Products Requests from PRO/BUSINESS Sellers */}
                 {featuredRequests.filter(p => p.phareStatus === "pending").length > 0 && (
-                  <div className="bg-white p-5 border-2 border-emerald-500 rounded-sm shadow-xs mb-6">
-                    <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-                      <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-emerald-600" />
+                  <div className="bg-white p-6 border-2 border-[#0f5132] rounded-2xl shadow-2xs mb-6">
+                    <div className="flex items-center justify-between pb-3.5 border-b border-neutral-100 mb-4">
+                      <h3 className="font-display font-extrabold text-xs uppercase tracking-wider text-neutral-950 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-[#0f5132]" />
                         <span>Demandes de Produits Phares (PRO &amp; BUSINESS)</span>
                       </h3>
-                      <span className="bg-emerald-100 text-emerald-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase">
+                      <span className="bg-emerald-100 text-emerald-800 font-mono text-[9.5px] font-bold px-2.5 py-0.5 rounded-full uppercase">
                         {featuredRequests.filter(p => p.phareStatus === "pending").length} en attente
                       </span>
                     </div>
 
                     <div className="space-y-3">
                       {featuredRequests.filter(p => p.phareStatus === "pending").map((p) => (
-                        <div key={p.id} className="p-3 border border-neutral-200 bg-[#FAF8F5] rounded-sm flex items-center justify-between gap-3">
+                        <div key={p.id} className="p-3.5 border border-neutral-200 bg-neutral-50/70 rounded-xl flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <img
                               src={p.images?.[0] || "/images/placeholder.jpg"}
                               alt={p.nom}
-                              className="w-12 h-12 rounded-xs object-cover border border-neutral-200 shrink-0"
+                              className="w-12 h-12 rounded-xl object-cover border border-neutral-200 shrink-0"
                             />
                             <div className="min-w-0">
                               <p className="font-bold text-neutral-900 text-[11px] truncate uppercase">{p.nom}</p>
-                              <p className="text-[9px] text-neutral-500">Par {p.partenaire || "Vendeur"} &bull; <strong className="font-mono text-neutral-800">{formatFCFA(p.prix)}</strong></p>
-                              <span className={`text-[8px] font-black uppercase tracking-widest px-1 rounded-xs mt-0.5 inline-block ${
+                              <p className="text-[9.5px] text-neutral-500">Par {p.partenaire || "Vendeur"} &bull; <strong className="font-mono text-neutral-800">{formatFCFA(p.prix)}</strong></p>
+                              <span className={`text-[8.5px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md mt-0.5 inline-block ${
                                 p.pharePriority === "high" ? "bg-amber-100 text-amber-800" : "bg-neutral-200 text-neutral-700"
                               }`}>
                                 {p.pharePriority === "high" ? "Priorité Business" : "Standard Pro"}
@@ -3096,14 +3027,14 @@ export default function AdminApp() {
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               onClick={() => handleApproveFeatured(p.id)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white py-1 px-2.5 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer"
+                              className="bg-[#0f5132] hover:bg-emerald-800 text-white py-1.5 px-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer"
                               title="Valider en Produit Phare"
                             >
                               Valider
                             </button>
                             <button
                               onClick={() => handleRejectFeatured(p.id)}
-                              className="bg-red-600 hover:bg-red-700 text-white py-1 px-2.5 rounded-xs font-bold text-[9px] uppercase tracking-wider transition-colors cursor-pointer"
+                              className="bg-rose-600 hover:bg-rose-700 text-white py-1.5 px-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer"
                               title="Refuser"
                             >
                               Refuser
@@ -3116,28 +3047,28 @@ export default function AdminApp() {
                 )}
 
                 {/* Users Directory Card */}
-                <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs">
-                  <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-                    <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                <div className="bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs">
+                  <div className="flex items-center justify-between pb-3.5 border-b border-neutral-100 mb-4">
+                    <h3 className="font-display font-extrabold text-xs uppercase tracking-wider text-neutral-950 flex items-center gap-2">
                       <Users className="w-4 h-4 text-[#d4af37]" />
                       <span>Répertoire des Utilisateurs Actifs</span>
                     </h3>
-                    <span className="bg-neutral-100 text-neutral-800 font-mono text-[9px] font-bold px-2 py-0.5 rounded-sm">
+                    <span className="bg-neutral-100 text-neutral-800 font-mono text-[9.5px] font-bold px-2.5 py-0.5 rounded-full">
                       {usersList.length} membres
                     </span>
                   </div>
 
-                  <div className="max-h-80 overflow-y-auto space-y-2.5">
+                  <div className="max-h-80 overflow-y-auto space-y-2.5 pr-1">
                     {usersList.map((u) => (
-                      <div key={u.id} className="p-2.5 border border-neutral-200 rounded-sm hover:border-neutral-300 bg-neutral-50/50 flex justify-between items-center">
+                      <div key={u.id} className="p-3 border border-neutral-200/80 rounded-xl hover:border-neutral-300 bg-neutral-50/60 flex justify-between items-center transition-colors">
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-neutral-900 text-[11px] uppercase">{u.businessName || u.name || "Inconnu"}</span>
-                            <span className={`px-1.5 py-0.5 rounded-xs text-[7.5px] font-black uppercase tracking-widest ${
+                            <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${
                               u.role === "vendeur" 
                                 ? "bg-amber-100 text-amber-800 border border-amber-200" 
                                 : u.role === "affilie" 
-                                ? "bg-blue-100 text-blue-800 border border-blue-200" 
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-200" 
                                 : "bg-neutral-200 text-neutral-700"
                             }`}>
                               {u.role}
@@ -3147,15 +3078,15 @@ export default function AdminApp() {
                           {u.phone && <p className="text-[10px] text-neutral-600 font-bold mt-0.5">📞 +{u.phone}</p>}
                         </div>
                         {u.role === "vendeur" && u.vendeurStats && (
-                          <div className="text-right font-mono text-[9px]">
+                          <div className="text-right font-mono text-[9.5px]">
                             <p className="text-neutral-400 uppercase">Revenus</p>
-                            <p className="font-extrabold text-amber-700">{formatFCFA(u.vendeurStats.revenusGeneres || 0)}</p>
+                            <p className="font-extrabold text-[#b8901c]">{formatFCFA(u.vendeurStats.revenusGeneres || 0)}</p>
                           </div>
                         )}
                         {u.role === "affilie" && u.affiliateStats && (
-                          <div className="text-right font-mono text-[9px]">
+                          <div className="text-right font-mono text-[9.5px]">
                             <p className="text-neutral-400 uppercase font-sans">Comms</p>
-                            <p className="font-extrabold text-blue-700">{formatFCFA(u.affiliateStats.commissionDisponible || 0)}</p>
+                            <p className="font-extrabold text-[#0f5132]">{formatFCFA(u.affiliateStats.commissionDisponible || 0)}</p>
                           </div>
                         )}
                       </div>
@@ -3166,14 +3097,18 @@ export default function AdminApp() {
               </div>
 
               {/* Right Column: Interactive Orders Management */}
-              <div className="lg:col-span-7 bg-white p-5 border border-neutral-200 rounded-sm shadow-xs space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-2">
-                  <h3 className="font-display font-bold text-xs uppercase tracking-wider text-neutral-900 flex items-center gap-2">
-                    <ShoppingBag className="w-4 h-4 text-emerald-600" />
-                    <span>Suivi et Traitement des Commandes Clients</span>
-                  </h3>
+              <div className="lg:col-span-7 bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs space-y-4">
+                <div className="flex items-center justify-between pb-3.5 border-b border-neutral-100 mb-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-[#0f5132]/10 border border-[#0f5132]/25 flex items-center justify-center text-[#0f5132]">
+                      <ShoppingBag className="w-4 h-4" />
+                    </div>
+                    <h3 className="font-display font-extrabold text-xs uppercase tracking-wider text-neutral-950">
+                      Suivi et Traitement des Commandes Clients
+                    </h3>
+                  </div>
                   {isRefreshing && (
-                    <span className="text-[9px] text-neutral-400 animate-pulse uppercase tracking-widest font-bold">Mise à jour...</span>
+                    <span className="text-[9.5px] text-neutral-400 animate-pulse uppercase tracking-widest font-bold">Mise à jour...</span>
                   )}
                 </div>
 
@@ -3189,38 +3124,38 @@ export default function AdminApp() {
                       return (
                         <div 
                           key={o.id} 
-                          className={`p-4 border border-neutral-200 rounded-sm hover:border-neutral-300 transition-all ${
-                            isUnpaid ? "bg-amber-50/20 border-l-4 border-l-amber-500" : "bg-neutral-50/40"
+                          className={`p-5 border rounded-2xl transition-all ${
+                            isUnpaid ? "bg-amber-50/20 border-amber-300/80" : "bg-neutral-50/50 border-neutral-200/90 hover:border-neutral-300"
                           }`}
                         >
-                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2.5 border-b border-neutral-150 mb-3">
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-neutral-200/60 mb-3">
                             <div>
                               <div className="flex items-center gap-2">
-                                <span className="font-mono font-black text-xs text-neutral-955">📦 #{o.id}</span>
+                                <span className="font-mono font-black text-xs text-neutral-950">📦 #{o.id}</span>
                                 <span className="text-neutral-400 text-[10px]">{new Date(o.createdAt).toLocaleString("fr-FR")}</span>
                               </div>
-                              <p className="text-[10px] text-neutral-600 font-bold mt-1">
-                                Client : {o.shippingDetails?.name || "Client Anonyme"} - 📞 {o.shippingDetails?.phone || "N/A"}
+                              <p className="text-[11px] text-neutral-700 font-bold mt-1">
+                                Client : {o.shippingDetails?.name || "Client Anonyme"} • 📞 {o.shippingDetails?.phone || "N/A"}
                               </p>
-                              <p className="text-[10px] text-neutral-500 italic">
+                              <p className="text-[10px] text-neutral-500">
                                 Quartier : {o.shippingDetails?.quartier || "Lomé"}
                               </p>
                             </div>
                             <div className="text-left sm:text-right">
-                              <span className="font-display font-black text-neutral-955 text-xs block">{formatFCFA(o.totalAmount)}</span>
-                              <span className="text-[9px] bg-neutral-200 text-neutral-850 px-1.5 py-0.5 rounded-sm uppercase tracking-wide font-semibold block mt-1 w-max sm:ml-auto">
+                              <span className="font-mono font-black text-neutral-950 text-sm block">{formatFCFA(o.totalAmount)}</span>
+                              <span className="text-[9.5px] bg-neutral-900 text-[#d4af37] px-2 py-0.5 rounded-lg uppercase tracking-wide font-bold block mt-1 w-max sm:ml-auto">
                                 {o.paymentMethod || "Mobile Money"}
                               </span>
                             </div>
                           </div>
 
                           {/* Order items sublist */}
-                          <div className="text-[10px] text-neutral-700 bg-white p-2 border border-neutral-200 mb-3 space-y-1">
-                            <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest pb-1 border-b border-neutral-100">Détails articles :</p>
+                          <div className="text-[10.5px] text-neutral-700 bg-white p-3 rounded-xl border border-neutral-200/80 mb-3 space-y-1">
+                            <p className="text-[9.5px] font-bold text-neutral-400 uppercase tracking-widest pb-1 border-b border-neutral-100">Détails articles :</p>
                             {o.items && Array.isArray(o.items) && o.items.map((item: any, i: number) => (
-                              <div key={i} className="flex justify-between items-center text-[10.5px]">
+                              <div key={i} className="flex justify-between items-center text-[11px]">
                                 <span>• <strong>{item.product?.nom}</strong> (x{item.quantity})</span>
-                                <span className="font-mono text-neutral-500">{formatFCFA(item.product?.prix * item.quantity)}</span>
+                                <span className="font-mono font-semibold text-neutral-600">{formatFCFA(item.product?.prix * item.quantity)}</span>
                               </div>
                             ))}
                           </div>
@@ -3229,7 +3164,7 @@ export default function AdminApp() {
                           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-1">
                             <div className="flex flex-wrap items-center gap-2">
                               {/* Payment badge status */}
-                              <span className={`px-2 py-0.5 rounded-sm font-bold text-[9px] uppercase tracking-wider border ${
+                              <span className={`px-2.5 py-1 rounded-lg font-bold text-[9.5px] uppercase tracking-wider border ${
                                 o.paymentStatus === "Payé" 
                                   ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
                                   : "bg-amber-50 text-amber-800 border-amber-200"
@@ -3241,9 +3176,9 @@ export default function AdminApp() {
                               {isUnpaid && (
                                 <button
                                   onClick={() => handleValidatePayment(o.id)}
-                                  className="bg-amber-500 hover:bg-amber-600 text-neutral-955 font-black text-[9px] uppercase tracking-wider py-1 px-2.5 rounded-xs transition-colors cursor-pointer flex items-center gap-1"
+                                  className="bg-[#d4af37] hover:bg-amber-500 text-neutral-950 font-black text-[9.5px] uppercase tracking-wider py-1.5 px-3 rounded-xl transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                                 >
-                                  <CheckCircle2 className="w-3 h-3" />
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
                                   <span>Valider Paiement</span>
                                 </button>
                               )}
@@ -3254,20 +3189,20 @@ export default function AdminApp() {
                                   setSelectedInvoiceOrder(o);
                                   setIsInvoiceModalOpen(true);
                                 }}
-                                className="bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-950 font-bold text-[9px] uppercase tracking-wider py-1 px-2 rounded-xs transition-colors cursor-pointer flex items-center gap-1"
+                                className="bg-neutral-950 hover:bg-[#0f5132] text-[#d4af37] hover:text-white font-bold text-[9.5px] uppercase tracking-wider py-1.5 px-3 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
                               >
-                                <FileText className="w-3 h-3" />
+                                <FileText className="w-3.5 h-3.5" />
                                 <span>Facture</span>
                               </button>
                             </div>
 
                             {/* Delivery Status editor dropdown */}
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] text-neutral-500 uppercase font-semibold">Livraison :</span>
+                              <span className="text-[10px] text-neutral-500 uppercase font-bold">Livraison :</span>
                               <select
                                 value={o.orderStatus || "En préparation"}
                                 onChange={(e) => handleUpdateOrderStatus(o.id, e.target.value)}
-                                className="border border-neutral-300 rounded-xs px-2 py-1 text-xs outline-none bg-white font-semibold font-sans text-neutral-800 cursor-pointer"
+                                className="border border-neutral-200 rounded-xl px-2.5 py-1.5 text-xs outline-none bg-white focus:border-[#d4af37] font-semibold font-sans text-neutral-800 cursor-pointer"
                               >
                                 <option value="En préparation">En préparation</option>
                                 <option value="En cours de livraison">En cours de livraison</option>
@@ -3287,22 +3222,24 @@ export default function AdminApp() {
             </div>
           </div>
         ) : activeTab === "banners" ? (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fade-in">
             {/* Header Banner Section */}
-            <div className="bg-neutral-950 text-white p-6 rounded-sm border border-[#d4af37]/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <ImageIcon className="w-5 h-5 text-[#d4af37]" />
-                  <h3 className="font-display font-extrabold text-lg uppercase tracking-wider text-white">Gestion des Images & Vitrines de l'Accueil</h3>
+            <div className="bg-neutral-950 text-white p-6 rounded-2xl border border-[#d4af37]/30 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-md">
+              <div className="flex items-start gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-[#d4af37]/15 border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37] shrink-0 mt-0.5">
+                  <ImageIcon className="w-5 h-5" />
                 </div>
-                <p className="text-xs text-neutral-300 mt-1 max-w-2xl leading-relaxed">
-                  Remplacez facilement n'importe quelle photo de la boutique **directement depuis votre appareil** (caméra de votre téléphone, galerie photos, ou fichiers de votre ordinateur) sans avoir besoin d'URL externe.
-                </p>
+                <div>
+                  <h3 className="font-display font-extrabold text-lg uppercase tracking-wider text-white">Gestion des Images & Vitrines de l'Accueil</h3>
+                  <p className="text-xs text-neutral-300 mt-1 max-w-2xl leading-relaxed">
+                    Remplacez facilement n'importe quelle photo de la boutique <strong>directement depuis votre appareil</strong> (caméra de votre téléphone, galerie photos, ou fichiers de votre ordinateur) sans avoir besoin d'URL externe.
+                  </p>
+                </div>
               </div>
               {bannerSubSection === "carousel" && (
                 <button
                   onClick={handleAddNewSlide}
-                  className="bg-[#d4af37] hover:bg-amber-400 text-neutral-955 font-bold text-xs uppercase tracking-widest px-5 py-2.5 rounded-sm transition-colors flex items-center gap-2 cursor-pointer shrink-0 shadow-md"
+                  className="bg-[#d4af37] hover:bg-amber-400 text-neutral-950 font-display font-extrabold text-xs uppercase tracking-widest px-5 py-3 rounded-xl transition-colors flex items-center gap-2 cursor-pointer shrink-0 shadow-md"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Ajouter une Affiche Promo</span>
@@ -3311,49 +3248,49 @@ export default function AdminApp() {
             </div>
 
             {/* Sub-tabs Selector for sections */}
-            <div className="flex flex-wrap gap-2 p-1.5 bg-neutral-100 rounded-lg border border-neutral-200">
+            <div className="flex flex-wrap gap-2 p-1.5 bg-neutral-100/90 rounded-2xl border border-neutral-200/80">
               <button
                 type="button"
                 onClick={() => setBannerSubSection("vitrine")}
-                className={`px-4 py-2.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                   bannerSubSection === "vitrine"
-                    ? "bg-emerald-800 text-white shadow-xs"
-                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/60"
+                    ? "bg-[#0f5132] text-white shadow-xs"
+                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/70"
                 }`}
               >
                 <span>🍯 Vitrine Terroirs (4 Cartes du Haut)</span>
-                <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{adminHeroCards.length}</span>
+                <span className="bg-white/20 px-2 py-0.5 rounded-md text-[10px] font-mono">{adminHeroCards.length}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setBannerSubSection("gallery")}
-                className={`px-4 py-2.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                   bannerSubSection === "gallery"
-                    ? "bg-emerald-800 text-white shadow-xs"
-                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/60"
+                    ? "bg-[#0f5132] text-white shadow-xs"
+                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/70"
                 }`}
               >
                 <span>🏺 Galerie Savoir-faire (4 Cartes Lookbook)</span>
-                <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{adminGalleryCards.length}</span>
+                <span className="bg-white/20 px-2 py-0.5 rounded-md text-[10px] font-mono">{adminGalleryCards.length}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setBannerSubSection("carousel")}
-                className={`px-4 py-2.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                   bannerSubSection === "carousel"
-                    ? "bg-emerald-800 text-white shadow-xs"
-                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/60"
+                    ? "bg-[#0f5132] text-white shadow-xs"
+                    : "text-neutral-600 hover:text-neutral-950 hover:bg-white/70"
                 }`}
               >
                 <span>🌟 Bannières Carrousel Promo</span>
-                <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">{adminPromoSlides.length}</span>
+                <span className="bg-white/20 px-2 py-0.5 rounded-md text-[10px] font-mono">{adminPromoSlides.length}</span>
               </button>
             </div>
 
             {promoSaveSuccess && (
-              <div className="bg-emerald-50 text-emerald-800 border border-emerald-300 p-3.5 rounded-lg text-xs font-bold flex items-center gap-2 animate-fadeIn">
+              <div className="bg-emerald-50 text-emerald-800 border border-emerald-300 p-4 rounded-xl text-xs font-bold flex items-center gap-2 animate-fadeIn">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Photos et informations enregistrées avec succès ! La vitrine de l'accueil est immédiatement synchronisée.</span>
               </div>
@@ -3362,10 +3299,10 @@ export default function AdminApp() {
             {/* SECTION 1: VITRINE TERROIRS (4 Cartes Haut de Page) */}
             {bannerSubSection === "vitrine" && (
               <div className="space-y-4">
-                <div className="bg-emerald-900/10 border border-emerald-700/20 p-3.5 rounded-lg flex items-center justify-between">
+                <div className="bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-2xl flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-bold text-emerald-950 uppercase tracking-wide">4 Cartes Vitrine Terroir de l'Accueil</h4>
-                    <p className="text-[11px] text-emerald-800">Ces cartes apparaissent à droite du grand titre d'accueil. Cliquez sur « Importer une photo » pour changer l'image depuis votre appareil.</p>
+                    <p className="text-[11px] text-emerald-800 mt-0.5">Ces cartes apparaissent à droite du grand titre d'accueil. Cliquez sur « Changer la photo » pour importer l'image depuis votre appareil.</p>
                   </div>
                 </div>
 
@@ -3373,17 +3310,17 @@ export default function AdminApp() {
                   {adminHeroCards.map((card, idx) => {
                     const defaultImg = DEFAULT_HERO_CARDS[idx]?.imageUrl || card.imageUrl;
                     return (
-                      <div key={card.id || idx} className="bg-white border border-neutral-250 rounded-xl p-4 shadow-xs flex flex-col justify-between space-y-3 hover:border-emerald-600 transition-colors">
+                      <div key={card.id || idx} className="bg-white border border-neutral-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between space-y-3 hover:border-[#0f5132] transition-colors">
                         <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
+                          <div className="flex items-center justify-between mb-2.5">
+                            <span className="bg-emerald-50 text-[#0f5132] border border-emerald-200 text-[10px] font-extrabold px-2.5 py-0.5 rounded-lg uppercase">
                               Carte #{idx + 1}
                             </span>
                             <span className="text-[10px] text-neutral-400 font-mono">ID: {card.id}</span>
                           </div>
 
                           {/* Image preview box */}
-                          <div className="relative aspect-square w-full rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200 mb-3 group">
+                          <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-neutral-100 border border-neutral-200 mb-3 group">
                             <img 
                               src={card.imageUrl || defaultImg} 
                               alt={card.title} 
@@ -3412,14 +3349,14 @@ export default function AdminApp() {
                                   aspectRatio: "square"
                                 });
                               }}
-                              className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95"
+                              className="w-full bg-[#0f5132] hover:bg-emerald-900 text-white font-bold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95"
                             >
-                              <Camera className="w-4 h-4 text-emerald-300" />
+                              <Camera className="w-4 h-4 text-[#d4af37]" />
                               <span>Changer la photo</span>
                             </button>
 
                             {/* Direct Native File Input Fallback */}
-                            <label className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-[11px] py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-neutral-250">
+                            <label className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-neutral-200">
                               <Upload className="w-3.5 h-3.5 text-neutral-600" />
                               <span>Fichier rapide...</span>
                               <input 
@@ -3451,9 +3388,9 @@ export default function AdminApp() {
                           </div>
 
                           {/* Editable Details */}
-                          <div className="space-y-2">
+                          <div className="space-y-2.5">
                             <div>
-                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-0.5">Titre</label>
+                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Titre</label>
                               <input 
                                 type="text"
                                 value={card.title}
@@ -3462,11 +3399,11 @@ export default function AdminApp() {
                                   updatedHero[idx] = { ...updatedHero[idx], title: e.target.value };
                                   saveAdminShowcaseCards(updatedHero, adminGalleryCards);
                                 }}
-                                className="w-full text-xs font-bold border border-neutral-300 p-1.5 rounded bg-white text-neutral-900 focus:outline-none focus:border-emerald-600"
+                                className="w-full text-xs font-bold border border-neutral-200 p-2 rounded-xl bg-neutral-50/70 focus:bg-white text-neutral-900 focus:outline-none focus:border-[#0f5132]"
                               />
                             </div>
                             <div>
-                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-0.5">Description courte</label>
+                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Description courte</label>
                               <textarea
                                 rows={2}
                                 value={card.subtitle}
@@ -3475,7 +3412,7 @@ export default function AdminApp() {
                                   updatedHero[idx] = { ...updatedHero[idx], subtitle: e.target.value };
                                   saveAdminShowcaseCards(updatedHero, adminGalleryCards);
                                 }}
-                                className="w-full text-xs border border-neutral-300 p-1.5 rounded bg-white text-neutral-900 focus:outline-none focus:border-emerald-600 resize-none"
+                                className="w-full text-xs border border-neutral-200 p-2 rounded-xl bg-neutral-50/70 focus:bg-white text-neutral-900 focus:outline-none focus:border-[#0f5132] resize-none"
                               />
                             </div>
                           </div>
@@ -3490,10 +3427,10 @@ export default function AdminApp() {
             {/* SECTION 2: GALERIE & SAVOIR-FAIRE (4 Cartes Lookbook) */}
             {bannerSubSection === "gallery" && (
               <div className="space-y-4">
-                <div className="bg-amber-900/10 border border-amber-700/20 p-3.5 rounded-lg flex items-center justify-between">
+                <div className="bg-amber-50/70 border border-[#d4af37]/30 p-4 rounded-2xl flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wide">4 Cartes Galerie & Savoir-Faire (Lookbook)</h4>
-                    <p className="text-[11px] text-amber-800">Ces cartes apparaissent dans la section « Galerie Locale & Savoir-faire » (Céramiques, Tissage, Miels, Soin Solidaire). Remplacez leurs visuels en un clic.</p>
+                    <p className="text-[11px] text-amber-800 mt-0.5">Ces cartes apparaissent dans la section « Galerie Locale & Savoir-faire » (Céramiques, Tissage, Miels, Soin Solidaire). Remplacez leurs visuels en un clic.</p>
                   </div>
                 </div>
 
@@ -3501,17 +3438,17 @@ export default function AdminApp() {
                   {adminGalleryCards.map((card, idx) => {
                     const defaultImg = DEFAULT_GALLERY_CARDS[idx]?.imageUrl || card.imageUrl;
                     return (
-                      <div key={card.id || idx} className="bg-white border border-neutral-250 rounded-xl p-4 shadow-xs flex flex-col justify-between space-y-3 hover:border-amber-600 transition-colors">
+                      <div key={card.id || idx} className="bg-white border border-neutral-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between space-y-3 hover:border-[#d4af37] transition-colors">
                         <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
+                          <div className="flex items-center justify-between mb-2.5">
+                            <span className="bg-amber-50 text-amber-900 border border-[#d4af37]/40 text-[10px] font-extrabold px-2.5 py-0.5 rounded-lg uppercase">
                               Lookbook #{idx + 1}
                             </span>
                             <span className="text-[10px] text-neutral-400 font-mono">ID: {card.id}</span>
                           </div>
 
                           {/* Image preview box (Portrait format) */}
-                          <div className="relative aspect-3/4 w-full rounded-lg overflow-hidden bg-neutral-950 border border-neutral-200 mb-3 group">
+                          <div className="relative aspect-3/4 w-full rounded-xl overflow-hidden bg-neutral-950 border border-neutral-200 mb-3 group">
                             <img 
                               src={card.imageUrl || defaultImg} 
                               alt={card.title} 
@@ -3519,7 +3456,7 @@ export default function AdminApp() {
                               className="w-full h-full object-cover"
                               referrerPolicy="no-referrer"
                             />
-                            <div className="absolute top-1.5 right-1.5 bg-black/70 backdrop-blur-xs text-[#d4af37] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">
+                            <div className="absolute top-2 right-2 bg-black/75 backdrop-blur-xs text-[#d4af37] text-[8.5px] font-bold px-2 py-0.5 rounded-md uppercase">
                               Portrait
                             </div>
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center text-white text-xs font-bold">
@@ -3543,14 +3480,14 @@ export default function AdminApp() {
                                   aspectRatio: "portrait"
                                 });
                               }}
-                              className="w-full bg-neutral-900 hover:bg-[#d4af37] hover:text-neutral-950 text-white font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95"
+                              className="w-full bg-neutral-950 hover:bg-[#0f5132] text-[#d4af37] hover:text-white font-bold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95"
                             >
-                              <Camera className="w-4 h-4 text-emerald-300" />
+                              <Camera className="w-4 h-4 text-[#d4af37]" />
                               <span>Changer la photo</span>
                             </button>
 
                             {/* Direct Native File Input Fallback */}
-                            <label className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-[11px] py-1.5 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-neutral-250">
+                            <label className="w-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-[11px] py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-neutral-200">
                               <Upload className="w-3.5 h-3.5 text-neutral-600" />
                               <span>Fichier rapide...</span>
                               <input 
@@ -3582,9 +3519,9 @@ export default function AdminApp() {
                           </div>
 
                           {/* Editable Details */}
-                          <div className="space-y-2">
+                          <div className="space-y-2.5">
                             <div>
-                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-0.5">Titre</label>
+                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Titre</label>
                               <input 
                                 type="text"
                                 value={card.title}
@@ -3593,11 +3530,11 @@ export default function AdminApp() {
                                   updatedGallery[idx] = { ...updatedGallery[idx], title: e.target.value };
                                   saveAdminShowcaseCards(adminHeroCards, updatedGallery);
                                 }}
-                                className="w-full text-xs font-bold border border-neutral-300 p-1.5 rounded bg-white text-neutral-900 focus:outline-none focus:border-amber-600"
+                                className="w-full text-xs font-bold border border-neutral-200 p-2 rounded-xl bg-neutral-50/70 focus:bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
                               />
                             </div>
                             <div>
-                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-0.5">Sous-titre / Collection</label>
+                              <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">Sous-titre / Collection</label>
                               <input 
                                 type="text"
                                 value={card.collection || ""}
@@ -3606,7 +3543,7 @@ export default function AdminApp() {
                                   updatedGallery[idx] = { ...updatedGallery[idx], collection: e.target.value };
                                   saveAdminShowcaseCards(adminHeroCards, updatedGallery);
                                 }}
-                                className="w-full text-xs border border-neutral-300 p-1.5 rounded bg-white text-neutral-900 focus:outline-none focus:border-amber-600"
+                                className="w-full text-xs border border-neutral-200 p-2 rounded-xl bg-neutral-50/70 focus:bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
                               />
                             </div>
                           </div>
@@ -3624,12 +3561,12 @@ export default function AdminApp() {
                 {adminPromoSlides.map((slide, index) => (
                   <div 
                     key={slide.id || index}
-                    className="bg-white border border-neutral-250 rounded-md p-4 shadow-xs flex flex-col justify-between space-y-4 hover:border-[#d4af37] transition-colors"
+                    className="bg-white border border-neutral-200/90 rounded-2xl p-5 shadow-2xs flex flex-col justify-between space-y-4 hover:border-[#d4af37] transition-colors"
                   >
                     <div>
                       {/* Slide Top Badge */}
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="bg-[#d4af37]/20 text-neutral-900 border border-[#d4af37]/40 text-[10px] font-extrabold px-2 py-0.5 rounded uppercase">
+                      <div className="flex items-center justify-between mb-2.5">
+                        <span className="bg-amber-50 text-neutral-900 border border-[#d4af37]/40 text-[10px] font-extrabold px-2.5 py-0.5 rounded-lg uppercase">
                           Affiche #{index + 1}
                         </span>
                         <span className="text-[10px] text-neutral-500 font-mono">
@@ -3638,14 +3575,14 @@ export default function AdminApp() {
                       </div>
 
                       {/* Image Preview Box (Format Paysage) */}
-                      <div className="relative w-full aspect-21/9 bg-neutral-950 rounded border border-neutral-200 overflow-hidden mb-3 group">
+                      <div className="relative w-full aspect-21/9 bg-neutral-950 rounded-xl border border-neutral-200 overflow-hidden mb-3.5 group">
                         <img 
                           src={slide.imageUrl} 
                           alt={slide.titleFr || "Affiche Promo"} 
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
                         />
-                        <div className="absolute top-1.5 right-1.5 bg-black/70 backdrop-blur-xs text-[#d4af37] text-[8px] font-bold px-1.5 py-0.5 rounded uppercase">
+                        <div className="absolute top-2 right-2 bg-black/75 backdrop-blur-xs text-[#d4af37] text-[8.5px] font-bold px-2 py-0.5 rounded-md uppercase">
                           21:9 Paysage
                         </div>
                         <div className="absolute inset-0 bg-neutral-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2 text-center text-white text-xs font-bold">
@@ -3654,7 +3591,7 @@ export default function AdminApp() {
                       </div>
 
                       {/* Image Change Controls */}
-                      <div className="space-y-2 mb-4 bg-stone-50 p-3 rounded border border-stone-200">
+                      <div className="space-y-2 mb-4 bg-neutral-50/80 p-3.5 rounded-xl border border-neutral-200/80">
                         <label className="block text-[10px] font-bold text-neutral-800 uppercase tracking-wider">
                           Remplacer la photo depuis votre appareil :
                         </label>
@@ -3674,14 +3611,14 @@ export default function AdminApp() {
                               aspectRatio: "banner"
                             });
                           }}
-                          className="w-full bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                          className="w-full bg-[#0f5132] hover:bg-emerald-900 text-white font-bold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
                         >
-                          <Camera className="w-4 h-4 text-emerald-300" />
+                          <Camera className="w-4 h-4 text-[#d4af37]" />
                           <span>Parcourir photos / Prendre photo</span>
                         </button>
 
                         {/* Option 2: Direct Native File Input */}
-                        <label className="w-full bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-955 font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-2 transition-colors cursor-pointer">
+                        <label className="w-full bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 font-bold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer">
                           <ImageIcon className="w-4 h-4 text-[#d4af37]" />
                           <span>Importer un fichier image</span>
                           <input 
@@ -3711,7 +3648,7 @@ export default function AdminApp() {
                               updated[index] = { ...updated[index], titleFr: e.target.value, titleEe: e.target.value };
                               saveAdminPromoSlides(updated);
                             }}
-                            className="w-full text-xs font-bold border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                            className="w-full text-xs font-bold border border-neutral-200 p-2.5 rounded-xl bg-neutral-50/70 focus:bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
                           />
                         </div>
 
@@ -3727,7 +3664,7 @@ export default function AdminApp() {
                               updated[index] = { ...updated[index], subtitleFr: e.target.value, subtitleEe: e.target.value };
                               saveAdminPromoSlides(updated);
                             }}
-                            className="w-full text-xs border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                            className="w-full text-xs border border-neutral-200 p-2.5 rounded-xl bg-neutral-50/70 focus:bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
                           />
                         </div>
 
@@ -3742,7 +3679,7 @@ export default function AdminApp() {
                               updated[index] = { ...updated[index], categoryTarget: e.target.value };
                               saveAdminPromoSlides(updated);
                             }}
-                            className="w-full text-xs font-bold border border-stone-300 p-2 rounded bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37]"
+                            className="w-full text-xs font-bold border border-neutral-200 p-2.5 rounded-xl bg-neutral-50/70 focus:bg-white text-neutral-900 focus:outline-none focus:border-[#d4af37] cursor-pointer"
                           >
                             <option value="Tous">Toutes les catégories</option>
                             <option value="Made in Togo Premium">Made in Togo Premium</option>
@@ -3758,7 +3695,7 @@ export default function AdminApp() {
                     {/* Delete Action */}
                     <button 
                       onClick={() => handleDeleteSlide(index)}
-                      className="w-full mt-4 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs py-2 px-3 rounded flex items-center justify-center gap-1.5 transition-colors border border-red-200 cursor-pointer"
+                      className="w-full mt-4 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors border border-rose-200 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Supprimer cette affiche</span>
@@ -3771,17 +3708,17 @@ export default function AdminApp() {
         ) : activeTab === "stats" ? (
           <AdminStats />
         ) : activeTab === "blogs" ? (
-          <div className="space-y-8 animate-fade-in max-w-5xl mx-auto pb-12">
+          <div className="space-y-6 animate-fade-in max-w-5xl mx-auto pb-12">
             {/* Header Banner */}
-            <div className="bg-white border border-neutral-200 p-6 rounded-sm shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-[#0f5132]/10 p-3 text-[#0f5132] rounded-sm">
-                  <BookOpen className="w-6 h-6" />
+            <div className="bg-white border border-neutral-200/90 p-6 rounded-2xl shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-11 h-11 bg-[#0f5132]/10 border border-[#0f5132]/25 text-[#0f5132] rounded-xl flex items-center justify-center shrink-0">
+                  <BookOpen className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="font-display font-black text-lg uppercase tracking-wide text-neutral-950 flex items-center gap-2">
+                  <h2 className="font-display font-black text-base uppercase tracking-wide text-neutral-950 flex flex-wrap items-center gap-2">
                     <span>Le Journal de Miabé Asi — Espace Rédaction</span>
-                    <span className="bg-amber-100 text-amber-900 text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                    <span className="bg-amber-50 border border-[#d4af37]/40 text-amber-900 text-[10px] font-mono px-2.5 py-0.5 rounded-lg font-bold uppercase tracking-wider">
                       Admin Exclusif
                     </span>
                   </h2>
@@ -3795,7 +3732,7 @@ export default function AdminApp() {
                   type="button"
                   onClick={fetchBlogs}
                   disabled={isFetchingBlogs}
-                  className="px-3 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-200"
+                  className="px-3.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-200"
                   title="Actualiser les articles"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isFetchingBlogs ? "animate-spin text-[#0f5132]" : ""}`} />
@@ -3805,7 +3742,7 @@ export default function AdminApp() {
                   <button
                     type="button"
                     onClick={resetBlogForm}
-                    className="px-3 py-2 bg-neutral-900 hover:bg-black text-white text-xs font-bold rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3.5 py-2 bg-neutral-950 hover:bg-[#0f5132] text-[#d4af37] hover:text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Nouvel Article</span>
@@ -3815,11 +3752,13 @@ export default function AdminApp() {
             </div>
 
             {/* Editor Form */}
-            <div className="bg-white border border-neutral-200 rounded-sm shadow-sm overflow-hidden" id="blog-editor-form">
-              <div className="bg-neutral-50 border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Edit className="w-4 h-4 text-[#d4af37]" />
-                  <h3 className="font-display font-bold text-sm uppercase tracking-wider text-neutral-900">
+            <div className="bg-white border border-neutral-200/90 rounded-2xl shadow-2xs overflow-hidden" id="blog-editor-form">
+              <div className="bg-neutral-50/90 border-b border-neutral-200/80 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-[#d4af37]/15 border border-[#d4af37]/40 flex items-center justify-center text-[#b8901c]">
+                    <Edit className="w-3.5 h-3.5" />
+                  </div>
+                  <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-neutral-900">
                     {editingBlog ? `Modifier l'article : "${editingBlog.titre}"` : "Rédiger et Publier un Nouvel Article"}
                   </h3>
                 </div>
@@ -3837,13 +3776,13 @@ export default function AdminApp() {
               <form onSubmit={handleSaveBlog} className="p-6 md:p-8 space-y-6">
                 {/* Form Alerts */}
                 {blogFormError && (
-                  <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-sm flex items-center gap-2 animate-fade-in font-medium">
-                    <AlertTriangle className="w-4 h-4 shrink-0 text-red-500" />
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2 animate-fade-in font-medium">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
                     <span>{blogFormError}</span>
                   </div>
                 )}
                 {blogFormSuccess && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-sm flex items-center gap-2 animate-fade-in font-bold">
+                  <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2 animate-fade-in font-bold">
                     <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
                     <span>{blogFormSuccess}</span>
                   </div>
@@ -3851,7 +3790,7 @@ export default function AdminApp() {
 
                 {/* Titre */}
                 <div>
-                  <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
                     Titre de l'article <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -3859,7 +3798,7 @@ export default function AdminApp() {
                     value={blogTitre}
                     onChange={(e) => setBlogTitre(e.target.value)}
                     placeholder="Ex: Les vertus insoupçonnées du Beurre de Karité brut des Savanes"
-                    className="w-full border border-neutral-300 rounded-sm px-4 py-2.5 text-sm font-medium focus:ring-1 focus:ring-[#0f5132] focus:border-[#0f5132] outline-none bg-neutral-50/50 text-neutral-950"
+                    className="w-full border border-neutral-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-[#0f5132]/20 focus:border-[#0f5132] outline-none bg-neutral-50/70 focus:bg-white text-neutral-950 transition-all"
                     required
                   />
                 </div>
@@ -3867,7 +3806,7 @@ export default function AdminApp() {
                 {/* Auteur & Options */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
                       Auteur de l'article
                     </label>
                     <input
@@ -3875,21 +3814,21 @@ export default function AdminApp() {
                       value={blogAuteur}
                       onChange={(e) => setBlogAuteur(e.target.value)}
                       placeholder="Ex: Rédaction Miabé Asi ou Nom du Rédacteur"
-                      className="w-full border border-neutral-300 rounded-sm px-4 py-2.5 text-sm font-medium focus:ring-1 focus:ring-[#0f5132] focus:border-[#0f5132] outline-none bg-neutral-50/50 text-neutral-950"
+                      className="w-full border border-neutral-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:ring-2 focus:ring-[#0f5132]/20 focus:border-[#0f5132] outline-none bg-neutral-50/70 focus:bg-white text-neutral-950 transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
                       Statut Sponsorisé / Partenaire
                     </label>
-                    <div className="flex items-center gap-3 h-[42px] px-3 bg-neutral-50 border border-neutral-200 rounded-sm">
-                      <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-neutral-700">
+                    <div className="flex items-center gap-3 h-[42px] px-3.5 bg-neutral-50/70 border border-neutral-200 rounded-xl">
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none text-xs font-bold text-neutral-800">
                         <input
                           type="checkbox"
                           checked={blogEstSponsorise}
                           onChange={(e) => setBlogEstSponsorise(e.target.checked)}
-                          className="w-4 h-4 text-[#0f5132] rounded focus:ring-0 cursor-pointer"
+                          className="w-4 h-4 accent-[#0f5132] rounded focus:ring-0 cursor-pointer"
                         />
                         <span>Article Partenaire / Sponsorisé</span>
                       </label>
@@ -3899,8 +3838,8 @@ export default function AdminApp() {
 
                 {/* Lien sponsorisé si coché */}
                 {blogEstSponsorise && (
-                  <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-sm animate-fade-in space-y-1">
-                    <label className="block text-[11px] font-black uppercase tracking-wider text-amber-950 mb-1">
+                  <div className="p-4 bg-amber-50/60 border border-[#d4af37]/40 rounded-xl animate-fade-in space-y-1.5">
+                    <label className="block text-[11px] font-bold uppercase tracking-wider text-amber-950 mb-1">
                       Lien de redirection sponsorisée (URL externe ou interne)
                     </label>
                     <input
@@ -3908,9 +3847,9 @@ export default function AdminApp() {
                       value={blogLienSponsorise}
                       onChange={(e) => setBlogLienSponsorise(e.target.value)}
                       placeholder="https://..."
-                      className="w-full border border-amber-300 rounded-sm px-4 py-2 text-xs font-mono focus:ring-1 focus:ring-amber-500 outline-none bg-white text-neutral-900"
+                      className="w-full border border-[#d4af37]/50 rounded-xl px-4 py-2.5 text-xs font-mono focus:ring-2 focus:ring-[#d4af37]/25 outline-none bg-white text-neutral-900"
                     />
-                    <p className="text-[10px] text-amber-800">
+                    <p className="text-[10.5px] text-amber-800">
                       Lorsque les visiteurs cliquent sur cet article, ils seront automatiquement redirigés vers cette adresse.
                     </p>
                   </div>
@@ -3918,7 +3857,7 @@ export default function AdminApp() {
 
                 {/* Image de couverture */}
                 <div>
-                  <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
                     Photo / Bannière de couverture de l'article
                   </label>
                   <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
@@ -3927,7 +3866,7 @@ export default function AdminApp() {
                       value={blogImage}
                       onChange={(e) => setBlogImage(e.target.value)}
                       placeholder="URL de l'image (Ex: https://images.unsplash.com/...)"
-                      className="flex-1 border border-neutral-300 rounded-sm px-4 py-2.5 text-xs font-mono focus:ring-1 focus:ring-[#0f5132] focus:border-[#0f5132] outline-none bg-neutral-50/50 text-neutral-950"
+                      className="flex-1 border border-neutral-200 rounded-xl px-4 py-2.5 text-xs font-mono focus:ring-2 focus:ring-[#0f5132]/20 focus:border-[#0f5132] outline-none bg-neutral-50/70 focus:bg-white text-neutral-950 transition-all"
                     />
                     <input
                       type="file"
@@ -3940,7 +3879,7 @@ export default function AdminApp() {
                       type="button"
                       onClick={() => blogFileInputRef.current?.click()}
                       disabled={isUploadingBlogImage}
-                      className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-900 text-white text-xs font-bold rounded-sm flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0"
+                      className="px-4 py-2.5 bg-neutral-950 hover:bg-[#0f5132] text-[#d4af37] hover:text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0"
                     >
                       <Upload className={`w-3.5 h-3.5 ${isUploadingBlogImage ? "animate-bounce" : ""}`} />
                       <span>{isUploadingBlogImage ? "Téléversement..." : "Téléverser photo"}</span>
@@ -3948,12 +3887,12 @@ export default function AdminApp() {
                   </div>
 
                   {blogImage && (
-                    <div className="mt-3 relative w-full sm:w-64 aspect-[16/9] border border-neutral-200 rounded-sm overflow-hidden bg-neutral-100 group">
+                    <div className="mt-3 relative w-full sm:w-64 aspect-[16/9] border border-neutral-200 rounded-xl overflow-hidden bg-neutral-100 group">
                       <img src={blogImage} alt="Aperçu couverture" className="w-full h-full object-cover" />
                       <button
                         type="button"
                         onClick={() => setBlogImage("")}
-                        className="absolute top-2 right-2 bg-neutral-900/80 hover:bg-red-600 text-white p-1 rounded-full text-xs transition-colors cursor-pointer"
+                        className="absolute top-2 right-2 bg-neutral-900/80 hover:bg-rose-600 text-white p-1.5 rounded-full text-xs transition-colors cursor-pointer"
                         title="Retirer la photo"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -3964,7 +3903,7 @@ export default function AdminApp() {
 
                 {/* Contenu complet */}
                 <div>
-                  <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-800 mb-1.5">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
                     Contenu complet de l'article <span className="text-red-500">*</span>
                   </label>
                   <textarea
@@ -3972,10 +3911,10 @@ export default function AdminApp() {
                     value={blogContenu}
                     onChange={(e) => setBlogContenu(e.target.value)}
                     placeholder="Rédigez ici le corps de votre article. Vous pouvez structurer vos paragraphes en sautant des lignes..."
-                    className="w-full border border-neutral-300 rounded-sm p-4 text-xs sm:text-sm font-sans leading-relaxed focus:ring-1 focus:ring-[#0f5132] focus:border-[#0f5132] outline-none bg-neutral-50/50 text-neutral-950 resize-y"
+                    className="w-full border border-neutral-200 rounded-xl p-4 text-xs sm:text-sm font-sans leading-relaxed focus:ring-2 focus:ring-[#0f5132]/20 focus:border-[#0f5132] outline-none bg-neutral-50/70 focus:bg-white text-neutral-950 resize-y transition-all"
                     required
                   />
-                  <p className="text-[10px] text-neutral-400 mt-1">
+                  <p className="text-[10.5px] text-neutral-400 mt-1.5">
                     Astuce : Sautez des lignes pour aérer les paragraphes. Le texte sera fidèlement restitué sur la page Blog de la boutique.
                   </p>
                 </div>
@@ -3987,7 +3926,7 @@ export default function AdminApp() {
                       type="button"
                       onClick={resetBlogForm}
                       disabled={isSavingBlog}
-                      className="px-5 py-2.5 border border-neutral-300 text-neutral-700 hover:bg-neutral-100 text-xs font-bold uppercase tracking-wider rounded-sm transition-colors cursor-pointer"
+                      className="px-5 py-2.5 border border-neutral-200 text-neutral-700 hover:bg-neutral-100 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
                     >
                       Annuler
                     </button>
@@ -3995,7 +3934,7 @@ export default function AdminApp() {
                   <button
                     type="submit"
                     disabled={isSavingBlog}
-                    className="px-6 py-2.5 bg-[#0f5132] hover:bg-[#0c4027] text-white text-xs font-extrabold uppercase tracking-widest rounded-sm transition-all shadow-sm cursor-pointer flex items-center gap-2"
+                    className="px-6 py-3 bg-[#0f5132] hover:bg-emerald-900 text-white text-xs font-display font-extrabold uppercase tracking-widest rounded-xl transition-all shadow-sm cursor-pointer flex items-center gap-2"
                   >
                     {isSavingBlog ? (
                       <>
@@ -4014,15 +3953,17 @@ export default function AdminApp() {
             </div>
 
             {/* Published Articles List */}
-            <div className="bg-white border border-neutral-200 rounded-sm shadow-xs overflow-hidden">
-              <div className="bg-neutral-50 border-b border-neutral-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-[#0f5132]" />
-                  <h3 className="font-display font-bold text-sm uppercase tracking-wider text-neutral-900">
+            <div className="bg-white border border-neutral-200/90 rounded-2xl shadow-2xs overflow-hidden">
+              <div className="bg-neutral-50/90 border-b border-neutral-200/80 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-[#0f5132]/10 border border-[#0f5132]/25 flex items-center justify-center text-[#0f5132]">
+                    <BookOpen className="w-3.5 h-3.5" />
+                  </div>
+                  <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-neutral-900">
                     Articles Publiés sur le Journal ({blogsList.length})
                   </h3>
                 </div>
-                <span className="text-[10.5px] text-neutral-500 font-mono">
+                <span className="text-[10.5px] text-neutral-500 font-mono bg-white px-2.5 py-1 rounded-lg border border-neutral-200/80">
                   Visibles publiquement dans l'onglet "Blog" de la boutique
                 </span>
               </div>
@@ -4041,7 +3982,7 @@ export default function AdminApp() {
                       className="p-5 md:p-6 flex flex-col md:flex-row gap-5 items-start justify-between hover:bg-neutral-50/60 transition-colors"
                     >
                       {/* Image Thumbnail */}
-                      <div className="w-full md:w-44 aspect-[16/10] bg-neutral-100 rounded-sm overflow-hidden shrink-0 border border-neutral-200 relative">
+                      <div className="w-full md:w-44 aspect-[16/10] bg-neutral-100 rounded-xl overflow-hidden shrink-0 border border-neutral-200 relative">
                         {blog.image ? (
                           <img src={blog.image} alt={blog.titre} className="w-full h-full object-cover" />
                         ) : (
@@ -4050,7 +3991,7 @@ export default function AdminApp() {
                           </div>
                         )}
                         {blog.estSponsorise && (
-                          <span className="absolute top-2 left-2 bg-neutral-950 text-[#d4af37] text-[8px] font-black uppercase tracking-wider px-2 py-0.5 border border-[#d4af37]/40 shadow-xs">
+                          <span className="absolute top-2 left-2 bg-neutral-950 text-[#d4af37] text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border border-[#d4af37]/40 shadow-xs">
                             Sponsorisé
                           </span>
                         )}
@@ -4086,7 +4027,7 @@ export default function AdminApp() {
                             const el = document.getElementById("blog-editor-form");
                             el?.scrollIntoView({ behavior: "smooth" });
                           }}
-                          className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-200"
+                          className="px-3.5 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-200"
                         >
                           <Edit className="w-3.5 h-3.5 text-[#0f5132]" />
                           <span>Modifier</span>
@@ -4095,7 +4036,7 @@ export default function AdminApp() {
                         <button
                           type="button"
                           onClick={() => handleDeleteBlog(blog.id, blog.titre)}
-                          className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-sm flex items-center gap-1.5 transition-colors cursor-pointer border border-red-200"
+                          className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-200"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Supprimer</span>
@@ -4108,21 +4049,21 @@ export default function AdminApp() {
             </div>
           </div>
         ) : (
-              <div className="bg-white border border-neutral-200 p-8 rounded-sm shadow-sm max-w-3xl mx-auto animate-fade-in">
-                <div className="flex items-center gap-3 mb-6 pb-3 border-b border-neutral-100">
-                  <div className="bg-[#d4af37]/10 p-2.5 text-[#b8901c] rounded-sm">
+              <div className="bg-white border border-neutral-200/90 p-6 sm:p-8 rounded-2xl shadow-2xs max-w-3xl mx-auto animate-fade-in">
+                <div className="flex items-center gap-3.5 mb-6 pb-4 border-b border-neutral-100">
+                  <div className="w-11 h-11 bg-[#d4af37]/15 border border-[#d4af37]/40 text-[#b8901c] rounded-xl flex items-center justify-center shrink-0">
                     <Settings className="w-5 h-5" />
                   </div>
                   <div>
-                    <h2 className="font-display font-bold text-base uppercase text-neutral-950">Configuration de l'Application</h2>
-                    <p className="text-neutral-400 text-[10px] uppercase tracking-wider font-semibold font-mono">Numéros de redirections et style de logo</p>
+                    <h2 className="font-display font-extrabold text-base uppercase text-neutral-950">Configuration de l'Application</h2>
+                    <p className="text-neutral-400 text-[10.5px] uppercase tracking-wider font-semibold font-mono">Numéros de redirections, identité visuelle et passerelle PayDunya</p>
                   </div>
                 </div>
 
                 <div className="space-y-8 text-xs text-neutral-800">
                   {/* WhatsApp Redirection Setting */}
                   <div className="pb-6 border-b border-neutral-100">
-                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-2">
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-2">
                       Numéro WhatsApp de validation de commande & redirection <span className="text-red-500">*</span>
                     </label>
                     <input 
@@ -4130,28 +4071,28 @@ export default function AdminApp() {
                       value={whatsappDisplaySetting}
                       onChange={(e) => setWhatsappDisplaySetting(e.target.value.replace(/[^0-9]/g, ""))}
                       placeholder="Ex: 22890000000"
-                      className="w-full border border-neutral-300 rounded-sm px-4 py-3 text-sm font-mono tracking-wide focus:ring-1 focus:ring-amber-500 outline-none bg-neutral-50 text-neutral-900"
+                      className="w-full border border-neutral-200 rounded-xl px-4 py-3 text-sm font-mono font-bold tracking-wide focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none bg-neutral-50/70 focus:bg-white text-neutral-900 transition-all"
                     />
-                    <p className="text-[10px] text-neutral-500 mt-2 leading-relaxed">
+                    <p className="text-[11px] text-neutral-500 mt-2 leading-relaxed">
                       💡 <strong>Format Requis :</strong> Entrez le numéro de téléphone complet sans le "+" au début, sans espaces ou tirets (ex: pour le numéro <b>+228 90 00 00 00</b>, tapez uniquement <b>22890000000</b>). Ce numéro recevra les validations de paniers envoyées par vos clients.
                     </p>
                   </div>
 
                   {/* Logo Unique Info Banner */}
                   <div>
-                    <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-2">
+                    <label className="block text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-2">
                       Identité Visuelle Officielle
                     </label>
-                    <div className="flex items-center gap-4 p-4 border rounded-xl bg-emerald-50/50 border-emerald-200/80 shadow-2xs max-w-md">
-                      <div className="w-14 h-14 shrink-0 flex items-center justify-center p-1 rounded-lg bg-white border border-[#C88A24]/40 shadow-2xs overflow-hidden">
+                    <div className="flex items-center gap-4 p-4 border rounded-2xl bg-emerald-50/50 border-emerald-200/80 shadow-2xs max-w-md">
+                      <div className="w-14 h-14 shrink-0 flex items-center justify-center p-1.5 rounded-xl bg-white border border-[#d4af37]/50 shadow-2xs overflow-hidden">
                         <img src={officialLogoImg} alt="Logo Officiel Miabé Asi" className="w-full h-full object-contain" referrerPolicy="no-referrer" />
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                        <div className="text-xs font-bold text-emerald-950 flex items-center gap-2">
                           <span>Logo Officiel Miabé Asi</span>
-                          <span className="bg-emerald-700 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase">Actif</span>
+                          <span className="bg-[#0f5132] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase">Actif</span>
                         </div>
-                        <p className="text-[11px] text-emerald-800/90 mt-0.5 leading-snug">
+                        <p className="text-[11px] text-emerald-800/90 mt-1 leading-snug">
                           Logo officiel configuré et actif sur l'ensemble du site web et de l'application mobile.
                         </p>
                       </div>
@@ -4159,24 +4100,24 @@ export default function AdminApp() {
                   </div>
 
                   {saveConfigSuccess && (
-                    <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 p-4 text-xs rounded-sm font-bold animate-fade-in flex items-center gap-2">
-                      <span className="text-sm">✓</span>
+                    <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 p-4 text-xs rounded-xl font-bold animate-fade-in flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                       <span>Configuration enregistrée avec succès ! Le logo et le numéro WhatsApp ont été mis à jour globalement sur le serveur.</span>
                     </div>
                   )}
 
                   {/* Section Passerelle de Paiement PayDunya */}
-                  <div className="border-t border-stone-200 pt-6 mt-6 space-y-4">
+                  <div className="border-t border-neutral-100 pt-6 mt-6 space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+                        <h4 className="text-sm font-display font-bold text-neutral-950 flex items-center gap-2">
                           <span>Passerelle de Paiement (PayDunya)</span>
                           {paymentGatewayStatus?.configured ? (
-                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                               ● Configuré ({paymentGatewayStatus.mode.toUpperCase()})
                             </span>
                           ) : (
-                            <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                               ⚠️ En attente de clés (.env)
                             </span>
                           )}
@@ -4196,65 +4137,65 @@ export default function AdminApp() {
                             }
                           } catch (e) {}
                         }}
-                        className="text-[11px] font-bold text-[#d4af37] hover:underline cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-[11px] font-bold text-neutral-800 cursor-pointer transition-colors"
                       >
                         Rafraîchir statut
                       </button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className={`p-3 rounded-lg border text-xs ${paymentGatewayStatus?.hasMasterKey ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-stone-50 border-stone-200 text-stone-600"}`}>
+                      <div className={`p-3.5 rounded-xl border text-xs ${paymentGatewayStatus?.hasMasterKey ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-neutral-50 border-neutral-200 text-neutral-600"}`}>
                         <div className="font-bold flex items-center justify-between">
                           <span>Clé Principale (Master Key)</span>
                           <span>{paymentGatewayStatus?.hasMasterKey ? "✓ Détectée" : "✗ Manquante"}</span>
                         </div>
-                        <p className="text-[10px] text-stone-500 mt-1 font-mono">
+                        <p className="text-[10px] text-neutral-500 mt-1 font-mono">
                           {paymentGatewayStatus?.maskedMasterKey || "PAYDUNYA_MASTER_KEY"}
                         </p>
                       </div>
 
-                      <div className={`p-3 rounded-lg border text-xs ${paymentGatewayStatus?.hasPrivateKey ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-stone-50 border-stone-200 text-stone-600"}`}>
+                      <div className={`p-3.5 rounded-xl border text-xs ${paymentGatewayStatus?.hasPrivateKey ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-neutral-50 border-neutral-200 text-neutral-600"}`}>
                         <div className="font-bold flex items-center justify-between">
                           <span>Clé Privée (Private Key)</span>
                           <span>{paymentGatewayStatus?.hasPrivateKey ? "✓ Détectée" : "✗ Manquante"}</span>
                         </div>
-                        <p className="text-[10px] text-stone-500 mt-1 font-mono">
+                        <p className="text-[10px] text-neutral-500 mt-1 font-mono">
                           {paymentGatewayStatus?.hasPrivateKey ? "******** (Protégée)" : "PAYDUNYA_PRIVATE_KEY"}
                         </p>
                       </div>
 
-                      <div className={`p-3 rounded-lg border text-xs ${paymentGatewayStatus?.hasToken ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-stone-50 border-stone-200 text-stone-600"}`}>
+                      <div className={`p-3.5 rounded-xl border text-xs ${paymentGatewayStatus?.hasToken ? "bg-emerald-50/70 border-emerald-200 text-emerald-900" : "bg-neutral-50 border-neutral-200 text-neutral-600"}`}>
                         <div className="font-bold flex items-center justify-between">
                           <span>Jeton / Token</span>
                           <span>{paymentGatewayStatus?.hasToken ? "✓ Détecté" : "✗ Manquant"}</span>
                         </div>
-                        <p className="text-[10px] text-stone-500 mt-1 font-mono">
+                        <p className="text-[10px] text-neutral-500 mt-1 font-mono">
                           {paymentGatewayStatus?.maskedToken || "PAYDUNYA_TOKEN"}
                         </p>
                       </div>
                     </div>
 
                     {/* Input configuration for PayDunya Gateway */}
-                    <div className="bg-stone-50 border border-stone-200 rounded-lg p-4 space-y-4">
+                    <div className="bg-neutral-50/80 border border-neutral-200/90 rounded-2xl p-5 space-y-4">
                       <div>
-                        <label className="block text-[10px] font-bold text-neutral-800 uppercase tracking-wider mb-1.5">
+                        <label className="block text-[11px] font-bold text-neutral-800 uppercase tracking-wider mb-2">
                           Mode de la Passerelle <span className="text-red-500">*</span>
                         </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <button
                             type="button"
                             onClick={() => setPaydunyaMode("live")}
-                            className={`p-3 rounded border text-left cursor-pointer transition-all ${
+                            className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all ${
                               paydunyaMode === "live"
-                                ? "bg-emerald-950 text-white border-emerald-600 shadow-sm"
-                                : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
+                                ? "bg-[#0f5132] text-white border-[#0f5132] shadow-sm"
+                                : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-100"
                             }`}
                           >
-                            <div className="font-bold text-xs flex items-center gap-1.5">
+                            <div className="font-bold text-xs flex items-center gap-2">
                               <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                               <span>PRODUCTION (Débits Réels)</span>
                             </div>
-                            <p className="text-[10px] opacity-80 mt-1">
+                            <p className="text-[10.5px] opacity-85 mt-1">
                               Débit réel sur TMoney, Flooz, Wave, Orange Money et Cartes Bancaires.
                             </p>
                           </button>
@@ -4262,17 +4203,17 @@ export default function AdminApp() {
                           <button
                             type="button"
                             onClick={() => setPaydunyaMode("test")}
-                            className={`p-3 rounded border text-left cursor-pointer transition-all ${
+                            className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all ${
                               paydunyaMode === "test"
-                                ? "bg-amber-950 text-white border-amber-600 shadow-sm"
-                                : "bg-white text-stone-700 border-stone-200 hover:bg-stone-100"
+                                ? "bg-neutral-950 text-[#d4af37] border-[#d4af37] shadow-sm"
+                                : "bg-white text-neutral-700 border-neutral-200 hover:bg-neutral-100"
                             }`}
                           >
-                            <div className="font-bold text-xs flex items-center gap-1.5">
+                            <div className="font-bold text-xs flex items-center gap-2">
                               <span className="w-2 h-2 rounded-full bg-amber-400"></span>
                               <span>TEST (Sandbox)</span>
                             </div>
-                            <p className="text-[10px] opacity-80 mt-1">
+                            <p className="text-[10.5px] opacity-85 mt-1">
                               Environnement d'essai pour tests de validation sans débit d'argent réel.
                             </p>
                           </button>
@@ -4281,7 +4222,7 @@ export default function AdminApp() {
 
                       <div className="space-y-3">
                         <div>
-                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                          <label className="block text-[10.5px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
                             Clé Principale (PAYDUNYA_MASTER_KEY)
                           </label>
                           <input
@@ -4289,12 +4230,12 @@ export default function AdminApp() {
                             value={paydunyaMasterKey}
                             onChange={(e) => setPaydunyaMasterKey(e.target.value.trim())}
                             placeholder="Ex: H93d... (depuis votre dashboard PayDunya)"
-                            className="w-full border border-neutral-300 rounded px-3 py-2 text-xs font-mono bg-white text-neutral-900 focus:ring-1 focus:ring-amber-500 outline-none"
+                            className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-mono bg-white text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none transition-all"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                          <label className="block text-[10.5px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
                             Clé Privée (PAYDUNYA_PRIVATE_KEY) {paymentGatewayStatus?.hasPrivateKey && <span className="text-emerald-600 font-semibold">(Configurée)</span>}
                           </label>
                           <input
@@ -4302,12 +4243,12 @@ export default function AdminApp() {
                             value={paydunyaPrivateKey}
                             onChange={(e) => setPaydunyaPrivateKey(e.target.value.trim())}
                             placeholder={paymentGatewayStatus?.hasPrivateKey ? "******** (Laisser vide pour conserver la clé actuelle)" : "Ex: live_private_... ou test_private_..."}
-                            className="w-full border border-neutral-300 rounded px-3 py-2 text-xs font-mono bg-white text-neutral-900 focus:ring-1 focus:ring-amber-500 outline-none"
+                            className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-mono bg-white text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none transition-all"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-[10px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
+                          <label className="block text-[10.5px] font-bold text-neutral-700 uppercase tracking-wider mb-1">
                             Jeton Public (PAYDUNYA_TOKEN)
                           </label>
                           <input
@@ -4315,14 +4256,14 @@ export default function AdminApp() {
                             value={paydunyaToken}
                             onChange={(e) => setPaydunyaToken(e.target.value.trim())}
                             placeholder="Ex: live_token_... ou test_token_..."
-                            className="w-full border border-neutral-300 rounded px-3 py-2 text-xs font-mono bg-white text-neutral-900 focus:ring-1 focus:ring-amber-500 outline-none"
+                            className="w-full border border-neutral-200 rounded-xl px-3.5 py-2.5 text-xs font-mono bg-white text-neutral-900 focus:ring-2 focus:ring-[#d4af37]/25 focus:border-[#d4af37] outline-none transition-all"
                           />
                         </div>
                       </div>
 
-                      <div className="border-t border-stone-200 pt-3">
-                        <p className="text-[10px] text-stone-500 leading-relaxed">
-                          🛡️ <strong>Note pour l'hébergement :</strong> Vos clés sont enregistrées de façon permanente sur le serveur dans <code className="bg-stone-200 px-1 py-0.5 rounded text-stone-800">settings.json</code>. En mode Production, les clients sont automatiquement dirigés vers le guichet officiel PayDunya pour autoriser le prélèvement bancaire ou mobile money.
+                      <div className="border-t border-neutral-200/80 pt-3">
+                        <p className="text-[10.5px] text-neutral-500 leading-relaxed">
+                          🛡️ <strong>Note pour l'hébergement :</strong> Vos clés sont enregistrées de façon permanente sur le serveur dans <code className="bg-neutral-200/80 px-1.5 py-0.5 rounded text-neutral-800">settings.json</code>. En mode Production, les clients sont automatiquement dirigés vers le guichet officiel PayDunya pour autoriser le prélèvement bancaire ou mobile money.
                         </p>
                       </div>
                     </div>
@@ -4373,7 +4314,7 @@ export default function AdminApp() {
                         alert("Erreur réseau : impossible de joindre le serveur.");
                       }
                     }}
-                    className="w-full bg-neutral-950 text-white hover:bg-[#d4af37] hover:text-neutral-950 py-3.5 rounded-sm font-bold text-xs uppercase tracking-widest transition-colors cursor-pointer"
+                    className="w-full bg-neutral-950 text-[#d4af37] hover:bg-[#0f5132] hover:text-white py-3.5 rounded-xl font-display font-extrabold text-xs uppercase tracking-widest transition-all shadow-md cursor-pointer border border-[#d4af37]/40"
                   >
                     Enregistrer la Configuration
                   </button>
@@ -4381,8 +4322,7 @@ export default function AdminApp() {
               </div>
             )}
           </div>
-        )}
-      </div>
+      </AdminSaaSLayout>
 
       {/* --- OFFICIAL PRINTABLE INVOICE MODAL (ADMIN) --- */}
       <InvoiceModal
@@ -4438,7 +4378,7 @@ export default function AdminApp() {
       )}
 
       {adminToast && (
-        <div className="fixed bottom-6 right-6 z-[300] bg-stone-900 text-white px-5 py-3 rounded-lg shadow-2xl border border-[#d4af37] text-xs font-bold animate-bounce flex items-center gap-2 select-none">
+        <div className="fixed bottom-6 right-6 z-[300] bg-neutral-950 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-[#d4af37]/60 text-xs font-bold animate-bounce flex items-center gap-2.5 select-none">
           <Sparkles className="w-4 h-4 text-[#d4af37]" />
           <span>{adminToast}</span>
         </div>

@@ -61,29 +61,34 @@ function loadEnvFile(): Record<string, string> {
     }
   }
 
-  // Load configured keys from settings.json if saved via Admin UI
-  try {
-    const settingsPath = path.join(process.cwd(), "settings.json");
-    if (fs.existsSync(settingsPath)) {
-      const s = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-      if (s.paydunyaMasterKey && !envMap["PAYDUNYA_MASTER_KEY"]) {
-        envMap["PAYDUNYA_MASTER_KEY"] = s.paydunyaMasterKey;
-        process.env["PAYDUNYA_MASTER_KEY"] = s.paydunyaMasterKey;
+  // Load configured keys from settings.json (or /tmp/settings.json on Vercel) if saved via Admin UI
+  const settingsCandidates = [
+    path.join(process.cwd(), "settings.json"),
+    path.join("/tmp", "settings.json")
+  ];
+  for (const settingsPath of settingsCandidates) {
+    try {
+      if (fs.existsSync(settingsPath)) {
+        const s = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+        if (s.paydunyaMasterKey && !envMap["PAYDUNYA_MASTER_KEY"]) {
+          envMap["PAYDUNYA_MASTER_KEY"] = s.paydunyaMasterKey;
+          process.env["PAYDUNYA_MASTER_KEY"] = s.paydunyaMasterKey;
+        }
+        if (s.paydunyaPrivateKey && !envMap["PAYDUNYA_PRIVATE_KEY"]) {
+          envMap["PAYDUNYA_PRIVATE_KEY"] = s.paydunyaPrivateKey;
+          process.env["PAYDUNYA_PRIVATE_KEY"] = s.paydunyaPrivateKey;
+        }
+        if (s.paydunyaToken && !envMap["PAYDUNYA_TOKEN"]) {
+          envMap["PAYDUNYA_TOKEN"] = s.paydunyaToken;
+          process.env["PAYDUNYA_TOKEN"] = s.paydunyaToken;
+        }
+        if (s.paydunyaMode && !envMap["PAYDUNYA_MODE"]) {
+          envMap["PAYDUNYA_MODE"] = s.paydunyaMode;
+          process.env["PAYDUNYA_MODE"] = s.paydunyaMode;
+        }
       }
-      if (s.paydunyaPrivateKey && !envMap["PAYDUNYA_PRIVATE_KEY"]) {
-        envMap["PAYDUNYA_PRIVATE_KEY"] = s.paydunyaPrivateKey;
-        process.env["PAYDUNYA_PRIVATE_KEY"] = s.paydunyaPrivateKey;
-      }
-      if (s.paydunyaToken && !envMap["PAYDUNYA_TOKEN"]) {
-        envMap["PAYDUNYA_TOKEN"] = s.paydunyaToken;
-        process.env["PAYDUNYA_TOKEN"] = s.paydunyaToken;
-      }
-      if (s.paydunyaMode && !envMap["PAYDUNYA_MODE"]) {
-        envMap["PAYDUNYA_MODE"] = s.paydunyaMode;
-        process.env["PAYDUNYA_MODE"] = s.paydunyaMode;
-      }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
 
   return envMap;
 }
@@ -99,6 +104,7 @@ export interface PaymentCustomerDetails {
   clientCity?: string;
   sellerCity?: string;
   sellerName?: string;
+  appBaseUrl?: string;
 }
 
 export interface PaymentSession {
@@ -230,6 +236,8 @@ export class CinetPayProvider implements IPaymentProvider {
 
 // File to persist PayDunya invoices and transactions for reliable server confirmation
 const PAYDUNYA_INVOICES_FILE = path.join(process.cwd(), "paydunya_invoices.json");
+const PAYDUNYA_INVOICES_TMP_FILE = path.join("/tmp", "paydunya_invoices.json");
+let inMemoryPayDunyaInvoices: PayDunyaInvoiceRecord[] | null = null;
 
 export interface PayDunyaInvoiceRecord {
   token: string;
@@ -254,24 +262,44 @@ export interface PayDunyaInvoiceRecord {
 }
 
 export function loadPayDunyaInvoices(): PayDunyaInvoiceRecord[] {
-  try {
-    if (!fs.existsSync(PAYDUNYA_INVOICES_FILE)) {
-      fs.writeFileSync(PAYDUNYA_INVOICES_FILE, "[]", "utf-8");
-      return [];
-    }
-    const raw = fs.readFileSync(PAYDUNYA_INVOICES_FILE, "utf-8");
-    return JSON.parse(raw) as PayDunyaInvoiceRecord[];
-  } catch (err) {
-    console.error("[PayDunya Storage] Erreur lecture paydunya_invoices.json:", err);
-    return [];
+  if (inMemoryPayDunyaInvoices !== null) {
+    return inMemoryPayDunyaInvoices;
   }
+  try {
+    if (fs.existsSync(PAYDUNYA_INVOICES_TMP_FILE)) {
+      const rawTmp = fs.readFileSync(PAYDUNYA_INVOICES_TMP_FILE, "utf-8");
+      const parsedTmp = JSON.parse(rawTmp);
+      if (Array.isArray(parsedTmp)) {
+        inMemoryPayDunyaInvoices = parsedTmp;
+        return inMemoryPayDunyaInvoices;
+      }
+    }
+    if (fs.existsSync(PAYDUNYA_INVOICES_FILE)) {
+      const raw = fs.readFileSync(PAYDUNYA_INVOICES_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        inMemoryPayDunyaInvoices = parsed;
+        return inMemoryPayDunyaInvoices;
+      }
+    }
+  } catch (err) {
+    console.warn("[PayDunya Storage] Avertissement lecture paydunya_invoices.json:", err);
+  }
+  inMemoryPayDunyaInvoices = [];
+  return inMemoryPayDunyaInvoices;
 }
 
 export function savePayDunyaInvoices(invoices: PayDunyaInvoiceRecord[]): void {
+  inMemoryPayDunyaInvoices = invoices;
+  const serialized = JSON.stringify(invoices, null, 2);
   try {
-    fs.writeFileSync(PAYDUNYA_INVOICES_FILE, JSON.stringify(invoices, null, 2), "utf-8");
-  } catch (err) {
-    console.error("[PayDunya Storage] Erreur écriture paydunya_invoices.json:", err);
+    fs.writeFileSync(PAYDUNYA_INVOICES_FILE, serialized, "utf-8");
+  } catch {
+    try {
+      fs.writeFileSync(PAYDUNYA_INVOICES_TMP_FILE, serialized, "utf-8");
+    } catch (tmpErr) {
+      console.warn("[PayDunya Storage] Persistance mémoire active (système de fichiers en lecture seule).");
+    }
   }
 }
 
@@ -365,19 +393,59 @@ export class PayDunyaProvider implements IPaymentProvider {
     );
     
     let modeInput = findKey("PAYDUNYA_MODE", "PAYDUNYA_ENV", "PAYDUNYA_ENVIRONMENT").toLowerCase();
-    let mode = "test";
-    if (modeInput === "production" || modeInput === "prod" || modeInput === "live" || (!modeInput && (privateKey || token))) {
+    let mode = "live";
+    if (privateKey.toLowerCase().startsWith("test_") || token.toLowerCase().startsWith("test_")) {
+      mode = "test";
+    } else if (privateKey.toLowerCase().startsWith("live_") || token.toLowerCase().startsWith("live_")) {
+      mode = "live";
+    } else if (modeInput === "test" || modeInput === "sandbox") {
+      mode = "test";
+    } else if (modeInput === "production" || modeInput === "prod" || modeInput === "live" || (!modeInput && (privateKey || token))) {
       mode = "live";
     }
 
     return { masterKey, privateKey, token, mode };
   }
 
-  private getBaseUrl(): string {
+  private getBaseUrl(overrideMode?: string): string {
     const { mode } = this.getApiKeys();
-    return mode === "live" 
-      ? "https://payment.paydunya.com/api/v1" 
-      : "https://payment.paydunya.com/sandbox-api/v1";
+    const effectiveMode = overrideMode || mode;
+    return effectiveMode === "live" 
+      ? "https://app.paydunya.com/api/v1" 
+      : "https://app.paydunya.com/sandbox-api/v1";
+  }
+
+  private async parsePayDunyaJsonResponse(response: Response, context: string): Promise<any> {
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    const rawText = await response.text();
+    const trimmed = rawText.trim();
+
+    if (!contentType.includes("application/json") && (trimmed.startsWith("<") || trimmed.toLowerCase().startsWith("<!doctype"))) {
+      console.error(`[PayDunya API - ${context}] Réponse HTML reçue (HTTP ${response.status}):`, trimmed.slice(0, 300));
+      throw new Error(`Le serveur PayDunya a retourné une réponse HTML inattendue (HTTP ${response.status}) lors de ${context}.`);
+    }
+
+    if (!trimmed) {
+      throw new Error(`Réponse vide reçue de PayDunya (HTTP ${response.status}) lors de ${context}.`);
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch (err) {
+      console.error(`[PayDunya API - ${context}] Réponse non-JSON (HTTP ${response.status}, Content-Type: ${contentType}):`, trimmed.slice(0, 300));
+      throw new Error(`Réponse invalide (non-JSON) reçue du serveur PayDunya (HTTP ${response.status}).`);
+    }
+  }
+
+  private resolveAppBaseUrl(customer?: PaymentCustomerDetails): string {
+    const candidate =
+      customer?.appBaseUrl ||
+      process.env.APP_URL ||
+      process.env.PUBLIC_APP_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "") ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+      "http://localhost:3000";
+    return candidate.replace(/\/+$/, "");
   }
 
   async initiatePayment(orderId: string, amount: number, customer: PaymentCustomerDetails): Promise<PaymentSession> {
@@ -395,7 +463,7 @@ export class PayDunyaProvider implements IPaymentProvider {
     const isCrossBorder = clientCountryCode !== sellerCountryCode;
 
     const isSubscription = orderId.startsWith("SUB-");
-    const appBaseUrl = process.env.APP_URL || "http://localhost:3000";
+    const appBaseUrl = this.resolveAppBaseUrl(customer);
 
     const returnUrl = isSubscription
       ? `${appBaseUrl}/?payment=sub_return&subId=${encodeURIComponent(orderId)}`
@@ -405,134 +473,165 @@ export class PayDunyaProvider implements IPaymentProvider {
       ? `${appBaseUrl}/?payment=sub_cancel&subId=${encodeURIComponent(orderId)}`
       : `${appBaseUrl}/?payment=cancel&orderId=${encodeURIComponent(orderId)}`;
 
-    const callbackUrl = `${appBaseUrl}/api/payments/paydunya/ipn`;
+    const callbackUrl = `${appBaseUrl}/api/paydunya/ipn`;
 
-    // If live keys are present, attempt official PayDunya invoice creation
-    if (privateKey && token) {
-      try {
-        const baseUrl = this.getBaseUrl();
-        console.log(`[PayDunya] Création facture en direct (${mode.toUpperCase()}) pour ${orderId} (${amount} ${currencyCode})...`);
+    // Official PayDunya invoice creation
+    if (masterKey && privateKey && token) {
+      const baseUrl = this.getBaseUrl(mode);
+      console.log(`[PayDunya] Création facture officielle (${mode.toUpperCase()}) sur ${baseUrl} pour ${orderId} (${amount} ${currencyCode})...`);
 
-        const payload = {
-          invoice: {
-            total_amount: amount,
-            description: isSubscription 
-              ? `Abonnement PRO Vendeur (${amount} ${currencyCode}) - Miabé Asi`
-              : `Paiement commande #${orderId} (${currencyCode}) - Miabé Asi`,
-            items: [
-              {
-                name: isSubscription ? `Abonnement PRO Vendeur` : `Commande #${orderId}`,
-                quantity: 1,
-                unit_price: amount,
-                total_price: amount,
-                description: `${amount} ${currencyCode}`
-              }
-            ]
-          },
-          store: {
-            name: "Miabé Asi",
-            tagline: "Marketplace Africaine Panafricaine",
-            postal_address: `${countryCode}, Afrique`,
-            phone: customer.phone || "+22890000000"
-          },
-          custom_data: {
-            order_id: orderId,
-            amount: amount,
-            currency_code: currencyCode,
-            country_code: countryCode,
-            client_country_code: clientCountryCode,
-            seller_country_code: sellerCountryCode,
-            is_cross_border: isCrossBorder,
-            is_subscription: isSubscription,
-            customer_name: customer.name,
-            customer_phone: customer.phone,
-            customer_email: customer.email || "support@miabeasi.com"
-          },
-          actions: {
-            cancel_url: cancelUrl,
-            return_url: returnUrl,
-            callback_url: callbackUrl
-          }
-        };
+      const payload = {
+        invoice: {
+          total_amount: amount,
+          description: isSubscription 
+            ? `Abonnement PRO Vendeur (${amount} ${currencyCode}) - Miabé Asi`
+            : `Paiement commande #${orderId} (${currencyCode}) - Miabé Asi`,
+          items: [
+            {
+              name: isSubscription ? `Abonnement PRO Vendeur` : `Commande #${orderId}`,
+              quantity: 1,
+              unit_price: amount,
+              total_price: amount,
+              description: `${amount} ${currencyCode}`
+            }
+          ]
+        },
+        store: {
+          name: "Miabé Asi",
+          tagline: "Marketplace Africaine Panafricaine",
+          postal_address: `${countryCode}, Afrique`,
+          phone: customer.phone || "+22890000000",
+          website_url: appBaseUrl,
+          return_url: returnUrl,
+          cancel_url: cancelUrl,
+          callback_url: callbackUrl
+        },
+        custom_data: {
+          order_id: orderId,
+          amount: amount,
+          currency_code: currencyCode,
+          country_code: countryCode,
+          client_country_code: clientCountryCode,
+          seller_country_code: sellerCountryCode,
+          is_cross_border: isCrossBorder,
+          is_subscription: isSubscription,
+          customer_name: customer.name,
+          customer_phone: customer.phone,
+          customer_email: customer.email || "support@miabeasi.com"
+        },
+        actions: {
+          cancel_url: cancelUrl,
+          return_url: returnUrl,
+          callback_url: callbackUrl
+        }
+      };
 
-        const response = await fetch(`${baseUrl}/checkout-invoice/create`, {
+      const callCreateInvoice = async (targetBaseUrl: string) => {
+        const response = await fetch(`${targetBaseUrl}/checkout-invoice/create`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "PAYDUNYA-MASTER-KEY": masterKey,
             "PAYDUNYA-PRIVATE-KEY": privateKey,
             "PAYDUNYA-TOKEN": token
           },
           body: JSON.stringify(payload)
         });
+        return this.parsePayDunyaJsonResponse(response, "création de facture PayDunya");
+      };
 
-        const resData = await response.json() as any;
+      let resData = await callCreateInvoice(baseUrl);
 
-        if (resData && resData.response_code === "00") {
-          const invoiceToken = resData.token;
-          recordPayDunyaInvoice({
-            token: invoiceToken,
-            orderId,
-            amount,
-            currencyCode,
-            countryCode,
-            clientCountryCode,
-            sellerCountryCode,
-            isCrossBorder,
-            status: "pending",
-            type: isSubscription ? "subscription" : "order",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            redirectUrl: resData.response_text,
-            customerName: customer.name,
-            customerPhone: customer.phone,
-            customerEmail: customer.email
-          });
-
-          return {
-            success: true,
-            transactionId: invoiceToken,
-            providerId: this.id,
-            amount,
-            currencyCode,
-            countryCode,
-            clientCountryCode,
-            sellerCountryCode,
-            isCrossBorder,
-            status: "pending",
-            redirectUrl: resData.response_text,
-            instructions: `Veuillez compléter votre paiement de ${amount} ${currencyCode} sur l'interface sécurisée PayDunya.`
-          };
-        } else {
-          console.warn("[PayDunya API] Échec création facture en ligne:", resData);
-          throw new Error(resData?.response_text || `Erreur PayDunya: ${resData?.response_code || "Inconnue"}`);
+      // If keys belong to the other environment (e.g. sandbox keys with live mode or vice versa), retry once on the alternate endpoint
+      if (resData && resData.response_code && resData.response_code !== "00") {
+        const altMode = mode === "live" ? "test" : "live";
+        const altBaseUrl = this.getBaseUrl(altMode);
+        try {
+          const retryData = await callCreateInvoice(altBaseUrl);
+          if (retryData && retryData.response_code === "00") {
+            resData = retryData;
+          }
+        } catch {
+          // Keep original resData error
         }
-      } catch (err: any) {
-        throw err;
+      }
+
+      if (resData && resData.response_code === "00") {
+        const invoiceToken = resData.token;
+        const redirectUrl = resData.response_text || resData.invoice_url || `https://app.paydunya.com/checkout/invoice/${invoiceToken}`;
+        recordPayDunyaInvoice({
+          token: invoiceToken,
+          orderId,
+          amount,
+          currencyCode,
+          countryCode,
+          clientCountryCode,
+          sellerCountryCode,
+          isCrossBorder,
+          status: "pending",
+          type: isSubscription ? "subscription" : "order",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          redirectUrl,
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          customerEmail: customer.email
+        });
+
+        return {
+          success: true,
+          transactionId: invoiceToken,
+          providerId: this.id,
+          amount,
+          currencyCode,
+          countryCode,
+          clientCountryCode,
+          sellerCountryCode,
+          isCrossBorder,
+          status: "pending",
+          redirectUrl,
+          instructions: `Veuillez compléter votre paiement de ${amount} ${currencyCode} sur l'interface sécurisée PayDunya.`
+        };
+      } else {
+        console.warn("[PayDunya API] Échec création facture en ligne:", resData);
+        throw new Error(resData?.response_text || resData?.description || `Erreur PayDunya (Code ${resData?.response_code || "Inconnu"})`);
       }
     }
 
-    throw new Error("Paiement PayDunya : Les clés API officielles PayDunya (Master Key, Private Key, Token) sont requises pour initier le paiement sécurisé. Veuillez les renseigner dans l'Espace Administrateur > Paramètres.");
+    throw new Error("Paiement PayDunya : Les clés API officielles PayDunya (Master Key, Private Key, Token) sont requises pour initier le paiement sécurisé. Veuillez les renseigner dans les variables d'environnement ou dans l'Espace Administrateur > Paramètres.");
   }
 
   async verifyPayment(transactionId: string): Promise<PaymentVerificationResult> {
-    const { masterKey, privateKey, token } = this.getApiKeys();
+    const { masterKey, privateKey, token, mode } = this.getApiKeys();
 
     // 1. If keys are present, call official PayDunya confirm API
-    if (privateKey && token) {
+    if (masterKey && privateKey && token) {
       try {
-        const baseUrl = this.getBaseUrl();
-        const response = await fetch(`${baseUrl}/checkout-invoice/confirm/${transactionId}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "PAYDUNYA-MASTER-KEY": masterKey,
-            "PAYDUNYA-PRIVATE-KEY": privateKey,
-            "PAYDUNYA-TOKEN": token
-          }
-        });
+        const callConfirmInvoice = async (targetBaseUrl: string) => {
+          const response = await fetch(`${targetBaseUrl}/checkout-invoice/confirm/${encodeURIComponent(transactionId)}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "PAYDUNYA-MASTER-KEY": masterKey,
+              "PAYDUNYA-PRIVATE-KEY": privateKey,
+              "PAYDUNYA-TOKEN": token
+            }
+          });
+          return this.parsePayDunyaJsonResponse(response, "confirmation de facture PayDunya");
+        };
 
-        const resData = await response.json() as any;
+        let resData = await callConfirmInvoice(this.getBaseUrl(mode));
+        if (resData && resData.response_code && resData.response_code !== "00") {
+          const altMode = mode === "live" ? "test" : "live";
+          try {
+            const retryData = await callConfirmInvoice(this.getBaseUrl(altMode));
+            if (retryData && retryData.response_code === "00") {
+              resData = retryData;
+            }
+          } catch {}
+        }
         const invoiceStatus = (resData?.status || "").toLowerCase();
 
         if (invoiceStatus === "completed") {
@@ -667,9 +766,11 @@ export class PayDunyaProvider implements IPaymentProvider {
   async disbursePayout(phone: string, amount: number, method: string): Promise<{ success: boolean; txId?: string; error?: string }> {
     const { masterKey, privateKey, token } = this.getApiKeys();
 
-    if (!privateKey || !token) {
-      console.log(`[PayDunya Disburse Demo] Retrait de ${amount} FCFA vers ${phone} (${method}) traité avec succès (Mode Démo).`);
-      return { success: true, txId: "DISB-MOCK-" + crypto.randomBytes(4).toString("hex").toUpperCase() };
+    if (!masterKey || !privateKey || !token) {
+      return {
+        success: false,
+        error: "Les clés API officielles PayDunya (Master Key, Private Key, Token) sont requises pour effectuer un transfert."
+      };
     }
 
     try {
@@ -699,6 +800,7 @@ export class PayDunyaProvider implements IPaymentProvider {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json",
           "PAYDUNYA-MASTER-KEY": masterKey,
           "PAYDUNYA-PRIVATE-KEY": privateKey,
           "PAYDUNYA-TOKEN": token
@@ -706,7 +808,7 @@ export class PayDunyaProvider implements IPaymentProvider {
         body: JSON.stringify(payload)
       });
 
-      const resData = await response.json() as any;
+      const resData = await this.parsePayDunyaJsonResponse(response, "transfert PayDunya");
 
       if (resData && resData.response_code === "00") {
         return {

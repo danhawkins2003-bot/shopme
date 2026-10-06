@@ -1,5 +1,145 @@
 [
   {
+    "id": "ord_10013",
+    "userId": "guest_1791241633157",
+    "items": [
+      {
+        "product": {
+          "id": "prod-1",
+          "nom": "Miel Pur de Kpalimé",
+          "prix": 5000,
+          "partenaire": "Vendeur Miabé Asi",
+          "vendeurId": "assisted_merchant",
+          "countryCode": "TG",
+          "countryOrigin": "Togo",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "/placeholder.jpg"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 5000,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Lomé",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Lomé",
+    "clientName": "Koffi Mensah",
+    "clientPhone": "+22890112233",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "Vendeur Miabé Asi",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Koffi Mensah",
+      "phone": "+22890112233",
+      "countryCode": "TG",
+      "city": "Lomé",
+      "quartier": "Tokoin",
+      "currencyCode": "XOF"
+    },
+    "paymentMethod": "EnLigne",
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 4500,
+    "miabeAsiGrossCommission": 500,
+    "miabeAsiNetCommission": 500,
+    "splitProcessed": false,
+    "createdAt": "2026-10-05T23:07:13.160Z"
+  },
+  {
+    "id": "ord_10012",
+    "userId": "guest_1791239999183",
+    "items": [
+      {
+        "product": {
+          "id": "prod_pop_5",
+          "nom": "Superbe Plateau Fufu Sauce Arachide",
+          "prix": 5400,
+          "vendeurId": "assisted_merchant",
+          "partenaire": "ClickBank",
+          "countryCode": "TG",
+          "countryOrigin": "TG",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?auto=format&fit=crop&q=80&w=600"
+          ]
+        },
+        "quantity": 1
+      },
+      {
+        "product": {
+          "id": "prod_pop_60",
+          "nom": "Derbies Classiques Haute Coutures",
+          "prix": 15100,
+          "vendeurId": "assisted_merchant",
+          "partenaire": "Boutique en Direct",
+          "countryCode": "TG",
+          "countryOrigin": "TG",
+          "city": "",
+          "quartier": "",
+          "currencyCode": "XOF",
+          "images": [
+            "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&q=80&w=600",
+            "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&q=80&w=600"
+          ]
+        },
+        "quantity": 1
+      }
+    ],
+    "totalAmount": 45300,
+    "currencyCode": "XOF",
+    "destinationCountryCode": "TG",
+    "destinationCity": "Agoè",
+    "clientCountryCode": "TG",
+    "clientCountryName": "Togo",
+    "clientCity": "Agoè",
+    "clientName": "Prince",
+    "clientPhone": "+228 99908169",
+    "sellerCountryCode": "TG",
+    "sellerCountryName": "Togo",
+    "sellerCity": "",
+    "sellerName": "ClickBank",
+    "originCountries": [
+      "TG"
+    ],
+    "isCrossBorder": false,
+    "shippingDetails": {
+      "name": "Prince",
+      "phone": "+228 99908169",
+      "countryCode": "TG",
+      "city": "Agoè",
+      "quartier": "Agoè",
+      "currencyCode": "XOF",
+      "phoneWithCountryCode": "+228 99908169",
+      "notes": "Commande sécurisée payée par EnLigne via Miabé Asi Gateway."
+    },
+    "paymentMethod": "EnLigne",
+    "paymentStatus": "En attente de paiement",
+    "orderStatus": "En préparation",
+    "affiliateCode": null,
+    "affiliateCommission": 0,
+    "sellerEarnings": 40770,
+    "miabeAsiGrossCommission": 4530,
+    "miabeAsiNetCommission": 4530,
+    "splitProcessed": false,
+    "createdAt": "2026-10-05T22:39:59.186Z"
+  },
+  {
     "id": "ord_10011",
     "userId": "guest_1791064593001",
     "items": [

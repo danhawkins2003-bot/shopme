@@ -3,7 +3,6 @@ import * as d3 from "d3";
 import { motion } from "motion/react";
 import {
   TrendingUp,
-  TrendingDown,
   ShoppingBag,
   CreditCard,
   Calendar,
@@ -11,7 +10,8 @@ import {
   Download,
   Award,
   BarChart2,
-  PieChart
+  PieChart,
+  ArrowUpRight
 } from "lucide-react";
 
 interface MonthlyData {
@@ -77,7 +77,11 @@ const categories2025: CategoryData[] = [
   { category: "Importations Trends", share: 5, sales: 1098000 }
 ];
 
-export default function AdminStats() {
+interface AdminStatsProps {
+  compact?: boolean;
+}
+
+export default function AdminStats({ compact = false }: AdminStatsProps) {
   const [selectedYear, setSelectedYear] = useState<"2025" | "2026">("2026");
   const [selectedMetric, setSelectedMetric] = useState<"sales" | "orders">("sales");
   const [hoveredBar, setHoveredBar] = useState<MonthlyData | null>(null);
@@ -85,7 +89,7 @@ export default function AdminStats() {
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const [dimensions, setDimensions] = useState({ width: 600, height: 350 });
+  const [dimensions, setDimensions] = useState({ width: 600, height: 340 });
 
   const data = selectedYear === "2025" ? monthlyData2025 : monthlyData2026;
   const categories = selectedYear === "2025" ? categories2025 : categories2026;
@@ -97,35 +101,32 @@ export default function AdminStats() {
     const resizeObserver = new ResizeObserver((entries) => {
       if (!entries || entries.length === 0) return;
       const { width } = entries[0].contentRect;
-      // Subtract basic margins and apply constraints
-      const targetWidth = Math.max(width, 320);
+      const targetWidth = Math.max(width, 300);
       setDimensions({
         width: targetWidth,
-        height: 380
+        height: compact ? 320 : 360
       });
     });
 
     resizeObserver.observe(chartContainerRef.current);
     return () => resizeObserver.disconnect();
-  }, []);
+  }, [compact]);
 
   // Main D3 Drawing & Animations
   useEffect(() => {
     if (!svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove(); // Clear previous layouts entirely
+    svg.selectAll("*").remove();
 
-    const margin = { top: 30, right: 20, bottom: 40, left: 65 };
+    const margin = { top: 28, right: 16, bottom: 38, left: 58 };
     const innerWidth = dimensions.width - margin.left - margin.right;
     const innerHeight = dimensions.height - margin.top - margin.bottom;
 
-    // Create Main Chart canvas
     const g = svg
       .append("g")
       .attr("transform", `translate(${margin.left}, ${margin.top})`);
 
-    // Define beautiful gold-bronze gradient
     const defs = svg.append("defs");
     const linearGradient = defs
       .append("linearGradient")
@@ -138,14 +139,13 @@ export default function AdminStats() {
     linearGradient
       .append("stop")
       .attr("offset", "0%")
-      .attr("stop-color", "#e1be52"); // Bright golden-sand
+      .attr("stop-color", "#e5c158");
 
     linearGradient
       .append("stop")
       .attr("offset", "100%")
-      .attr("stop-color", "#b38a19"); // Deeper gold
+      .attr("stop-color", "#b8901c");
 
-    // Define dashed forecaster design gradient for projections
     const forecastGradient = defs
       .append("linearGradient")
       .attr("id", "forecast-gradient")
@@ -157,33 +157,24 @@ export default function AdminStats() {
     forecastGradient
       .append("stop")
       .attr("offset", "0%")
-      .attr("stop-color", "#e5e7eb");
+      .attr("stop-color", "#d6d3d1");
 
     forecastGradient
       .append("stop")
       .attr("offset", "100%")
-      .attr("stop-color", "#9ca3af");
+      .attr("stop-color", "#a8a29e");
 
-    // Scales
     const xScale = d3
       .scaleBand()
       .domain(data.map((d) => d.month))
       .range([0, innerWidth])
-      .padding(0.35);
+      .padding(0.38);
 
     const maxY = d3.max(data, (d) => d[selectedMetric]) || 100;
     const yScale = d3
       .scaleLinear()
-      .domain([0, maxY * 1.1]) // Add 10% headroom
+      .domain([0, maxY * 1.12])
       .range([innerHeight, 0]);
-
-    // Format utility
-    const formatValue = (val: number) => {
-      if (selectedMetric === "sales") {
-        return new Intl.NumberFormat("fr-FR").format(val) + " F";
-      }
-      return new Intl.NumberFormat("fr-FR").format(val);
-    };
 
     // Horizontal grid lines
     const yGrid = d3.axisLeft(yScale).tickSize(-innerWidth).tickFormat(() => "");
@@ -192,38 +183,41 @@ export default function AdminStats() {
       .call(yGrid)
       .call((gGroup) => gGroup.select(".domain").remove())
       .selectAll(".tick line")
-      .attr("stroke", "#e5e7eb")
-      .attr("stroke-dasharray", "3,3");
+      .attr("stroke", "#f1f5f9")
+      .attr("stroke-dasharray", "4,4");
 
-    // Render original X Axis
+    // X Axis
     g.append("g")
       .attr("transform", `translate(0, ${innerHeight})`)
-      .call(d3.axisBottom(xScale))
-      .call((gGroup) => gGroup.select(".domain").attr("stroke", "#d1d5db"))
+      .call(d3.axisBottom(xScale).tickSize(0))
+      .call((gGroup) => gGroup.select(".domain").attr("stroke", "#e5e7eb"))
       .selectAll("text")
-      .attr("class", "text-[10px] font-sans font-medium text-neutral-600")
-      // Rotate x-axis labels on small mobile screens
-      .attr("transform", dimensions.width < 500 ? "rotate(-30)" : "rotate(0)")
-      .style("text-anchor", dimensions.width < 500 ? "end" : "middle")
-      .attr("dy", dimensions.width < 500 ? "1px" : "10px");
+      .attr("class", "text-[11px] font-sans font-medium text-neutral-500")
+      .text((d: any) => (dimensions.width < 640 ? String(d).slice(0, 3) : String(d)))
+      .attr("dy", "14px");
 
-    // Render original Y Axis with friendly abbreviated marks
+    // Y Axis
     g.append("g")
       .call(
-        d3.axisLeft(yScale).ticks(6).tickFormat((d) => {
-          const num = +d;
-          if (selectedMetric === "sales") {
-            if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
-            if (num >= 1000) return (num / 1000).toFixed(0) + "k";
-          }
-          return num.toString();
-        })
+        d3
+          .axisLeft(yScale)
+          .ticks(5)
+          .tickSize(0)
+          .tickFormat((d) => {
+            const num = +d;
+            if (selectedMetric === "sales") {
+              if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
+              if (num >= 1000) return (num / 1000).toFixed(0) + "k";
+            }
+            return num.toString();
+          })
       )
       .call((gGroup) => gGroup.select(".domain").remove())
       .selectAll("text")
-      .attr("class", "text-[10px] font-mono font-medium text-neutral-500");
+      .attr("class", "text-[11px] font-mono tabular-nums font-medium text-neutral-400")
+      .attr("dx", "-6px");
 
-    // Drawing Bars with transitions
+    // Bars
     const barGroups = g
       .selectAll(".bar-group")
       .data(data)
@@ -233,42 +227,54 @@ export default function AdminStats() {
 
     barGroups
       .append("rect")
-      .attr("class", "cursor-pointer transition-all duration-150 rounded-sm")
+      .attr("class", "cursor-pointer transition-opacity duration-150")
       .attr("x", (d) => xScale(d.month) || 0)
       .attr("width", xScale.bandwidth())
-      .attr("y", innerHeight) // start animation from bottom
+      .attr("y", innerHeight)
       .attr("height", 0)
       .attr("fill", (d) => (d.forecast ? "url(#forecast-gradient)" : "url(#gold-gradient)"))
-      .attr("rx", 3) // rounded corner radius
-      .attr("ry", 3)
+      .attr("rx", 6)
+      .attr("ry", 6)
       .on("mouseenter", function (event, d) {
         setHoveredBar(d);
-        d3.select(this).attr("opacity", 0.85).attr("stroke", "#b38a19").attr("stroke-width", 1.5);
+        d3.select(this).attr("opacity", 0.85).attr("stroke", "#0f5132").attr("stroke-width", 1.5);
       })
       .on("mousemove", function (event) {
-        // Calculate coordinate location relative to container element
         const [mx, my] = d3.pointer(event, chartContainerRef.current);
-        setTooltipPos({ x: mx, y: my - 70 });
+        setTooltipPos({ x: mx, y: Math.max(10, my - 76) });
       })
       .on("mouseleave", function () {
         setHoveredBar(null);
         d3.select(this).attr("opacity", 1).attr("stroke", "none");
       })
-      // Transition animation
       .transition()
-      .duration(850)
-      .delay((d, i) => i * 40)
+      .duration(650)
+      .delay((d, i) => i * 30)
       .attr("y", (d) => yScale(d[selectedMetric]))
       .attr("height", (d) => innerHeight - yScale(d[selectedMetric]));
 
-    // Add value badges on top of bars
+    // Smooth trend line overlay in deep emerald (#0f5132)
+    const lineGenerator = d3
+      .line<MonthlyData>()
+      .x((d) => (xScale(d.month) || 0) + xScale.bandwidth() / 2)
+      .y((d) => yScale(d[selectedMetric]))
+      .curve(d3.curveMonotoneX);
+
+    g.append("path")
+      .datum(data)
+      .attr("fill", "none")
+      .attr("stroke", "#0f5132")
+      .attr("stroke-width", 2)
+      .attr("stroke-opacity", 0.65)
+      .attr("d", lineGenerator);
+
+    // Value labels above bars on wide screens
     barGroups
       .append("text")
       .attr("x", (d) => (xScale(d.month) || 0) + xScale.bandwidth() / 2)
-      .attr("y", (d) => yScale(d[selectedMetric]) - 6)
+      .attr("y", (d) => yScale(d[selectedMetric]) - 8)
       .attr("text-anchor", "middle")
-      .attr("class", "text-[9px] font-mono font-bold text-neutral-700 pointer-events-none opacity-0")
-      // Only show top value labels if dimensions are sufficiently wide
+      .attr("class", "text-[9.5px] font-mono tabular-nums font-semibold fill-neutral-600 pointer-events-none opacity-0")
       .text((d) => {
         const val = d[selectedMetric];
         if (selectedMetric === "sales") {
@@ -277,22 +283,19 @@ export default function AdminStats() {
         return val;
       })
       .transition()
-      .duration(1000)
-      .delay(900)
-      .attr("class", `text-[9px] font-mono font-bold text-neutral-700 pointer-events-none transition-opacity duration-300 ${dimensions.width > 550 ? "opacity-100" : "opacity-0"}`);
-
+      .duration(700)
+      .delay(500)
+      .attr(
+        "class",
+        `text-[9.5px] font-mono tabular-nums font-semibold fill-neutral-600 pointer-events-none transition-opacity duration-200 ${
+          dimensions.width > 580 ? "opacity-100" : "opacity-0"
+        }`
+      );
   }, [data, selectedMetric, dimensions]);
-
-  // Calculations for KPIs
-  const totalSales2026 = monthlyData2026.reduce((acc, curr) => acc + curr.sales, 0);
-  const totalOrders2026 = monthlyData2026.reduce((acc, curr) => acc + curr.orders, 0);
-  const totalSales2025 = monthlyData2025.reduce((acc, curr) => acc + curr.sales, 0);
-  const totalOrders2025 = monthlyData2025.reduce((acc, curr) => acc + curr.orders, 0);
 
   const activeTotalSales = data.reduce((acc, curr) => acc + curr.sales, 0);
   const activeTotalOrders = data.reduce((acc, curr) => acc + curr.orders, 0);
   const activeAverageBasket = Math.round(activeTotalSales / activeTotalOrders);
-
   const bestMonthObj = [...data].sort((a, b) => b[selectedMetric] - a[selectedMetric])[0];
 
   const formatFCFA = (amount: number) => {
@@ -317,165 +320,253 @@ export default function AdminStats() {
   };
 
   return (
-    <div id="sales-dashboard-section" className="space-y-8 animate-fade-in text-neutral-900">
-      
-      {/* Metrics & Year Selectors */}
-      <div className="bg-white p-5 border border-neutral-200 rounded-sm shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h3 className="font-display font-black text-sm uppercase tracking-wider text-neutral-950 flex items-center gap-2">
-            <BarChart2 className="w-4 h-4 text-[#d4af37]" />
-            <span>Filtres analytiques de l'entreprise</span>
-          </h3>
-          <p className="text-neutral-500 text-xs mt-0.5">Explorez les performances commerciales nationales de Miabé Asi.</p>
-        </div>
+    <div id="sales-dashboard-section" className="space-y-6 animate-fade-in text-neutral-900">
+      {/* Metrics & Year Selectors Header Bar */}
+      {!compact && (
+        <div className="bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h3 className="font-display font-bold text-base tracking-tight text-neutral-950 flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg bg-[#d4af37]/15 text-[#b8901c] flex items-center justify-center shrink-0">
+                <BarChart2 className="w-4 h-4" />
+              </span>
+              <span>Analyse Financière &amp; Performances Annuelles</span>
+            </h3>
+            <p className="text-neutral-500 text-xs mt-1">
+              Suivi consolidé du chiffre d&apos;affaires, du volume de commandes et de la répartition par catégorie.
+            </p>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* Year selector toggle */}
-          <div className="bg-neutral-100 p-0.5 rounded-sm flex items-center border border-neutral-200 text-xs font-semibold shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+            {/* Year selector toggle */}
+            <div className="bg-neutral-100 p-1 rounded-xl flex items-center border border-neutral-200/80 text-xs font-medium shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedYear("2026")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all duration-150 text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                  selectedYear === "2026"
+                    ? "bg-neutral-950 text-white shadow-2xs"
+                    : "text-neutral-600 hover:text-neutral-950"
+                }`}
+              >
+                Exercice 2026
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedYear("2025")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all duration-150 text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                  selectedYear === "2025"
+                    ? "bg-neutral-950 text-white shadow-2xs"
+                    : "text-neutral-600 hover:text-neutral-950"
+                }`}
+              >
+                Exercice 2025
+              </button>
+            </div>
+
+            {/* Metric Selector Toggle */}
+            <div className="bg-neutral-100 p-1 rounded-xl flex items-center border border-neutral-200/80 text-xs font-medium shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedMetric("sales")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all duration-150 text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                  selectedMetric === "sales"
+                    ? "bg-[#d4af37] text-neutral-950 shadow-2xs"
+                    : "text-neutral-600 hover:text-neutral-950"
+                }`}
+              >
+                Chiffre d&apos;affaires
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedMetric("orders")}
+                className={`px-3.5 py-1.5 rounded-lg transition-all duration-150 text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                  selectedMetric === "orders"
+                    ? "bg-[#d4af37] text-neutral-950 shadow-2xs"
+                    : "text-neutral-600 hover:text-neutral-950"
+                }`}
+              >
+                Commandes
+              </button>
+            </div>
+
             <button
-              onClick={() => setSelectedYear("2026")}
-              className={`px-3 py-1.5 rounded-sm transition-all duration-200 uppercase tracking-wider text-[11px] cursor-pointer ${
-                selectedYear === "2026"
-                  ? "bg-neutral-950 text-white shadow-sm"
-                  : "text-neutral-600 hover:text-neutral-950"
-              }`}
+              type="button"
+              onClick={handleExportCSV}
+              className="flex items-center gap-2 bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 px-4 py-2 rounded-xl font-semibold text-xs transition-colors shadow-2xs ml-auto md:ml-0 cursor-pointer whitespace-nowrap"
             >
-              Année 2026
-            </button>
-            <button
-              onClick={() => setSelectedYear("2025")}
-              className={`px-3 py-1.5 rounded-sm transition-all duration-200 uppercase tracking-wider text-[11px] cursor-pointer ${
-                selectedYear === "2025"
-                  ? "bg-neutral-950 text-white shadow-sm"
-                  : "text-neutral-600 hover:text-neutral-950"
-              }`}
-            >
-              Année 2025 (Phys)
+              <Download className="w-3.5 h-3.5" />
+              <span>Exporter CSV</span>
             </button>
           </div>
-
-          {/* Metric Selector Toggle */}
-          <div className="bg-neutral-100 p-0.5 rounded-sm flex items-center border border-neutral-200 text-xs font-semibold shrink-0">
-            <button
-              onClick={() => setSelectedMetric("sales")}
-              className={`px-3 py-1.5 rounded-sm transition-all duration-200 uppercase tracking-wider text-[11px] cursor-pointer ${
-                selectedMetric === "sales"
-                  ? "bg-[#d4af37] text-neutral-950 shadow-sm"
-                  : "text-neutral-600 hover:text-neutral-950"
-              }`}
-            >
-              Chiffre d'affaires
-            </button>
-            <button
-              onClick={() => setSelectedMetric("orders")}
-              className={`px-3 py-1.5 rounded-sm transition-all duration-200 uppercase tracking-wider text-[11px] cursor-pointer ${
-                selectedMetric === "orders"
-                  ? "bg-[#d4af37] text-neutral-950 shadow-sm"
-                  : "text-neutral-600 hover:text-neutral-950"
-              }`}
-            >
-              Commandes
-            </button>
-          </div>
-
-          <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 bg-neutral-900 border border-neutral-850 hover:bg-[#d4af37] text-white hover:text-neutral-950 px-3.5 py-1.5 rounded-sm font-bold text-[10px] uppercase tracking-widest transition-colors shadow-xs ml-auto md:ml-0 cursor-pointer text-center"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Exporter</span>
-          </button>
         </div>
-      </div>
+      )}
 
-      {/* KPI highlight cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* KPI 1 */}
-        <div id="kpi-sales" className="bg-white border border-neutral-200 p-5 rounded-sm shadow-xs relative overflow-hidden group">
-          <div className="absolute right-4 top-4 opacity-15 text-[#d4af37] group-hover:scale-110 transition-transform duration-300">
-            <CreditCard className="w-10 h-10" />
+      {/* KPI highlight cards (shown in full stats view) */}
+      {!compact && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* KPI 1 */}
+          <div id="kpi-sales" className="bg-white border border-neutral-200/90 p-6 rounded-2xl shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-500">Chiffre d&apos;Affaires Annuel</span>
+              <span className="w-9 h-9 rounded-xl bg-[#d4af37]/15 text-[#b8901c] flex items-center justify-center">
+                <CreditCard className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-4">
+              <h4 className="font-mono tabular-nums text-2xl font-bold text-neutral-950">
+                {formatFCFA(activeTotalSales)}
+              </h4>
+              <div className="flex items-center gap-2 mt-2 text-xs">
+                <span className="text-emerald-700 font-mono tabular-nums font-semibold flex items-center gap-0.5">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  {selectedYear === "2026" ? "+45.2%" : "+18.4%"}
+                </span>
+                <span className="text-neutral-400">·</span>
+                <span className="text-neutral-500">Cumulé sur {selectedYear}</span>
+              </div>
+            </div>
           </div>
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Chiffre d'Affaires</span>
-          <h4 className="font-mono text-xl sm:text-2xl font-black text-neutral-950 mt-1">
-            {formatFCFA(activeTotalSales)}
-          </h4>
-          <div className="flex items-center gap-1.5 mt-2">
-            <span className="text-emerald-600 bg-emerald-50 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-              <TrendingUp className="w-3 h-3" />
-              {selectedYear === "2026" ? "+45.2%" : "+18.4%"}
-            </span>
-            <span className="text-[10px] text-neutral-500 uppercase">Cumulé sur l'année</span>
+
+          {/* KPI 2 */}
+          <div id="kpi-orders" className="bg-white border border-neutral-200/90 p-6 rounded-2xl shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-500">Volume de Commandes</span>
+              <span className="w-9 h-9 rounded-xl bg-[#0f5132]/10 text-[#0f5132] flex items-center justify-center">
+                <ShoppingBag className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-4">
+              <h4 className="font-mono tabular-nums text-2xl font-bold text-neutral-950">
+                {activeTotalOrders} commandes
+              </h4>
+              <div className="flex items-center gap-2 mt-2 text-xs">
+                <span className="text-emerald-700 font-mono tabular-nums font-semibold flex items-center gap-0.5">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  {selectedYear === "2026" ? "+36.1%" : "+12.7%"}
+                </span>
+                <span className="text-neutral-400">·</span>
+                <span className="text-neutral-500">Colis traités</span>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI 3 */}
+          <div id="kpi-basket" className="bg-white border border-neutral-200/90 p-6 rounded-2xl shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-500">Panier Moyen</span>
+              <span className="w-9 h-9 rounded-xl bg-[#d4af37]/15 text-[#b8901c] flex items-center justify-center">
+                <Sparkles className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-4">
+              <h4 className="font-mono tabular-nums text-2xl font-bold text-neutral-950">
+                {formatFCFA(activeAverageBasket)}
+              </h4>
+              <div className="flex items-center gap-2 mt-2 text-xs">
+                <span className="text-emerald-700 font-mono tabular-nums font-semibold flex items-center gap-0.5">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  +5.8%
+                </span>
+                <span className="text-neutral-400">·</span>
+                <span className="text-neutral-500">Valeur moyenne par panier</span>
+              </div>
+            </div>
+          </div>
+
+          {/* KPI 4 */}
+          <div id="kpi-best-month" className="bg-white border border-neutral-200/90 p-6 rounded-2xl shadow-2xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-neutral-500">Pic d&apos;Activité Mensuel</span>
+              <span className="w-9 h-9 rounded-xl bg-neutral-950 text-[#d4af37] flex items-center justify-center">
+                <Award className="w-4 h-4" />
+              </span>
+            </div>
+            <div className="mt-4">
+              <h4 className="font-display font-bold text-2xl text-neutral-950">
+                {bestMonthObj?.month}
+              </h4>
+              <div className="flex items-center gap-2 mt-2 text-xs">
+                <span className="font-mono tabular-nums font-semibold text-[#b8901c] flex items-center gap-0.5">
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  {selectedMetric === "sales" ? formatFCFA(bestMonthObj?.sales) : `${bestMonthObj?.orders} commandes`}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* KPI 2 */}
-        <div id="kpi-orders" className="bg-white border border-neutral-200 p-5 rounded-sm shadow-xs relative overflow-hidden group">
-          <div className="absolute right-4 top-4 opacity-15 text-[#d4af37] group-hover:scale-110 transition-transform duration-300">
-            <ShoppingBag className="w-10 h-10" />
-          </div>
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Volume de Ventes</span>
-          <h4 className="font-mono text-xl sm:text-2xl font-black text-neutral-950 mt-1">
-            {activeTotalOrders} Commandes
-          </h4>
-          <div className="flex items-center gap-1.5 mt-2">
-            <span className="text-emerald-600 bg-emerald-50 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-              <TrendingUp className="w-3 h-3" />
-              {selectedYear === "2026" ? "+36.1%" : "+12.7%"}
-            </span>
-            <span className="text-[10px] text-neutral-500 uppercase">Colis expédiés</span>
-          </div>
-        </div>
-
-        {/* KPI 3 */}
-        <div id="kpi-basket" className="bg-white border border-neutral-200 p-5 rounded-sm shadow-xs relative overflow-hidden group">
-          <div className="absolute right-4 top-4 opacity-15 text-[#d4af37] group-hover:scale-110 transition-transform duration-300">
-            <Sparkles className="w-10 h-10" />
-          </div>
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Panier Moyen</span>
-          <h4 className="font-mono text-xl sm:text-2xl font-black text-neutral-950 mt-1">
-            {formatFCFA(activeAverageBasket)}
-          </h4>
-          <div className="flex items-center gap-1.5 mt-2">
-            <span className="text-emerald-600 bg-emerald-50 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-              <TrendingUp className="w-3 h-3" />
-              +5.8%
-            </span>
-            <span className="text-[10px] text-neutral-500 uppercase">Par client par achat</span>
-          </div>
-        </div>
-
-        {/* KPI 4 */}
-        <div id="kpi-best-month" className="bg-white border border-neutral-200 p-5 rounded-sm shadow-xs relative overflow-hidden group">
-          <div className="absolute right-4 top-4 opacity-15 text-[#d4af37] group-hover:scale-110 transition-transform duration-300">
-            <Award className="w-10 h-10" />
-          </div>
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Meilleur Mois de Vente</span>
-          <h4 className="font-display font-extrabold text-lg sm:text-xl text-neutral-950 mt-1 uppercase tracking-wide">
-            {bestMonthObj?.month}
-          </h4>
-          <p className="text-[10px] text-neutral-500 uppercase mt-2.5">
-            Performance max : <span className="font-mono font-bold text-[#b8901c]">{selectedMetric === "sales" ? formatFCFA(bestMonthObj?.sales) : `${bestMonthObj?.orders} commandes`}</span>
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* CHART & CATEGORIES DUAL GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Main D3 Chart Panel */}
-        <div className="lg:col-span-8 bg-white p-6 border border-neutral-200 rounded-sm shadow-xs">
-          <div className="flex items-center justify-between pb-4 border-b border-neutral-100 mb-6">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 bg-[#d4af37] rounded-full"></div>
-              <h3 className="font-display font-black text-sm uppercase tracking-wider text-neutral-950">
-                Courbe d'Évolution Mensuelle ({selectedYear})
-              </h3>
+        <div className="lg:col-span-8 bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs flex flex-col justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-neutral-100 mb-5 gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 bg-[#d4af37] rounded-full"></span>
+                <h3 className="font-display font-bold text-base text-neutral-950">
+                  Évolution Mensuelle des Performances ({selectedYear})
+                </h3>
+              </div>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                {selectedMetric === "sales" ? "Revenus mensuels en FCFA" : "Volume mensuel de commandes"} · Projections S2 incluses
+              </p>
             </div>
-            {selectedYear === "2026" && (
-              <span className="bg-amber-100 text-amber-800 text-[8px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-sm">
-                Inclus Prévisions S2
-              </span>
-            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="bg-neutral-100 p-1 rounded-xl flex items-center border border-neutral-200/70">
+                <button
+                  type="button"
+                  onClick={() => setSelectedYear("2026")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    selectedYear === "2026" ? "bg-white text-neutral-950 shadow-2xs" : "text-neutral-500 hover:text-neutral-900"
+                  }`}
+                >
+                  2026
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedYear("2025")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    selectedYear === "2025" ? "bg-white text-neutral-950 shadow-2xs" : "text-neutral-500 hover:text-neutral-900"
+                  }`}
+                >
+                  2025
+                </button>
+              </div>
+
+              <div className="bg-neutral-100 p-1 rounded-xl flex items-center border border-neutral-200/70">
+                <button
+                  type="button"
+                  onClick={() => setSelectedMetric("sales")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    selectedMetric === "sales" ? "bg-[#d4af37] text-neutral-950 shadow-2xs" : "text-neutral-500 hover:text-neutral-900"
+                  }`}
+                >
+                  Revenus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedMetric("orders")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    selectedMetric === "orders" ? "bg-[#d4af37] text-neutral-950 shadow-2xs" : "text-neutral-500 hover:text-neutral-900"
+                  }`}
+                >
+                  Commandes
+                </button>
+              </div>
+
+              {compact && (
+                <button
+                  type="button"
+                  onClick={handleExportCSV}
+                  title="Exporter en CSV"
+                  className="p-2 rounded-xl border border-neutral-200 text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div ref={chartContainerRef} className="relative w-full overflow-hidden">
@@ -489,154 +580,173 @@ export default function AdminStats() {
             {/* Micro-interactive Tooltip */}
             {hoveredBar && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
+                initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
                 style={{
                   position: "absolute",
-                  left: tooltipPos.x + 10,
+                  left: Math.min(tooltipPos.x + 12, dimensions.width - 190),
                   top: tooltipPos.y,
                   pointerEvents: "none"
                 }}
-                className="bg-neutral-950 text-white px-3 py-2.5 rounded-sm shadow-xl text-xs space-y-1 border border-neutral-850 z-20 min-w-44"
+                className="bg-neutral-950 text-white px-3.5 py-2.5 rounded-xl shadow-xl text-xs space-y-1.5 border border-[#d4af37]/30 z-20 min-w-44"
               >
-                <div className="flex items-center justify-between border-b border-white/10 pb-1 mb-1.5 font-bold text-neutral-300">
-                  <span>{hoveredBar.month}</span>
+                <div className="flex items-center justify-between border-b border-white/10 pb-1 font-semibold text-white">
+                  <span>{hoveredBar.month} {selectedYear}</span>
                   {hoveredBar.forecast && (
-                    <span className="text-[7.5px] tracking-wider text-amber-300 border border-amber-300/35 px-1 py-0.1 select-none font-sans rounded-xs uppercase">Prévu</span>
+                    <span className="text-[10px] text-[#d4af37]">Prévision</span>
                   )}
                 </div>
-                <div className="flex justify-between items-center text-[10.5px]">
-                  <span className="text-neutral-400">Chiffre d'Affaires:</span>
-                  <span className="font-mono font-bold text-[#e1be52]">{formatFCFA(hoveredBar.sales)}</span>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-neutral-400">Revenus :</span>
+                  <span className="font-mono tabular-nums font-bold text-[#e5c158]">{formatFCFA(hoveredBar.sales)}</span>
                 </div>
-                <div className="flex justify-between items-center text-[10.5px]">
-                  <span className="text-neutral-400">Commandes:</span>
-                  <span className="font-mono font-bold text-white">{hoveredBar.orders}</span>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-neutral-400">Commandes :</span>
+                  <span className="font-mono tabular-nums font-bold text-white">{hoveredBar.orders}</span>
                 </div>
               </motion.div>
             )}
           </div>
+
+          <div className="flex items-center justify-between pt-3 border-t border-neutral-100 mt-2 text-xs text-neutral-500">
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-[#d4af37]"></span>
+                <span>Réalisé</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-xs bg-stone-300"></span>
+                <span>Projection S2</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-0.5 bg-[#0f5132]"></span>
+                <span>Tendance</span>
+              </span>
+            </div>
+            <span className="font-mono tabular-nums font-semibold text-neutral-700">
+              Total {selectedYear} : {formatFCFA(activeTotalSales)}
+            </span>
+          </div>
         </div>
 
         {/* Categories Breakdown Panel */}
-        <div className="lg:col-span-4 bg-white p-6 border border-neutral-200 rounded-sm shadow-xs flex flex-col justify-between">
+        <div className="lg:col-span-4 bg-white p-6 border border-neutral-200/90 rounded-2xl shadow-2xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-4 border-b border-neutral-100 mb-6">
-              <h3 className="font-display font-black text-sm uppercase tracking-wider text-neutral-950 flex items-center gap-1.5">
-                <PieChart className="w-4 h-4 text-[#d4af37]" />
-                <span>Parts par Catégories ({selectedYear})</span>
-              </h3>
+            <div className="flex items-center justify-between pb-4 border-b border-neutral-100 mb-5">
+              <div>
+                <h3 className="font-display font-bold text-base text-neutral-950 flex items-center gap-2">
+                  <PieChart className="w-4 h-4 text-[#d4af37]" />
+                  <span>Répartition par Catégorie</span>
+                </h3>
+                <p className="text-xs text-neutral-500 mt-0.5">Parts des ventes sur l&apos;exercice {selectedYear}</p>
+              </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3.5">
               {categories.map((cat, idx) => (
                 <div key={idx} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span className="text-neutral-800 line-clamp-1">{cat.category}</span>
-                    <span className="font-mono text-[#b8901c]">{cat.share}%</span>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-neutral-800 truncate pr-2">{cat.category}</span>
+                    <span className="font-mono tabular-nums font-semibold text-neutral-900">{cat.share}%</span>
                   </div>
-                  {/* Visual percentage progress bar */}
-                  <div className="w-full bg-neutral-100 h-1.5 rounded-sm overflow-hidden">
+                  <div className="w-full bg-neutral-100 h-2 rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${cat.share}%` }}
-                      transition={{ duration: 1, delay: idx * 0.1 }}
-                      className="bg-[#d4af37] h-full rounded-sm"
+                      transition={{ duration: 0.6, delay: idx * 0.05 }}
+                      className={`h-full rounded-full ${idx === 0 ? "bg-[#0f5132]" : "bg-[#d4af37]"}`}
                     />
                   </div>
-                  <div className="flex justify-between text-[10px] text-neutral-400">
-                    <span>Part estimée</span>
-                    <span className="font-mono">{formatFCFA(cat.sales)}</span>
+                  <div className="flex justify-between text-[11px] text-neutral-400">
+                    <span>Volume généré</span>
+                    <span className="font-mono tabular-nums text-neutral-600">{formatFCFA(cat.sales)}</span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="bg-neutral-50 border border-neutral-150 p-3 rounded-sm mt-6 text-center">
-            <p className="text-[10px] text-neutral-500 uppercase tracking-widest font-semibold flex items-center justify-center gap-1">
+          <div className="pt-4 border-t border-neutral-100 mt-5 flex items-center justify-between text-xs">
+            <span className="text-neutral-500 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-[#d4af37]" />
-              <span>Meilleure Vente : Mode</span>
-            </p>
-            <p className="text-[10.5px] text-neutral-600 mt-1 leading-relaxed">
-              La mode représente près d'un tiers des transactions globales.
-            </p>
+              <span>Segment leader : <strong className="text-neutral-900">Mode &amp; Terroir</strong></span>
+            </span>
+            <span className="font-mono tabular-nums font-semibold text-[#0f5132]">52% cumulé</span>
           </div>
         </div>
-
       </div>
 
       {/* TABLE DES DONNÉES MENSUELLES COMPLÈTE */}
-      <div className="bg-white p-6 border border-neutral-200 rounded-sm shadow-xs">
-        <div className="flex justify-between items-center pb-4 border-b border-neutral-100 mb-4">
-          <h3 className="font-display font-black text-sm uppercase tracking-wider text-neutral-950 flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-[#d4af37]" />
-            <span>Tableau de Synthèse des Ventes</span>
-          </h3>
-          <span className="bg-neutral-100 border border-neutral-200 text-neutral-700 font-mono text-[10px] px-2.5 py-0.5 font-bold uppercase tracking-wider">
-            Consolidé {selectedYear}
-          </span>
-        </div>
+      {!compact && (
+        <div className="bg-white border border-neutral-200/90 rounded-2xl shadow-2xs overflow-hidden">
+          <div className="px-6 py-5 border-b border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="font-display font-bold text-base text-neutral-950 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#d4af37]" />
+                <span>Tableau de Synthèse Mensuelle ({selectedYear})</span>
+              </h3>
+              <p className="text-xs text-neutral-500 mt-0.5">Détail comptable mois par mois avec panier moyen et cycle trimestriel.</p>
+            </div>
+            <span className="text-xs text-neutral-500 font-mono tabular-nums">
+              12 périodes · Consolidé {selectedYear}
+            </span>
+          </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 font-bold uppercase tracking-wider text-neutral-600 text-[10px]">
-                <th className="py-3 px-4">Période Mensuelle</th>
-                <th className="py-3 px-4 text-right">Chiffre d'Affaires (FCFA)</th>
-                <th className="py-3 px-4 text-center">Volume Commandes</th>
-                <th className="py-3 px-4 text-center">Panier Moyen</th>
-                <th className="py-3 px-4 text-right">Statut Trimestre</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((row, idx) => {
-                const isQ4 = idx >= 9;
-                const isQ3 = idx >= 6 && idx < 9;
-                const isQ2 = idx >= 3 && idx < 6;
-                const isQ1 = idx < 3;
-                let qLabel = "T1 (Lancement)";
-                if (isQ2) qLabel = "T2 (Croissance)";
-                if (isQ3) qLabel = "T3 (Stabilité)";
-                if (isQ4) qLabel = "T4 (Fêtes de Fin d'Année)";
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-neutral-200 bg-neutral-50/70 font-semibold text-neutral-500 text-[11px]">
+                  <th className="py-3.5 px-6">Période Mensuelle</th>
+                  <th className="py-3.5 px-6 text-right">Chiffre d&apos;Affaires</th>
+                  <th className="py-3.5 px-6 text-right">Volume Commandes</th>
+                  <th className="py-3.5 px-6 text-right">Panier Moyen</th>
+                  <th className="py-3.5 px-6 text-right">Cycle Trimestriel</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {data.map((row, idx) => {
+                  const isQ4 = idx >= 9;
+                  const isQ3 = idx >= 6 && idx < 9;
+                  const isQ2 = idx >= 3 && idx < 6;
+                  let qLabel = "T1 · Lancement";
+                  if (isQ2) qLabel = "T2 · Croissance";
+                  if (isQ3) qLabel = "T3 · Consolidation";
+                  if (isQ4) qLabel = "T4 · Pic Fin d'Année";
 
-                return (
-                  <tr key={idx} className="border-b border-neutral-100 hover:bg-neutral-50/50">
-                    <td className="py-3.5 px-4 font-bold text-neutral-900 flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 bg-[#d4af37] rounded-sm"></span>
-                      <span>{row.month}</span>
-                      {row.forecast && (
-                        <span className="bg-amber-100 text-amber-800 text-[8px] font-extrabold px-1.5 py-0.1 uppercase tracking-wider rounded-xs font-sans">
-                          Ajusté / Prévu
+                  return (
+                    <tr key={idx} className="hover:bg-neutral-50/70 transition-colors">
+                      <td className="py-3.5 px-6 font-semibold text-neutral-900">
+                        <div className="flex items-center gap-2">
+                          <span>{row.month}</span>
+                          {row.forecast && (
+                            <span className="text-[11px] font-normal text-amber-700">
+                              · Prévision
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-6 text-right font-mono tabular-nums font-semibold text-[#b8901c]">
+                        {formatFCFA(row.sales)}
+                      </td>
+                      <td className="py-3.5 px-6 text-right font-mono tabular-nums font-medium text-neutral-900">
+                        {row.orders} colis
+                      </td>
+                      <td className="py-3.5 px-6 text-right font-mono tabular-nums text-neutral-600">
+                        {formatFCFA(Math.round(row.sales / row.orders))}
+                      </td>
+                      <td className="py-3.5 px-6 text-right text-neutral-500">
+                        <span className={isQ4 ? "text-[#0f5132] font-semibold" : "text-neutral-500"}>
+                          {qLabel}
                         </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-mono font-bold text-[#b8901c]">
-                      {formatFCFA(row.sales)}
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-mono font-bold text-neutral-900">
-                      {row.orders} colis
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-mono font-semibold text-neutral-600">
-                      {formatFCFA(Math.round(row.sales / row.orders))}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <span className={`px-2 py-0.5 rounded-sm text-[9px] font-bold uppercase tracking-wider ${
-                        isQ4 
-                          ? "bg-[#d4af37]/10 text-[#af8a15] border border-[#d4af37]/20" 
-                          : "bg-neutral-100 text-neutral-600 border border-neutral-200"
-                      }`}>
-                        {qLabel}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
-
+      )}
     </div>
   );
 }

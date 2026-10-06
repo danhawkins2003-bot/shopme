@@ -938,7 +938,7 @@ async function loadOrdersWithCloudSync(targetOrderId?: string, targetToken?: str
   if (!foundLocal || (targetToken && !foundLocal.paymentGatewayTxId) || !foundLocal.paymentGatewayTxId) {
     try {
       const cloudOrders = await Promise.race([
-        loadFromSupabaseStore<any[]>("orders.json"),
+        loadFromSupabaseStore("orders.json") as Promise<any[] | null>,
         new Promise<null>(resolve => setTimeout(() => resolve(null), 2500))
       ]);
       if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
@@ -1046,7 +1046,7 @@ app.post(["/api/upload", "/api/upload/image"], async (req, res) => {
     return res.json({
       success: true,
       url: result.url,
-      path: result.path,
+      path: (result as any).path || safeFileName,
       message: "Image téléversée et persistée avec succès."
     });
   } catch (err: any) {
@@ -2974,6 +2974,8 @@ async function executeOrderRevenueSplit(
 
 // Create Order (En attente de paiement, splits and balance processing happens on payment confirmation only)
 app.post("/api/orders/create", checkoutLimiter, async (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  try {
   const authHeader = req.headers.authorization;
   let userId = "guest_" + Date.now();
   let users: any[] = [];
@@ -3224,7 +3226,14 @@ app.post("/api/orders/create", checkoutLimiter, async (req, res) => {
     writeJSONFile(USERS_FILE, users);
   }
 
-  res.json({ success: true, order: newOrder });
+  return res.json({ success: true, order: newOrder });
+  } catch (err: any) {
+    console.error("Order creation error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || "Erreur interne lors de la création de la commande."
+    });
+  }
 });
 
 // Track Order publicly (PII masked for anonymous callers to prevent scraping)
@@ -3313,56 +3322,76 @@ app.get("/api/payments/status", (req, res) => {
   });
 });
 
+function resolveRequestAppBaseUrl(req: express.Request): string {
+  if (process.env.APP_URL && process.env.APP_URL.trim() && !process.env.APP_URL.includes("localhost")) {
+    return process.env.APP_URL.trim().replace(/\/+$/, "");
+  }
+  const forwardedProto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim();
+  const forwardedHost = (req.headers["x-forwarded-host"] as string)?.split(",")[0]?.trim() || req.headers.host;
+  if (forwardedHost) {
+    const proto = forwardedProto || (forwardedHost.includes("localhost") || forwardedHost.startsWith("127.") ? "http" : "https");
+    return `${proto}://${forwardedHost}`.replace(/\/+$/, "");
+  }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`.replace(/\/+$/, "");
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`.replace(/\/+$/, "");
+  }
+  return (process.env.APP_URL || "http://localhost:3000").trim().replace(/\/+$/, "");
+}
+
 // POST initiate payment session
 app.post("/api/payments/initiate", async (req, res) => {
-  const { orderId, providerId, name, phone, email, countryCode, currencyCode, order: fallbackOrderPayload } = req.body || {};
-  if (!orderId || !providerId) {
-    return res.status(400).json({ success: false, error: "Identifiant de commande et de prestataire requis." });
-  }
-
-  const orders = await loadOrdersWithCloudSync(orderId);
-  let orderIndex = orders.findIndex(o => o.id === orderId);
-
-  // Multi-instance / offline creation recovery: if order was created on another container or client cache, reconstruct & verify price on server
-  if (orderIndex === -1 && fallbackOrderPayload && fallbackOrderPayload.id === orderId && Array.isArray(fallbackOrderPayload.items) && fallbackOrderPayload.items.length > 0) {
-    const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
-    let calculatedItemsTotal = 0;
-    for (const item of fallbackOrderPayload.items) {
-      const prodId = item.product?.id || item.id;
-      const dbProduct = products.find(p => p.id === prodId);
-      const unitPrice = dbProduct ? Number(dbProduct.prix) : Number(item.product?.prix || item.prix || 0);
-      const qty = Math.max(1, Math.floor(Number(item.quantity || item.quantite || 1)));
-      calculatedItemsTotal += (unitPrice * qty);
-    }
-    const deliveryFee = Number(fallbackOrderPayload.shippingDetails?.deliveryFee || fallbackOrderPayload.shippingDetails?.shippingFee || 0);
-    const serverExpectedTotal = calculatedItemsTotal + (deliveryFee > 0 ? deliveryFee : 0);
-    let verifiedTotalAmount = Math.max(0, Number(fallbackOrderPayload.totalAmount || serverExpectedTotal));
-    if (verifiedTotalAmount < calculatedItemsTotal * 0.7 || verifiedTotalAmount <= 0) {
-      verifiedTotalAmount = serverExpectedTotal;
-    }
-
-    const reconstructedOrder = {
-      ...fallbackOrderPayload,
-      id: orderId,
-      totalAmount: verifiedTotalAmount,
-      paymentStatus: "En attente de paiement",
-      splitProcessed: false,
-      createdAt: fallbackOrderPayload.createdAt || new Date().toISOString()
-    };
-    orders.unshift(reconstructedOrder);
-    orderIndex = 0;
-  }
-
-  if (orderIndex === -1) {
-    return res.status(404).json({ success: false, error: "Commande non trouvée." });
-  }
-
-  const order = orders[orderIndex];
-  if (order.paymentStatus === "Payé") {
-    return res.status(400).json({ success: false, error: "Cette commande a déjà été payée." });
-  }
-
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
+    const { orderId, providerId = "paydunya", name, phone, email, countryCode, currencyCode, order: fallbackOrderPayload } = req.body || {};
+    if (!orderId || !providerId) {
+      return res.status(400).json({ success: false, error: "Identifiant de commande et de prestataire requis." });
+    }
+
+    const orders = await loadOrdersWithCloudSync(orderId);
+    let orderIndex = orders.findIndex(o => o.id === orderId);
+
+    // Multi-instance / offline creation recovery: if order was created on another container or client cache, reconstruct & verify price on server
+    if (orderIndex === -1 && fallbackOrderPayload && fallbackOrderPayload.id === orderId && Array.isArray(fallbackOrderPayload.items) && fallbackOrderPayload.items.length > 0) {
+      const products = readJSONFile<any[]>(PRODUCTS_FILE, []);
+      let calculatedItemsTotal = 0;
+      for (const item of fallbackOrderPayload.items) {
+        const prodId = item.product?.id || item.id;
+        const dbProduct = products.find(p => p.id === prodId);
+        const unitPrice = dbProduct ? Number(dbProduct.prix) : Number(item.product?.prix || item.prix || 0);
+        const qty = Math.max(1, Math.floor(Number(item.quantity || item.quantite || 1)));
+        calculatedItemsTotal += (unitPrice * qty);
+      }
+      const deliveryFee = Number(fallbackOrderPayload.shippingDetails?.deliveryFee || fallbackOrderPayload.shippingDetails?.shippingFee || 0);
+      const serverExpectedTotal = calculatedItemsTotal + (deliveryFee > 0 ? deliveryFee : 0);
+      let verifiedTotalAmount = Math.max(0, Number(fallbackOrderPayload.totalAmount || serverExpectedTotal));
+      if (verifiedTotalAmount < calculatedItemsTotal * 0.7 || verifiedTotalAmount <= 0) {
+        verifiedTotalAmount = serverExpectedTotal;
+      }
+
+      const reconstructedOrder = {
+        ...fallbackOrderPayload,
+        id: orderId,
+        totalAmount: verifiedTotalAmount,
+        paymentStatus: "En attente de paiement",
+        splitProcessed: false,
+        createdAt: fallbackOrderPayload.createdAt || new Date().toISOString()
+      };
+      orders.unshift(reconstructedOrder);
+      orderIndex = 0;
+    }
+
+    if (orderIndex === -1) {
+      return res.status(404).json({ success: false, error: "Commande non trouvée." });
+    }
+
+    const order = orders[orderIndex];
+    if (order.paymentStatus === "Payé") {
+      return res.status(400).json({ success: false, error: "Cette commande a déjà été payée." });
+    }
+
     const rawCountryCode = (
       countryCode ||
       order.clientCountryCode ||
@@ -3386,7 +3415,8 @@ app.post("/api/payments/initiate", async (req, res) => {
       sellerCountryCode: resolvedSellerCountry,
       clientCity: order.clientCity || order.shippingDetails?.city,
       sellerCity: order.sellerCity,
-      sellerName: order.sellerName
+      sellerName: order.sellerName,
+      appBaseUrl: resolveRequestAppBaseUrl(req)
     };
 
     const session = await PaymentGateway.getInstance().initiatePayment(providerId, orderId, order.totalAmount, customer);
@@ -3404,7 +3434,11 @@ app.post("/api/payments/initiate", async (req, res) => {
 
     return res.json({ success: true, session });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
+    console.error("[/api/payments/initiate] Error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || "Impossible d'initialiser le paiement PayDunya."
+    });
   }
 });
 
@@ -3618,8 +3652,33 @@ app.post("/api/payments/confirm", async (req, res) => {
   }
 });
 
+// GET health/verification for PayDunya IPN endpoint & Return URL redirect handler
+app.get(["/api/paydunya/ipn", "/api/payments/paydunya/ipn", "/api/payments/ipn"], (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  return res.status(200).json({
+    success: true,
+    endpoint: "/api/paydunya/ipn",
+    status: "active",
+    message: "Point de terminaison Webhook IPN PayDunya opérationnel (utilisez POST pour les notifications IPN)."
+  });
+});
+
+app.get(["/api/paydunya/return", "/api/payments/paydunya/return"], (req, res) => {
+  const token = String(req.query.token || "").trim();
+  const orderId = String(req.query.orderId || req.query.order_id || "").trim();
+  const subId = String(req.query.subId || "").trim();
+  const payment = String(req.query.payment || (subId ? "sub_return" : "return")).trim();
+  const params = new URLSearchParams();
+  params.set("payment", payment);
+  if (orderId) params.set("orderId", orderId);
+  if (subId) params.set("subId", subId);
+  if (token) params.set("token", token);
+  return res.redirect(302, `/?${params.toString()}`);
+});
+
 // POST PayDunya Instant Payment Notification (IPN Webhook)
-app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) => {
+app.post(["/api/paydunya/ipn", "/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
     const rawBody =
       typeof req.body === "string"
@@ -3845,6 +3904,7 @@ app.post(["/api/payments/paydunya/ipn", "/api/payments/ipn"], async (req, res) =
 
 // POST initiate vendor subscription payment (PRO / BUSINESS)
 app.post("/api/subscriptions/initiate", async (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   try {
     const { userId, plan, countryCode, phone, providerId = "paydunya" } = req.body || {};
     const effectivePlan = plan === "BUSINESS" ? "BUSINESS" : "PRO";
@@ -3875,7 +3935,8 @@ app.post("/api/subscriptions/initiate", async (req, res) => {
       phone: phone || targetUser?.phone || "+22890000000",
       email: targetUser?.email || "vendeur@miabeasi.com",
       countryCode: userCountry,
-      currencyCode: userCurrency
+      currencyCode: userCurrency,
+      appBaseUrl: resolveRequestAppBaseUrl(req)
     });
 
     return res.json({
@@ -5272,12 +5333,12 @@ app.post("/api/settings", async (req, res) => {
       return res.status(403).json({ success: false, error: "Accès refusé. Session administrateur requise." });
     }
 
-    const defaultSettings = {
+    const defaultSettings: Record<string, any> = {
       whatsappMerchantNumber: "22899908169",
       activeLogoId: "official",
       paydunyaMode: "live"
     };
-    const currentSettings = readJSONFile(SETTINGS_FILE, defaultSettings);
+    const currentSettings = readJSONFile<Record<string, any>>(SETTINGS_FILE, defaultSettings);
 
     const newSettings: any = {
       whatsappMerchantNumber: whatsappMerchantNumber || currentSettings.whatsappMerchantNumber || "22899908169",

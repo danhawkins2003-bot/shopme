@@ -2760,6 +2760,24 @@ export default function MultiRoleDashboards({
     const country = user?.countryCode || "TG";
     const currency = user?.currencyCode || (country === "CM" ? "XAF" : "XOF");
 
+    const parseSubscriptionJsonResponse = async (res: Response, fallbackMsg: string): Promise<any> => {
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      const rawText = await res.text();
+      const trimmed = rawText.trim();
+      if (!contentType.includes("application/json") || trimmed.startsWith("<") || trimmed.toLowerCase().startsWith("<!doctype")) {
+        console.error(`[Subscription API] Non-JSON response (${res.status}):`, trimmed.slice(0, 250));
+        return { success: false, error: `${fallbackMsg} (HTTP ${res.status})` };
+      }
+      if (!trimmed) {
+        return { success: false, error: `${fallbackMsg} (Réponse vide - HTTP ${res.status})` };
+      }
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return { success: false, error: `${fallbackMsg} (Format invalide - HTTP ${res.status})` };
+      }
+    };
+
     const handleInitiateProPayment = async () => {
       setIsInitiatingProSub(true);
       setProSubError("");
@@ -2768,6 +2786,7 @@ export default function MultiRoleDashboards({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "Authorization": token || ""
           },
           body: JSON.stringify({
@@ -2777,9 +2796,15 @@ export default function MultiRoleDashboards({
             phone: user?.phone
           })
         });
-        const data = await res.json();
-        if (data.success && data.session) {
+        const data = await parseSubscriptionJsonResponse(res, "Impossible d'initialiser le paiement de l'abonnement.");
+        if (res.ok && data.success && data.session) {
           setProSubSession(data.session);
+          if (data.subId && data.session.transactionId) {
+            try {
+              sessionStorage.setItem(`paydunya_token_${data.subId}`, String(data.session.transactionId).trim());
+              localStorage.setItem(`paydunya_token_${data.subId}`, String(data.session.transactionId).trim());
+            } catch (e) {}
+          }
           if (data.session.redirectUrl) {
             window.location.href = data.session.redirectUrl;
           }
@@ -2802,6 +2827,7 @@ export default function MultiRoleDashboards({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "Authorization": token || ""
           },
           body: JSON.stringify({
@@ -2809,8 +2835,8 @@ export default function MultiRoleDashboards({
             userId: user?.id
           })
         });
-        const data = await res.json();
-        if (data.success && data.status === "active") {
+        const data = await parseSubscriptionJsonResponse(res, "Erreur lors de la vérification du paiement auprès du serveur.");
+        if (res.ok && data.success && data.status === "active") {
           if (data.user) {
             setUser(data.user);
           } else {

@@ -1,5 +1,16 @@
 {
   "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/admin",
@@ -14,8 +25,13 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!api|admin|assets|.*\\.).*)",
+      "source": "/auth/(.*)",
+      "destination": "/api"
+    },
+    {
+      "source": "/((?!api/|api$|auth/|auth$|admin|assets|.*\\.).*)",
       "destination": "/index.html"
     }
   ]
 }
+

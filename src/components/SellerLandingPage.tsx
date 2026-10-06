@@ -36,7 +36,12 @@ import {
   Image as ImageIcon,
   CheckCircle,
   MessageSquare,
-  Truck
+  Truck,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  FileText
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { SellerPlan } from "../types";
@@ -1197,92 +1202,106 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
 
 
       {/* ============================================================ */}
-      {/* 9. FORMULAIRE D'INSCRIPTION VENDEUR MULTI-ÉTAPES AVEC VISUEL */}
+      {/* 9. FORMULAIRE D'INSCRIPTION VENDEUR SPLIT-SCREEN MODERNE     */}
       {/* ============================================================ */}
-      <section id="formulaire-inscription" className="py-16 bg-stone-950 text-white px-4 sm:px-6 border-t border-stone-800">
-        <div className="max-w-6xl mx-auto space-y-8">
-          
-          <div className="text-center space-y-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-[#d4af37]">Inscription Partenaire</span>
-            <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white">
-              Créer votre boutique en quelques clics
-            </h2>
-            <p className="text-stone-300 text-xs sm:text-sm max-w-lg mx-auto">
-              Rejoignez la communauté de vendeurs africains sur Miabé Asi et commencez à vendre dès aujourd'hui.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <section id="formulaire-inscription" className="py-16 bg-[#FAF9F6] text-neutral-900 px-4 sm:px-6 border-t border-neutral-200">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-3xl overflow-hidden shadow-xl border border-[#d4af37]/35 grid grid-cols-1 lg:grid-cols-12">
             
-            {/* Left Inspiring Visual Sidebar */}
-            <div className="lg:col-span-4 bg-stone-900 border border-stone-800 rounded-2xl overflow-hidden shadow-xl text-left hidden lg:block sticky top-24">
-              <div className="h-48 relative overflow-hidden bg-stone-800">
-                <img 
-                  src="/assets/images/vendeur_hero.jpg" 
-                  alt="Vendeur partenaire Miabé Asi" 
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-stone-900 via-transparent to-transparent" />
-                <span className="absolute bottom-3 left-3 bg-[#0B4D26] text-white text-[10px] font-bold uppercase px-2.5 py-1 rounded-md shadow-xs">
-                  Rejoignez 100+ Vendeurs
-                </span>
+            {/* LEFT SIDE: MIABÉ ASI PRESENTATION, WELCOME MESSAGE & DECORATIVE GRAPHICS */}
+            <div className="lg:col-span-5 relative bg-neutral-950 text-white p-6 sm:p-8 lg:p-10 flex flex-col justify-between overflow-hidden border-b lg:border-b-0 lg:border-r border-[#d4af37]/25">
+              {/* Decorative Graphical Elements */}
+              <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                <div className="absolute -top-24 -left-24 w-72 h-72 rounded-full bg-[#0B4D26]/40 blur-3xl" />
+                <div className="absolute top-1/3 -right-24 w-64 h-64 rounded-full bg-[#d4af37]/15 blur-3xl" />
+                <div className="absolute -bottom-28 left-1/4 w-80 h-80 rounded-full bg-[#0B4D26]/30 blur-3xl" />
+
+                <svg
+                  className="absolute top-6 right-6 w-40 h-40 text-[#d4af37]/10"
+                  viewBox="0 0 200 200"
+                  fill="none"
+                >
+                  <circle cx="100" cy="100" r="90" stroke="currentColor" strokeWidth="1.5" strokeDasharray="6 6" />
+                  <circle cx="100" cy="100" r="65" stroke="currentColor" strokeWidth="1" />
+                  <circle cx="100" cy="100" r="40" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 5" />
+                  <path d="M100 10 L100 190 M10 100 L190 100" stroke="currentColor" strokeWidth="0.75" />
+                </svg>
               </div>
 
-              <div className="p-5 space-y-4">
-                <h4 className="text-sm font-black text-white uppercase tracking-wider">Pourquoi nous faire confiance ?</h4>
-                
-                <ul className="space-y-3 text-xs text-stone-300 font-sans">
+              <div className="relative z-10 space-y-6">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0B4D26]/60 border border-emerald-500/30 text-[#d4af37] text-[10px] font-bold uppercase tracking-widest">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Inscription Partenaire Officiel</span>
+                </div>
+
+                <div className="space-y-3 text-left">
+                  <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white leading-tight">
+                    Bienvenue sur Miabé Asi
+                  </h2>
+                  <p className="text-neutral-300 text-xs sm:text-sm leading-relaxed">
+                    Créez votre boutique en quelques clics et rejoignez la marketplace panafricaine qui connecte les meilleurs artisans, commerçants et producteurs aux acheteurs de 7 pays.
+                  </p>
+                </div>
+
+                <div className="h-40 rounded-2xl overflow-hidden border border-white/10 relative hidden sm:block">
+                  <img 
+                    src="/assets/images/vendeur_hero.jpg" 
+                    alt="Vendeur partenaire Miabé Asi" 
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/20 to-transparent" />
+                  <span className="absolute bottom-3 left-3 bg-[#0B4D26] text-white text-[10px] font-bold uppercase px-2.5 py-1 rounded-lg shadow-xs border border-emerald-400/30">
+                    Rejoignez 100+ Vendeurs Vérifiés
+                  </span>
+                </div>
+
+                <ul className="space-y-3 text-xs text-neutral-300 font-sans text-left">
                   <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span><strong>0 FCFA d'adhésion :</strong> Commencez immédiatement sans payer d'avance.</span>
+                    <CheckCircle2 className="w-4 h-4 text-[#d4af37] shrink-0 mt-0.5" />
+                    <span><strong className="text-white">0 FCFA d&apos;adhésion :</strong> Démarrez immédiatement avec l&apos;offre Gratuite.</span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span><strong>Paiements Mobile Money :</strong> Retraits instantanés vers T-Money &amp; Flooz.</span>
+                    <CheckCircle2 className="w-4 h-4 text-[#d4af37] shrink-0 mt-0.5" />
+                    <span><strong className="text-white">90% reversés au vendeur :</strong> Retraits directs vers T-Money, Flooz, Wave &amp; Orange Money.</span>
                   </li>
                   <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span><strong>Visibilité internationale :</strong> Vos articles sont visibles par la diaspora.</span>
-                  </li>
-                  <li className="flex items-start gap-2.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span><strong>Support WhatsApp local :</strong> Notre équipe basée à Lomé vous accompagne.</span>
+                    <CheckCircle2 className="w-4 h-4 text-[#d4af37] shrink-0 mt-0.5" />
+                    <span><strong className="text-white">Visibilité dans 7 pays :</strong> Togo, Bénin, Côte d&apos;Ivoire, Sénégal, Burkina, Mali, Cameroun.</span>
                   </li>
                 </ul>
+              </div>
 
-                <div className="pt-3 border-t border-stone-800 flex items-center justify-between text-[11px] text-stone-400">
-                  <span>Besoin d'un coup de main ?</span>
-                  <a 
-                    href="https://wa.me/22890000000?text=Bonjour,%20je%20souhaite%20cr%C3%A9er%20ma%20boutique%20sur%20Miab%C3%A9%20Asi"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[#d4af37] font-bold hover:underline"
-                  >
-                    Aide WhatsApp &rarr;
-                  </a>
-                </div>
+              <div className="relative z-10 pt-5 mt-6 border-t border-white/10 flex items-center justify-between text-xs text-neutral-400">
+                <span>Déjà inscrit ?</span>
+                <button
+                  type="button"
+                  onClick={onOpenLogin}
+                  className="text-[#d4af37] font-bold hover:underline cursor-pointer"
+                >
+                  Se connecter à mon espace &rarr;
+                </button>
               </div>
             </div>
 
-            {/* Right Form Container */}
-            <div className="lg:col-span-8 w-full">
+            {/* RIGHT SIDE: MODERN STEP-BY-STEP REGISTRATION FORM WITH ICONS & LEGAL */}
+            <div className="lg:col-span-7 bg-white p-6 sm:p-8 lg:p-10 text-left flex flex-col justify-between">
               {formSuccess ? (
-                <div className="bg-stone-900 border-2 border-emerald-500 p-8 rounded-2xl text-center space-y-5 animate-scale-up">
-                  <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto">
+                <div className="bg-[#FAF9F6] border-2 border-[#0B4D26] p-8 rounded-2xl text-center space-y-5 animate-scale-up my-auto">
+                  <div className="w-16 h-16 bg-[#0B4D26]/10 text-[#0B4D26] rounded-full flex items-center justify-center mx-auto">
                     <CheckCircle2 className="w-8 h-8" />
                   </div>
                   
                   {selectedPlan === "Gratuit" ? (
                     <>
-                      <h3 className="text-xl font-black uppercase text-white">Félicitations ! Votre boutique est prête</h3>
-                      <p className="text-sm text-stone-300 max-w-md mx-auto leading-relaxed">
+                      <h3 className="text-xl font-black uppercase text-neutral-950">Félicitations ! Votre boutique est prête</h3>
+                      <p className="text-sm text-neutral-600 max-w-md mx-auto leading-relaxed">
                         Votre compte vendeur pour <strong>« {boutiqueName} »</strong> a été activé avec succès en formule <strong>Gratuite</strong>. Vous pouvez dès maintenant publier vos produits.
                       </p>
                       <div className="pt-3">
                         <button
                           type="button"
                           onClick={() => onOpenSellerDashboard && onOpenSellerDashboard()}
-                          className="bg-[#0B4D26] hover:bg-[#083a1d] text-white px-8 py-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
+                          className="bg-[#0B4D26] hover:bg-neutral-950 text-white px-8 py-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer"
                         >
                           Accéder immédiatement à mon espace vendeur &rarr;
                         </button>
@@ -1290,140 +1309,174 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                     </>
                   ) : (
                     <>
-                      <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      <span className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
                         Paiement PayDunya Requis
                       </span>
-                      <h3 className="text-xl font-black uppercase text-white">Compte {selectedPlan} Créé</h3>
-                      <p className="text-sm text-stone-300 max-w-md mx-auto leading-relaxed">
-                        Votre compte pour <strong>« {boutiqueName} »</strong> a été enregistré. Pour débloquer votre espace vendeur <strong>{selectedPlan}</strong> ({selectedPlan === "BUSINESS" ? "3 200 FCFA" : "1 600 FCFA"}/mois), le règlement via PayDunya est requis. L'accès Pro reste bloqué jusqu'à confirmation du paiement.
+                      <h3 className="text-xl font-black uppercase text-neutral-950">Compte {selectedPlan} Créé</h3>
+                      <p className="text-sm text-neutral-600 max-w-md mx-auto leading-relaxed">
+                        Votre compte pour <strong>« {boutiqueName} »</strong> a été enregistré. Pour débloquer votre espace vendeur <strong>{selectedPlan}</strong> ({selectedPlan === "BUSINESS" ? "3 200 FCFA" : "1 600 FCFA"}/mois), le règlement via PayDunya est requis. L&apos;accès Pro reste bloqué jusqu&apos;à confirmation du paiement.
                       </p>
-                      <div className="bg-stone-950 p-3 rounded-xl border border-stone-800 font-mono text-xs text-[#d4af37]">
+                      <div className="bg-neutral-950 p-3 rounded-xl border border-neutral-800 font-mono text-xs text-[#d4af37]">
                         URL réservée : miabeasi.com/boutique/{slugAvailability?.formattedSlug || customSlug}
                       </div>
                       <div className="pt-3">
                         <button
                           type="button"
                           onClick={() => onOpenSellerDashboard && onOpenSellerDashboard()}
-                          className="bg-[#10b981] hover:bg-[#059669] text-white px-8 py-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 mx-auto"
+                          className="bg-[#0B4D26] hover:bg-neutral-950 text-white px-8 py-3.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 mx-auto"
                         >
                           <Lock className="w-4 h-4" />
-                          <span>Régler l'abonnement &amp; Activer mon espace Pro &rarr;</span>
+                          <span>Régler l&apos;abonnement &amp; Activer mon espace Pro &rarr;</span>
                         </button>
                       </div>
                     </>
                   )}
                 </div>
               ) : (
-                <div className="bg-stone-900 border border-stone-800 rounded-2xl p-6 sm:p-8 text-left shadow-2xl space-y-6">
+                <div className="space-y-6">
               
-              {/* Stepper Progress Header */}
-              <div className="grid grid-cols-4 gap-2 pb-6 border-b border-stone-800">
-                {[
-                  { step: 1, title: "Personnel" },
-                  { step: 2, title: "Boutique" },
-                  { step: 3, title: "Abonnement" },
-                  { step: 4, title: "Validation" }
-                ].map((s) => (
-                  <div key={s.step} className="text-center space-y-1">
-                    <div className={`h-1.5 rounded-full transition-all ${
-                      currentStep >= s.step ? "bg-[#0B4D26]" : "bg-stone-800"
-                    }`} />
-                    <span className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
-                      currentStep === s.step ? "text-[#d4af37]" : "text-stone-500"
-                    }`}>
-                      {s.step}. {s.title}
+              {/* Top Form Header + Stepper Progress */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#b8901c] block">
+                      Formulaire d&apos;Inscription Vendeur
                     </span>
+                    <h3 className="text-lg sm:text-xl font-black text-neutral-950">
+                      Créer votre compte partenaire
+                    </h3>
                   </div>
-                ))}
+                  <span className="text-xs font-mono font-bold bg-neutral-100 text-neutral-700 px-2.5 py-1 rounded-lg">
+                    Étape {currentStep}/4
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2 pb-5 border-b border-neutral-200">
+                  {[
+                    { step: 1, title: "Personnel" },
+                    { step: 2, title: "Boutique" },
+                    { step: 3, title: "Abonnement" },
+                    { step: 4, title: "Validation" }
+                  ].map((s) => (
+                    <div key={s.step} className="text-center space-y-1.5">
+                      <div className={`h-1.5 rounded-full transition-all ${
+                        currentStep >= s.step ? "bg-[#0B4D26]" : "bg-neutral-200"
+                      }`} />
+                      <span className={`text-[10px] font-bold uppercase tracking-wider block truncate ${
+                        currentStep === s.step ? "text-[#0B4D26]" : "text-neutral-400"
+                      }`}>
+                        {s.step}. {s.title}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {formError && (
-                <div className="bg-red-950/60 border border-red-800 p-3.5 rounded-xl text-red-200 text-xs flex items-center gap-2.5">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <div className="bg-red-50 border border-red-200 p-3.5 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
                   <span>{formError}</span>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-5">
                 
                 {/* ---------------- ÉTAPE 1 : INFOS PERSONNELLES ---------------- */}
                 {currentStep === 1 && (
                   <div className="space-y-4 animate-fade-in">
-                    <div className="border-b border-stone-800 pb-2">
-                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Étape 1 : Vos Informations Personnelles</h3>
-                      <p className="text-xs text-stone-400">Ces informations serviront à administrer votre compte sécurisé.</p>
-                    </div>
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Nom complet *</label>
-                        <input
-                          type="text"
-                          required
-                          value={fullName}
-                          onChange={(e) => setFullName(e.target.value)}
-                          placeholder="Ex: Koffi Mensah"
-                          className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
-                        />
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Nom complet <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <User className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            required
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            placeholder="Ex: Koffi Mensah"
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-[#d4af37] focus:bg-white transition-all"
+                          />
+                        </div>
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Numéro de téléphone WhatsApp *</label>
-                        <input
-                          type="tel"
-                          required
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          placeholder="Ex: 90123456"
-                          className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
-                        />
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Numéro de téléphone WhatsApp <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <Phone className="w-4 h-4 text-[#0B4D26] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="tel"
+                            required
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            placeholder="Ex: 90 12 34 56"
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 placeholder-neutral-400 font-mono focus:outline-none focus:border-[#d4af37] focus:bg-white transition-all"
+                          />
+                        </div>
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Adresse Email *</label>
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="Ex: koffi@example.com"
-                        className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
-                      />
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Adresse Email <span className="text-red-500">*</span></label>
+                      <div className="relative">
+                        <Mail className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder="Ex: koffi@exemple.com"
+                          className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-[#d4af37] focus:bg-white transition-all"
+                        />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider">Mot de passe *</label>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-[11px] font-semibold text-neutral-700">Mot de passe <span className="text-red-500">*</span></label>
                           <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="text-[10px] text-stone-500 hover:text-stone-300"
+                            className="text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 cursor-pointer"
                           >
                             {showPassword ? "Masquer" : "Afficher"}
                           </button>
                         </div>
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          required
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Min. 6 caractères"
-                          className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
-                        />
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            required
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Min. 6 caractères"
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 placeholder-neutral-400 font-mono focus:outline-none focus:border-[#d4af37] focus:bg-white transition-all"
+                          />
+                        </div>
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Confirmer le mot de passe *</label>
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          required
-                          value={passwordConfirm}
-                          onChange={(e) => setPasswordConfirm(e.target.value)}
-                          placeholder="Répétez le mot de passe"
-                          className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
-                        />
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Confirmer le mot de passe <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            required
+                            value={passwordConfirm}
+                            onChange={(e) => setPasswordConfirm(e.target.value)}
+                            placeholder="Répétez le mot de passe"
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 placeholder-neutral-400 font-mono focus:outline-none focus:border-[#d4af37] focus:bg-white transition-all"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Clear Presentation of Terms of Use & Privacy Policy right from Step 1 */}
+                    <div className="bg-[#FAF9F6] border border-neutral-200/90 rounded-2xl p-3.5 flex items-start gap-3">
+                      <ShieldCheck className="w-4 h-4 text-[#0B4D26] shrink-0 mt-0.5" />
+                      <div className="text-[11px] text-neutral-600 leading-relaxed">
+                        <strong className="text-neutral-900">Conditions d&apos;Utilisation &amp; Politique de Confidentialité :</strong> Vos données personnelles sont chiffrées sur Supabase Cloud et exclusivement utilisées pour la gestion de votre boutique et le versement de vos ventes (90% reversés au vendeur, 10% commission plateforme).
                       </div>
                     </div>
                   </div>
@@ -1432,42 +1485,40 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                 {/* ---------------- ÉTAPE 2 : INFOS BOUTIQUE ---------------- */}
                 {currentStep === 2 && (
                   <div className="space-y-4 animate-fade-in">
-                    <div className="border-b border-stone-800 pb-2">
-                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Étape 2 : Informations de votre Boutique</h3>
-                      <p className="text-xs text-stone-400">Présentez votre enseigne et votre catalogue de produits.</p>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Nom de la boutique / Enseigne <span className="text-red-500">*</span></label>
+                      <div className="relative">
+                        <Store className="w-4 h-4 text-[#b8901c] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          required
+                          value={boutiqueName}
+                          onChange={(e) => setBoutiqueName(e.target.value)}
+                          placeholder="Ex: Saveurs & Terroirs d'Afrique"
+                          className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-[#d4af37] focus:bg-white transition-all"
+                        />
+                      </div>
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Nom de la boutique / Enseigne *</label>
-                      <input
-                        type="text"
-                        required
-                        value={boutiqueName}
-                        onChange={(e) => setBoutiqueName(e.target.value)}
-                        placeholder="Ex: Saveurs & Terroirs d'Afrique"
-                        className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Description de votre activité *</label>
+                      <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Description de votre activité <span className="text-red-500">*</span></label>
                       <textarea
                         required
                         rows={3}
                         value={boutiqueDescription}
                         onChange={(e) => setBoutiqueDescription(e.target.value)}
                         placeholder="Décrivez vos créations et produits africains authentiques..."
-                        className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26] resize-none"
+                        className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-[#d4af37] focus:bg-white resize-none transition-all"
                       />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Catégorie principale *</label>
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Catégorie principale <span className="text-red-500">*</span></label>
                         <select
                           value={category}
                           onChange={(e) => setCategory(e.target.value)}
-                          className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#0B4D26]"
+                          className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 focus:outline-none focus:border-[#d4af37] focus:bg-white"
                         >
                           <option value="Agroalimentaire & Épicerie Fine">Agroalimentaire &amp; Épicerie Fine</option>
                           <option value="Mode, Vêtements & Tissus (Batik, Pagne)">Mode, Vêtements &amp; Tissus</option>
@@ -1479,39 +1530,45 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Localisation (Quartier / Ville) *</label>
-                        <input
-                          type="text"
-                          required
-                          value={quartierVille}
-                          onChange={(e) => setQuartierVille(e.target.value)}
-                          placeholder="Ex: Quartier, Ville"
-                          className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white placeholder-stone-600 focus:outline-none focus:border-[#0B4D26]"
-                        />
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Localisation (Quartier / Ville) <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <MapPin className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            required
+                            value={quartierVille}
+                            onChange={(e) => setQuartierVille(e.target.value)}
+                            placeholder="Ex: Quartier, Ville"
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:border-[#d4af37] focus:bg-white transition-all"
+                          />
+                        </div>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Pays d'implantation *</label>
-                        <select
-                          value={sellerCountryCode}
-                          onChange={(e) => setSellerCountryCode(e.target.value)}
-                          className="w-full px-3.5 py-2.5 bg-stone-950 border border-stone-800 rounded-xl text-xs text-white focus:outline-none focus:border-[#0B4D26]"
-                        >
-                          {SUPPORTED_COUNTRIES.map((c) => (
-                            <option key={c.code} value={c.code}>
-                              {c.flagEmoji} {c.name} ({c.code})
-                            </option>
-                          ))}
-                        </select>
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Pays d&apos;implantation <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <Globe className="w-4 h-4 text-[#0B4D26] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <select
+                            value={sellerCountryCode}
+                            onChange={(e) => setSellerCountryCode(e.target.value)}
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-300 rounded-xl text-xs text-neutral-900 focus:outline-none focus:border-[#d4af37] focus:bg-white"
+                          >
+                            {SUPPORTED_COUNTRIES.map((c) => (
+                              <option key={c.code} value={c.code}>
+                                {c.flagEmoji} {c.name} ({c.code})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
 
                       <div>
-                        <label className="block text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-1">Devise de facturation</label>
-                        <div className="w-full px-3.5 py-2.5 bg-stone-900 border border-stone-800 rounded-xl text-xs text-emerald-400 font-mono font-bold flex items-center justify-between">
+                        <label className="block text-[11px] font-semibold text-neutral-700 mb-1.5">Devise de facturation</label>
+                        <div className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-neutral-200 rounded-xl text-xs text-[#0B4D26] font-mono font-bold flex items-center justify-between">
                           <span>Franc CFA ({sellerCurrencyCode})</span>
-                          <span className="text-[10px] bg-stone-800 text-stone-400 px-2 py-0.5 rounded-full font-sans font-normal">Automatique</span>
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-sans font-semibold">Automatique</span>
                         </div>
                       </div>
                     </div>
@@ -1521,11 +1578,6 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                 {/* ---------------- ÉTAPE 3 : CHOIX FORMULE & URL ---------------- */}
                 {currentStep === 3 && (
                   <div className="space-y-5 animate-fade-in">
-                    <div className="border-b border-stone-800 pb-2">
-                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Étape 3 : Choix de votre Formule</h3>
-                      <p className="text-xs text-stone-400">Sélectionnez votre formule selon vos ambitions.</p>
-                    </div>
-
                     {/* Plan Radio Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       
@@ -1533,86 +1585,85 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                       <button
                         type="button"
                         onClick={() => handleSelectPlan("Gratuit")}
-                        className={`p-4 rounded-xl border text-left cursor-pointer transition-all ${
+                        className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
                           selectedPlan === "Gratuit"
-                            ? "bg-[#0B4D26]/20 border-[#0B4D26] ring-1 ring-[#0B4D26]"
-                            : "bg-stone-950 border-stone-800 hover:border-stone-700"
+                            ? "bg-emerald-50/60 border-[#0B4D26] ring-2 ring-[#0B4D26]/30"
+                            : "bg-[#FAF9F6] border-neutral-200 hover:border-neutral-300"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold uppercase text-white">Gratuit</span>
-                          <span className="text-[10px] font-mono font-bold text-stone-400">{formatPrice(0, sellerCurrencyCode)}</span>
+                          <span className="text-xs font-bold uppercase text-neutral-950">Gratuit</span>
+                          <span className="text-[10px] font-mono font-bold text-neutral-600">{formatPrice(0, sellerCurrencyCode)}</span>
                         </div>
-                        <p className="text-[10px] text-stone-400">Gestion catalogue &amp; commandes.</p>
-                        <span className="text-[9px] text-stone-500 block mt-2 font-mono">Sans URL publique</span>
+                        <p className="text-[10px] text-neutral-500">Gestion catalogue &amp; commandes.</p>
+                        <span className="text-[9px] text-neutral-400 block mt-2 font-mono">Sans URL publique</span>
                       </button>
 
                       {/* PRO */}
                       <button
                         type="button"
                         onClick={() => handleSelectPlan("PRO")}
-                        className={`p-4 rounded-xl border text-left cursor-pointer transition-all ${
+                        className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
                           selectedPlan === "PRO"
-                            ? "bg-[#0B4D26]/30 border-emerald-500 ring-1 ring-emerald-500"
-                            : "bg-stone-950 border-stone-800 hover:border-stone-700"
+                            ? "bg-emerald-50/70 border-[#0B4D26] ring-2 ring-[#0B4D26]/40"
+                            : "bg-[#FAF9F6] border-neutral-200 hover:border-neutral-300"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold uppercase text-emerald-400">PRO</span>
-                          <span className="text-[10px] font-mono font-bold text-emerald-400">{formatPrice(1600, sellerCurrencyCode)}/m</span>
+                          <span className="text-xs font-bold uppercase text-[#0B4D26]">PRO</span>
+                          <span className="text-[10px] font-mono font-bold text-[#0B4D26]">{formatPrice(1600, sellerCurrencyCode)}/m</span>
                         </div>
-                        <p className="text-[10px] text-stone-300">URL personnalisée + Produits phares.</p>
-                        <span className="text-[9px] text-emerald-400 font-bold block mt-2 font-mono">URL personnalisée ✓</span>
+                        <p className="text-[10px] text-neutral-600">URL personnalisée + Produits phares.</p>
+                        <span className="text-[9px] text-[#0B4D26] font-bold block mt-2 font-mono">URL personnalisée ✓</span>
                       </button>
 
                       {/* BUSINESS */}
                       <button
                         type="button"
                         onClick={() => handleSelectPlan("BUSINESS")}
-                        className={`p-4 rounded-xl border text-left cursor-pointer transition-all ${
+                        className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
                           selectedPlan === "BUSINESS"
-                            ? "bg-[#d4af37]/15 border-[#d4af37] ring-1 ring-[#d4af37]"
-                            : "bg-stone-950 border-stone-800 hover:border-stone-700"
+                            ? "bg-amber-50/70 border-[#d4af37] ring-2 ring-[#d4af37]/40"
+                            : "bg-[#FAF9F6] border-neutral-200 hover:border-neutral-300"
                         }`}
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold uppercase text-[#d4af37]">BUSINESS</span>
-                          <span className="text-[10px] font-mono font-bold text-[#d4af37]">{formatPrice(3200, sellerCurrencyCode)}/m</span>
+                          <span className="text-xs font-bold uppercase text-[#b8901c]">BUSINESS</span>
+                          <span className="text-[10px] font-mono font-bold text-[#b8901c]">{formatPrice(3200, sellerCurrencyCode)}/m</span>
                         </div>
-                        <p className="text-[10px] text-stone-300">Bannière accueil + Haute priorité.</p>
-                        <span className="text-[9px] text-[#d4af37] font-bold block mt-2 font-mono">Bannière accueil ✓</span>
+                        <p className="text-[10px] text-neutral-600">Bannière accueil + Haute priorité.</p>
+                        <span className="text-[9px] text-[#b8901c] font-bold block mt-2 font-mono">Bannière accueil ✓</span>
                       </button>
 
                     </div>
 
                     {/* URL INPUT FIELD (ONLY FOR PRO & BUSINESS) */}
                     {selectedPlan !== "Gratuit" ? (
-                      <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-3">
+                      <div className="bg-[#FAF9F6] p-4 rounded-2xl border border-neutral-200 space-y-3">
                         <div className="flex items-center justify-between">
-                          <label className="block text-[11px] font-bold text-[#d4af37] uppercase tracking-wider">
+                          <label className="block text-[11px] font-bold text-neutral-900 uppercase tracking-wider">
                             Choisissez votre URL de Boutique Personnalisée
                           </label>
                           {slugChecking && (
-                            <span className="text-[10px] text-stone-400 animate-pulse">Vérification en cours...</span>
+                            <span className="text-[10px] text-neutral-500 animate-pulse">Vérification en cours...</span>
                           )}
                         </div>
 
-                        <div className="flex items-center bg-stone-900 border border-stone-800 rounded-xl overflow-hidden px-3 py-2 text-xs">
-                          <span className="text-stone-500 font-mono select-none">miabeasi.com/boutique/</span>
+                        <div className="flex items-center bg-white border border-neutral-300 rounded-xl overflow-hidden px-3 py-2 text-xs">
+                          <span className="text-neutral-400 font-mono select-none">miabeasi.com/boutique/</span>
                           <input
                             type="text"
                             required
                             value={customSlug}
                             onChange={(e) => setCustomSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
                             placeholder="nom-boutique"
-                            className="bg-transparent text-white font-mono flex-grow focus:outline-none pl-1"
+                            className="bg-transparent text-neutral-950 font-mono flex-grow focus:outline-none pl-1"
                           />
                         </div>
 
-                        {/* Availability Feedback */}
                         {slugAvailability && (
                           <div className={`text-xs flex items-center gap-1.5 ${
-                            slugAvailability.available ? "text-emerald-400" : "text-red-400"
+                            slugAvailability.available ? "text-emerald-700" : "text-red-600"
                           }`}>
                             {slugAvailability.available ? (
                               <>
@@ -1629,7 +1680,7 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                         )}
                       </div>
                     ) : (
-                      <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 text-xs text-stone-400 leading-relaxed">
+                      <div className="bg-[#FAF9F6] p-4 rounded-2xl border border-neutral-200 text-xs text-neutral-600 leading-relaxed">
                         ℹ️ <strong>Rappel Compte Gratuit :</strong> Votre compte ne possèdera aucune URL publique de boutique. Vos produits apparaîtront dans le catalogue général. Vous pourrez passer à PRO ou BUSINESS ultérieurement pour activer une URL dédiée.
                       </div>
                     )}
@@ -1639,71 +1690,76 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                 {/* ---------------- ÉTAPE 4 : CGV & VALIDATION ---------------- */}
                 {currentStep === 4 && (
                   <div className="space-y-4 animate-fade-in">
-                    <div className="border-b border-stone-800 pb-2">
-                      <h3 className="text-sm font-black text-white uppercase tracking-wider">Étape 4 : Validation &amp; Conditions</h3>
-                      <p className="text-xs text-stone-400">Vérifiez votre récapitulatif avant de valider.</p>
-                    </div>
-
                     {/* Summary box */}
-                    <div className="bg-stone-950 p-4 rounded-xl border border-stone-800 space-y-2 text-xs">
-                      <div className="flex justify-between py-1 border-b border-stone-900">
-                        <span className="text-stone-500">Nom du gérant :</span>
-                        <span className="font-bold text-white">{fullName}</span>
+                    <div className="bg-[#FAF9F6] p-4 rounded-2xl border border-neutral-200 space-y-2 text-xs">
+                      <div className="flex justify-between py-1 border-b border-neutral-200/70">
+                        <span className="text-neutral-500">Nom du gérant :</span>
+                        <span className="font-bold text-neutral-950">{fullName}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-stone-900">
-                        <span className="text-stone-500">Nom de la boutique :</span>
-                        <span className="font-bold text-white">{boutiqueName}</span>
+                      <div className="flex justify-between py-1 border-b border-neutral-200/70">
+                        <span className="text-neutral-500">Nom de la boutique :</span>
+                        <span className="font-bold text-neutral-950">{boutiqueName}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-stone-900">
-                        <span className="text-stone-500">Formule choisie :</span>
-                        <span className="font-bold text-[#d4af37]">
+                      <div className="flex justify-between py-1 border-b border-neutral-200/70">
+                        <span className="text-neutral-500">Formule choisie :</span>
+                        <span className="font-bold text-[#0B4D26]">
                           {selectedPlan} {selectedPlan === "BUSINESS" ? "(3 200 FCFA/mois)" : selectedPlan === "PRO" ? "(1 600 FCFA/mois)" : "(0 FCFA)"}
                         </span>
                       </div>
                       {selectedPlan !== "Gratuit" && (
                         <div className="flex justify-between py-1">
-                          <span className="text-stone-500">URL réservée :</span>
-                          <span className="font-mono font-bold text-emerald-400">miabeasi.com/boutique/{slugAvailability?.formattedSlug || customSlug}</span>
+                          <span className="text-neutral-500">URL réservée :</span>
+                          <span className="font-mono font-bold text-[#0B4D26]">miabeasi.com/boutique/{slugAvailability?.formattedSlug || customSlug}</span>
                         </div>
                       )}
                     </div>
 
-                    {/* Checkboxes */}
-                    <div className="space-y-3 pt-2">
-                      <label className="flex items-start gap-2.5 cursor-pointer text-xs text-stone-300 select-none">
-                        <input
-                          type="checkbox"
-                          checked={acceptTerms}
-                          onChange={(e) => setAcceptTerms(e.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded bg-stone-950 border-stone-800 text-[#0B4D26] focus:ring-[#0B4D26]"
-                        />
-                        <span>
-                          J'accepte les <strong>Conditions Générales de Vente Partenaire</strong> de Miabé Asi et certifie l'authenticité et la qualité de mes produits africains.
-                        </span>
-                      </label>
+                    {/* Clear Presentation of Terms of Use & Privacy Policy */}
+                    <div className="bg-[#FAF9F6] border border-neutral-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-neutral-900">
+                        <FileText className="w-4 h-4 text-[#0B4D26]" />
+                        <span>Conditions Générales d&apos;Utilisation &amp; Politique de Confidentialité</span>
+                      </div>
+                      <p className="text-[11px] text-neutral-600 leading-relaxed">
+                        En créant votre boutique partenaire sur Miabé Asi, vous bénéficiez d&apos;un reversement de <strong>90%</strong> sur chaque vente livrée (commission plateforme de 10%) et de la protection intégrale de vos données conformément aux normes APDP et Supabase RLS.
+                      </p>
 
-                      <label className="flex items-start gap-2.5 cursor-pointer text-xs text-stone-300 select-none">
-                        <input
-                          type="checkbox"
-                          checked={acceptPrivacy}
-                          onChange={(e) => setAcceptPrivacy(e.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded bg-stone-950 border-stone-800 text-[#0B4D26] focus:ring-[#0B4D26]"
-                        />
-                        <span>
-                          J'accepte la <strong>Politique de Confidentialité</strong> et le prélèvement de 10% de commission sur les ventes validées.
-                        </span>
-                      </label>
+                      <div className="space-y-2.5 pt-2 border-t border-neutral-200/70">
+                        <label className="flex items-start gap-2.5 cursor-pointer text-xs text-neutral-700 select-none">
+                          <input
+                            type="checkbox"
+                            checked={acceptTerms}
+                            onChange={(e) => setAcceptTerms(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded accent-[#0B4D26] cursor-pointer"
+                          />
+                          <span>
+                            J&apos;accepte les <strong>Conditions Générales de Vente Partenaire (CGU / CGV)</strong> de Miabé Asi et certifie l&apos;authenticité et la qualité de mes produits africains.
+                          </span>
+                        </label>
+
+                        <label className="flex items-start gap-2.5 cursor-pointer text-xs text-neutral-700 select-none">
+                          <input
+                            type="checkbox"
+                            checked={acceptPrivacy}
+                            onChange={(e) => setAcceptPrivacy(e.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded accent-[#0B4D26] cursor-pointer"
+                          />
+                          <span>
+                            J&apos;accepte la <strong>Politique de Confidentialité</strong> et le prélèvement de 10% de commission sur les ventes validées.
+                          </span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {/* Step Navigation Controls */}
-                <div className="flex items-center justify-between pt-4 border-t border-stone-800">
+                <div className="flex items-center justify-between pt-4 border-t border-neutral-200">
                   {currentStep > 1 ? (
                     <button
                       type="button"
                       onClick={() => setCurrentStep((prev) => (prev - 1) as any)}
-                      className="px-5 py-2.5 rounded-xl border border-stone-700 text-stone-300 hover:bg-stone-800 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                      className="px-5 py-2.5 rounded-xl border border-neutral-300 text-neutral-700 hover:bg-neutral-100 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
                     >
                       &larr; Précédent
                     </button>
@@ -1715,24 +1771,25 @@ export const SellerLandingPage: React.FC<SellerPageProps> = ({
                     <button
                       type="button"
                       onClick={handleNextStep}
-                      className="bg-[#0B4D26] hover:bg-[#083a1d] text-white px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer"
+                      className="bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-wider shadow-md transition-colors cursor-pointer flex items-center gap-2"
                     >
-                      Suivant &rarr;
+                      <span>Continuer</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   ) : (
                     <button
                       type="submit"
                       disabled={isSubmitting || !acceptTerms || !acceptPrivacy}
-                      className="bg-[#d4af37] hover:bg-[#c49f27] text-stone-950 disabled:opacity-40 px-7 py-3 rounded-xl font-black text-xs uppercase tracking-wider shadow-xl transition-all cursor-pointer flex items-center gap-2"
+                      className="bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 disabled:opacity-40 px-7 py-3 rounded-xl font-black text-xs uppercase tracking-wider shadow-xl transition-all cursor-pointer flex items-center gap-2"
                     >
                       {isSubmitting ? (
                         <>
-                          <div className="w-3.5 h-3.5 border-2 border-stone-950 border-t-transparent rounded-full animate-spin" />
+                          <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                           <span>Création en cours...</span>
                         </>
                       ) : (
                         <>
-                          <Sparkles className="w-4 h-4" />
+                          <Sparkles className="w-4 h-4 text-[#d4af37]" />
                           <span>Créer ma boutique maintenant</span>
                         </>
                       )}

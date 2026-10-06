@@ -76,6 +76,7 @@ import { NotificationsPage, playNotificationChime } from "./components/Notificat
 import { HelpCenterModal } from "./components/HelpCenterModal";
 import { LegalPoliciesModal, LegalTab } from "./components/LegalPoliciesModal";
 import { CookieConsentBanner } from "./components/CookieConsentBanner";
+import { AuthSplitScreenModal } from "./components/AuthSplitScreenModal";
 
 const memoryStorage: Record<string, string> = {};
 const safeLocalStorage = {
@@ -750,6 +751,17 @@ export default function App() {
         setActiveShopSlug(slugFromPath);
       }
     }
+
+    if (
+      params.get("register") === "1" ||
+      params.get("register") === "true" ||
+      params.get("inscription") === "1" ||
+      window.location.pathname === "/inscription" ||
+      window.location.pathname === "/register"
+    ) {
+      setAuthMode("register");
+      setIsAuthOpen(true);
+    }
   }, []);
 
   // Legal Policies Modal State
@@ -1184,8 +1196,40 @@ export default function App() {
     }
   };
 
+  // Safe JSON response parser that checks Content-Type before parsing
+  const parseApiJsonResponse = async (res: Response, fallbackErrorMsg: string): Promise<any> => {
+    const contentType = (res.headers.get("content-type") || "").toLowerCase();
+    const rawText = await res.text();
+    const trimmed = rawText.trim();
+
+    if (!contentType.includes("application/json") || trimmed.startsWith("<") || trimmed.toLowerCase().startsWith("<!doctype")) {
+      console.error(`[API Response Error] Expected JSON from ${res.url} (status ${res.status}, content-type: ${contentType}), got:`, trimmed.slice(0, 250));
+      return {
+        success: false,
+        error: `${fallbackErrorMsg} (Code HTTP ${res.status})`
+      };
+    }
+
+    if (!trimmed) {
+      return {
+        success: false,
+        error: `${fallbackErrorMsg} (Réponse serveur vide - HTTP ${res.status})`
+      };
+    }
+
+    try {
+      return JSON.parse(trimmed);
+    } catch (err) {
+      console.error(`[API JSON Parse Error] Status ${res.status}:`, trimmed.slice(0, 250));
+      return {
+        success: false,
+        error: `${fallbackErrorMsg} (Format de réponse invalide - HTTP ${res.status})`
+      };
+    }
+  };
+
   useEffect(() => {
-    // Handle return from PayDunya checkout URL (?payment=return, ?payment=success, or ?payment=cancel)
+    // Handle return from PayDunya checkout URL (?payment=return, ?payment=success, ?payment=cancel, ?payment=sub_return, ?payment=sub_cancel)
     const rawSearch = window.location.search || "";
     if (!rawSearch) return;
 
@@ -1196,6 +1240,7 @@ export default function App() {
     const params = new URLSearchParams(normalizedSearch);
     const paymentStatus = params.get("payment");
     const orderId = (params.get("orderId") || params.get("order_id") || "").trim();
+    const subId = (params.get("subId") || params.get("sub_id") || "").trim();
     const urlTokens = params
       .getAll("token")
       .map(t => t.trim())
@@ -1204,6 +1249,12 @@ export default function App() {
       ? (
           sessionStorage.getItem(`paydunya_token_${orderId}`) ||
           localStorage.getItem(`paydunya_token_${orderId}`) ||
+          ""
+        ).trim()
+      : subId
+      ? (
+          sessionStorage.getItem(`paydunya_token_${subId}`) ||
+          localStorage.getItem(`paydunya_token_${subId}`) ||
           ""
         ).trim()
       : "";
@@ -1222,6 +1273,7 @@ export default function App() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              "Accept": "application/json",
               ...(token ? { "Authorization": token } : {})
             },
             body: JSON.stringify({
@@ -1231,7 +1283,7 @@ export default function App() {
             })
           });
 
-          const data = await res.json().catch(() => ({}));
+          const data = await parseApiJsonResponse(res, "Impossible de vérifier le statut du paiement auprès du serveur.");
 
           if (res.ok && data.success === true && data.status === "completed") {
             if (orderId) {
@@ -1261,7 +1313,38 @@ export default function App() {
           showToast("Erreur réseau lors de la vérification du paiement PayDunya.");
         }
       })();
-    } else if (paymentStatus === "cancel") {
+    } else if (paymentStatus === "sub_return" && (subId || paymentToken)) {
+      try {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } catch (e) {}
+
+      (async () => {
+        try {
+          const res = await fetch("/api/subscriptions/confirm", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              ...(token ? { "Authorization": token } : {})
+            },
+            body: JSON.stringify({
+              transactionId: paymentToken || subId,
+              subId
+            })
+          });
+          const data = await parseApiJsonResponse(res, "Impossible de vérifier l'abonnement auprès du serveur.");
+          if (res.ok && data.success && data.status === "active") {
+            if (data.user) setUser(data.user);
+            showToast("✓ Abonnement Vendeur validé avec succès via PayDunya !");
+          } else {
+            showToast(data.error || data.message || "Vérification de l'abonnement en attente.");
+          }
+        } catch (err) {
+          console.error("Error confirming subscription on return:", err);
+          showToast("Erreur réseau lors de la vérification de l'abonnement.");
+        }
+      })();
+    } else if (paymentStatus === "cancel" || paymentStatus === "sub_cancel") {
       try {
         window.history.replaceState({}, document.title, window.location.pathname);
       } catch (e) {}
@@ -2235,23 +2318,24 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json",
           ...(token ? { "Authorization": token } : {})
         },
         body: JSON.stringify(orderPayload)
       });
 
-      const orderResult = await res.json();
-      if (orderResult.success) {
+      const orderResult = await parseApiJsonResponse(res, "Erreur serveur lors de l'enregistrement de la commande.");
+      if (res.ok && orderResult.success && orderResult.order) {
         orderId = orderResult.order.id;
         orderData = orderResult.order;
         setCreatedOrder(orderResult.order);
       } else {
-        alert(`Erreur d'enregistrement de commande: ${orderResult.error}`);
+        alert(`Erreur d'enregistrement de commande : ${orderResult.error || "Veuillez réessayer."}`);
         return;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Order creation failed:", err);
-      alert("Une erreur est survenue lors de la création de la commande.");
+      alert(`Erreur lors de la création de la commande : ${err?.message || "Impossible de joindre le serveur."}`);
       return;
     }
 
@@ -2316,6 +2400,7 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json",
           ...(token ? { "Authorization": token } : {})
         },
         body: JSON.stringify({
@@ -2329,8 +2414,8 @@ export default function App() {
         })
       });
 
-      const payData = await payRes.json();
-      if (payData.success) {
+      const payData = await parseApiJsonResponse(payRes, "Le serveur de paiement a renvoyé une réponse inattendue.");
+      if (payRes.ok && payData.success) {
         if (orderId && payData.session?.transactionId) {
           try {
             sessionStorage.setItem(`paydunya_token_${orderId}`, String(payData.session.transactionId).trim());
@@ -2348,11 +2433,11 @@ export default function App() {
         setIsCartOpen(false); // Close cart sidebar
         showToast("✓ Session de paiement ouverte !");
       } else {
-        alert(`Erreur de paiement : ${payData.error}`);
+        alert(`Erreur de paiement : ${payData.error || "Impossible d'initialiser le paiement PayDunya."}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Payment initiation failed:", err);
-      alert("Impossible de contacter le service de paiement.");
+      alert(`Erreur de paiement : ${err?.message || "Impossible de contacter le service de paiement."}`);
     }
   };
 
@@ -2639,21 +2724,38 @@ export default function App() {
                 <span className="text-[10px] sm:text-xs font-extrabold tracking-wider uppercase text-[#C89D34] truncate max-w-[60px] sm:max-w-[90px]">{user.name.split(" ")[0]}</span>
               </button>
             ) : (
-              <button
-                onClick={() => {
-                  setIsCartOpen(false);
-                  setIsMobileMenuOpen(false);
-                  setAuthMode("login");
-                  setAuthError("");
-                  setIsAuthOpen(true);
-                }}
-                className="px-2 sm:px-4 py-1.5 sm:py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
-                title="Se connecter / S'inscrire"
-                id="header-user-login-btn"
-              >
-                <User className="w-3.5 h-3.5 text-[#C89D34]" />
-                <span className="text-[10px] sm:text-xs font-black tracking-widest uppercase text-[#C89D34]">{t("login_btn")}</span>
-              </button>
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    setIsCartOpen(false);
+                    setIsMobileMenuOpen(false);
+                    setAuthMode("login");
+                    setAuthError("");
+                    setIsAuthOpen(true);
+                  }}
+                  className="px-2 sm:px-3.5 py-1.5 sm:py-2 border-2 border-[#C89D34] bg-transparent hover:bg-[#C89D34]/10 text-[#C89D34] rounded-full flex items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
+                  title="Se connecter"
+                  id="header-user-login-btn"
+                >
+                  <User className="w-3.5 h-3.5 text-[#C89D34]" />
+                  <span className="text-[10px] sm:text-xs font-black tracking-widest uppercase text-[#C89D34]">{t("login_btn")}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsCartOpen(false);
+                    setIsMobileMenuOpen(false);
+                    setAuthMode("register");
+                    setAuthError("");
+                    setIsAuthOpen(true);
+                  }}
+                  className="hidden md:flex px-3.5 py-2 bg-[#C89D34] hover:bg-[#d4af37] text-neutral-950 rounded-full items-center justify-center gap-1 cursor-pointer transition-all shadow-2xs shrink-0 font-sans"
+                  title="Créer un compte"
+                  id="header-user-register-btn"
+                >
+                  <Plus className="w-3.5 h-3.5 text-neutral-950" />
+                  <span className="text-xs font-black tracking-wider uppercase text-neutral-950">S&apos;inscrire</span>
+                </button>
+              </div>
             )}
 
             {/* Shopping Cart Trigger - Hidden on mobile phones (already in bottom nav), visible on tablets/desktop */}
@@ -6878,277 +6980,37 @@ export default function App() {
 
 
       {/* ========================================================= */}
-      {/* --- CUSTOMER & ARTISAN AUTH MODAL (CONNEXION & INSCRIPTION) --- */}
+      {/* --- CUSTOMER & ARTISAN SPLIT-SCREEN AUTH & REGISTRATION --- */}
       {/* ========================================================= */}
-      {isAuthOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/80 backdrop-blur-xs animate-fade-in">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            className="bg-white max-w-md w-full rounded-sm overflow-hidden shadow-2xl relative border border-[#d4af37]/35 max-h-[90vh] flex flex-col"
-          >
-            {/* Close Button */}
-            <button 
-              onClick={() => setIsAuthOpen(false)}
-              className="absolute top-3.5 right-3.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-850 p-1.5 rounded-full z-10 transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="p-6 overflow-y-auto text-center">
-              {/* Brand Emblem */}
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <div className="w-10 h-10 bg-neutral-950 text-[#d4af37] border border-[#d4af37]/35 rounded-xl flex items-center justify-center font-display font-black text-lg shadow-sm">
-                  M
-                </div>
-              </div>
-              <h3 className="font-display font-black uppercase text-base text-neutral-950 tracking-wider">
-                Miabé Asi
-              </h3>
-              <p className="text-[10px] text-[#b8901c] uppercase font-bold tracking-widest mt-0.5 mb-4">
-                Le marché d'excellence du terroir togolais
-              </p>
-
-              {/* Mode Switcher Tabs */}
-              <div className="grid grid-cols-2 p-1 bg-stone-100 rounded-sm mb-5 border border-stone-200">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("login");
-                    setAuthError("");
-                  }}
-                  className={`py-2 text-[11px] font-bold uppercase tracking-wider rounded-xs transition-all cursor-pointer ${
-                    authMode === "login"
-                      ? "bg-neutral-950 text-[#d4af37] shadow-xs"
-                      : "text-neutral-600 hover:text-neutral-950"
-                  }`}
-                >
-                  Se Connecter
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode("register");
-                    setAuthError("");
-                  }}
-                  className={`py-2 text-[11px] font-bold uppercase tracking-wider rounded-xs transition-all cursor-pointer ${
-                    authMode === "register"
-                      ? "bg-neutral-950 text-[#d4af37] shadow-xs"
-                      : "text-neutral-600 hover:text-neutral-950"
-                  }`}
-                >
-                  Créer un Compte
-                </button>
-              </div>
-
-              {authError && (
-                <div className="p-3 mb-4 bg-red-50 border border-red-200 text-red-700 text-xs font-semibold text-center rounded-sm">
-                  ⚠️ {authError}
-                </div>
-              )}
-
-              {/* Registration Role Switcher */}
-              {authMode === "register" && (
-                <div className="mb-4 text-left">
-                  <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1.5">
-                    Type de Compte <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setAuthRole("client")}
-                      className={`p-2.5 rounded-sm border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
-                        authRole === "client"
-                          ? "border-[#d4af37] bg-amber-50/50 text-neutral-950 ring-1 ring-[#d4af37]"
-                          : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-[#b8901c]" />
-                        <span className="text-[11px] font-bold uppercase tracking-wider">Client</span>
-                      </div>
-                      <span className="text-[9px] text-neutral-500 leading-tight font-sans">
-                        Acheter &amp; suivre mes commandes
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setAuthRole("vendeur")}
-                      className={`p-2.5 rounded-sm border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
-                        authRole === "vendeur"
-                          ? "border-[#d4af37] bg-amber-50/50 text-neutral-950 ring-1 ring-[#d4af37]"
-                          : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <Store className="w-3.5 h-3.5 text-[#b8901c]" />
-                        <span className="text-[11px] font-bold uppercase tracking-wider">Vendeur</span>
-                      </div>
-                      <span className="text-[9px] text-neutral-500 leading-tight font-sans">
-                        Vendre mes produits sur la marketplace
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <form onSubmit={handleAuthSubmit} className="space-y-3.5 text-left">
-                {authMode === "register" && (
-                  <div>
-                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
-                      {authRole === "vendeur" ? "Nom & Prénoms du Gérant" : "Nom complet"} <span className="text-red-500">*</span>
-                    </label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="Ex: Koffi Mensah"
-                      value={authName}
-                      onChange={(e) => setAuthName(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900"
-                    />
-                  </div>
-                )}
-
-                {authMode === "register" && authRole === "vendeur" && (
-                  <div>
-                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
-                      Nom de la Boutique / Atelier <span className="text-red-500">*</span>
-                    </label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="Ex: Terroir & Saveurs du Togo"
-                      value={authBoutiqueName}
-                      onChange={(e) => setAuthBoutiqueName(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900"
-                    />
-                  </div>
-                )}
-
-                {authMode === "register" && (
-                  <div>
-                    <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
-                      Pays <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <select 
-                        required
-                        value={authCountryCode}
-                        onChange={(e) => setAuthCountryCode(e.target.value)}
-                        className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900 appearance-none font-medium cursor-pointer pr-8"
-                      >
-                        {SUPPORTED_COUNTRIES.map((c) => (
-                          <option key={c.code} value={c.code}>
-                            {c.flagEmoji} {c.name} ({c.phoneCode}) — {c.currencyCode}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-neutral-500">
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
-                    Adresse Email <span className="text-red-500">*</span>
-                  </label>
-                  <input 
-                    type="email"
-                    required
-                    placeholder="votre-email@gmail.com"
-                    value={authEmail}
-                    onChange={(e) => setAuthEmail(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
-                    Mot de passe <span className="text-red-500">*</span>
-                  </label>
-                  <input 
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={authPassword}
-                    onChange={(e) => setAuthPassword(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900 font-mono"
-                  />
-                </div>
-
-                {authMode === "register" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
-                        Téléphone / WhatsApp ({selectedAuthCountry.phoneCode}) <span className="text-red-500">*</span>
-                      </label>
-                      <div className="flex">
-                        <span className="inline-flex items-center px-2.5 text-xs bg-neutral-100 border border-r-0 border-neutral-300 text-neutral-700 font-mono select-none font-medium">
-                          {selectedAuthCountry.phoneCode}
-                        </span>
-                        <input 
-                          type="tel"
-                          required
-                          placeholder="90 00 00 00"
-                          value={authPhone}
-                          onChange={(e) => setAuthPhone(e.target.value)}
-                          className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900 font-mono"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-bold text-neutral-700 uppercase tracking-widest mb-1 text-left">
-                        {authRole === "vendeur" ? "Ville / Région" : "Ville / Quartier"} <span className="text-[#b8901c]">(Optionnel)</span>
-                      </label>
-                      <input 
-                        type="text"
-                        placeholder={selectedAuthCountry.code === "TG" ? "Ex: Adidogomé / Kara" : `Ex: Ville (${selectedAuthCountry.name})`}
-                        value={authCity}
-                        onChange={(e) => {
-                          setAuthCity(e.target.value);
-                          setAuthQuartier(e.target.value);
-                        }}
-                        className="w-full px-3 py-2 text-xs border border-neutral-300 bg-white rounded-none focus:outline-none focus:ring-1 focus:ring-[#d4af37] text-neutral-900"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isAuthSubmitting}
-                  className="w-full bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 py-3 font-bold uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer mt-3 shadow-md"
-                >
-                  {isAuthSubmitting ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <>
-                      {authMode === "login" ? <Unlock className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                      <span>{authMode === "login" ? "Accéder à mon Espace" : (authRole === "vendeur" ? "Inscrire ma Boutique" : "Créer mon Compte")}</span>
-                    </>
-                  )}
-                </button>
-              </form>
-
-              {/* Trust Reassurance Badges */}
-              <div className="mt-5 pt-4 border-t border-neutral-100 flex items-center justify-center gap-3 text-[10px] text-neutral-500 font-medium">
-                <span className="flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Données 100% Sécurisées</span>
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <span>📱</span>
-                  <span>T-Money &amp; Flooz</span>
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
+      <AuthSplitScreenModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        authMode={authMode}
+        setAuthMode={setAuthMode}
+        authRole={authRole}
+        setAuthRole={setAuthRole}
+        authEmail={authEmail}
+        setAuthEmail={setAuthEmail}
+        authPassword={authPassword}
+        setAuthPassword={setAuthPassword}
+        authName={authName}
+        setAuthName={setAuthName}
+        authBoutiqueName={authBoutiqueName}
+        setAuthBoutiqueName={setAuthBoutiqueName}
+        authCountryCode={authCountryCode}
+        setAuthCountryCode={setAuthCountryCode}
+        authPhone={authPhone}
+        setAuthPhone={setAuthPhone}
+        authCity={authCity}
+        setAuthCity={setAuthCity}
+        setAuthQuartier={setAuthQuartier}
+        authError={authError}
+        setAuthError={setAuthError}
+        isAuthSubmitting={isAuthSubmitting}
+        handleAuthSubmit={handleAuthSubmit}
+        openLegalModal={openLegalModal}
+        officialLogoImg={officialLogoImg}
+      />
 
       {/* ========================================================= */}
       {/* --- FLOATING CUSTOMER PROFILE DRAWER (ESPACE CLIENT) --- */}

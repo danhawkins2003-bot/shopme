@@ -130,7 +130,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       {/* Main Invoice Card Container */}
       <div 
         id="printable-invoice"
-        className="bg-white text-neutral-900 max-w-2xl w-full rounded-none shadow-2xl relative border-t-8 border-[#d4af37] z-10 p-6 md:p-8 space-y-6 my-auto"
+        className="bg-white text-neutral-900 max-w-2xl w-full rounded-2xl shadow-2xl relative border-t-8 border-[#d4af37] z-10 p-6 md:p-8 space-y-6 my-auto"
       >
         {/* Top Control Bar (Hidden on print) */}
         <div className="no-print flex items-center justify-between pb-4 border-b border-neutral-200">
@@ -149,21 +149,21 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="bg-neutral-900 hover:bg-[#d4af37] text-white hover:text-neutral-950 px-3 py-1.5 rounded-xs text-[10.5px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="bg-neutral-950 hover:bg-[#d4af37] text-white hover:text-neutral-950 px-3.5 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Imprimer / PDF</span>
             </button>
             <button
               onClick={handleShareWhatsApp}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xs text-[10.5px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="bg-[#0f5132] hover:bg-emerald-800 text-white px-3.5 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span>WhatsApp</span>
             </button>
             <button
               onClick={onClose}
-              className="text-neutral-400 hover:text-neutral-900 transition-colors p-1 cursor-pointer"
+              className="text-neutral-400 hover:text-neutral-900 hover:bg-neutral-100 rounded-xl transition-colors p-1.5 cursor-pointer"
               title="Fermer"
             >
               <X className="w-5 h-5" />
@@ -174,7 +174,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         {/* Invoice Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-neutral-200">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-lg bg-white border border-[#C88A24]/40 shadow-xs flex items-center justify-center p-1 shrink-0 overflow-hidden">
+            <div className="w-12 h-12 rounded-xl bg-white border border-[#C88A24]/40 shadow-2xs flex items-center justify-center p-1 shrink-0 overflow-hidden">
               <img
                 src={logoUrl || officialLogoImg}
                 alt="Logo Officiel Miabé Asi"
@@ -196,7 +196,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </div>
 
           <div className="text-left sm:text-right space-y-1">
-            <div className="inline-block bg-neutral-900 text-amber-400 text-xs font-mono font-extrabold px-3 py-1 uppercase tracking-wider">
+            <div className="inline-block bg-neutral-950 text-[#d4af37] text-xs font-mono font-extrabold px-3.5 py-1.5 rounded-xl uppercase tracking-wider">
               FACTURE N° {order.id.startsWith("FAC") ? order.id : `FAC-${order.id}`}
             </div>
             <p className="text-[11px] text-neutral-600 font-medium">
@@ -216,7 +216,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         </div>
 
         {/* Billing & Shipping Details Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-neutral-50 p-4 border border-neutral-200 rounded-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#FAF9F6] p-4 border border-neutral-200/90 rounded-xl">
           <div className="space-y-1">
             <h4 className="text-[10px] font-black uppercase tracking-wider text-[#d4af37]">
               CLIENT / DESTINATAIRE

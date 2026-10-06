@@ -113,19 +113,19 @@ export const ImageUploadModal: React.FC<ImageUploadModalProps> = ({
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-neutral-200">
         
         {/* Modal Header */}
-        <div className="bg-gradient-to-r from-emerald-900 to-neutral-900 text-white p-5 flex items-center justify-between">
+        <div className="bg-neutral-950 text-white p-5 flex items-center justify-between border-b border-[#d4af37]/30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-emerald-400">
+            <div className="w-10 h-10 rounded-xl bg-[#d4af37]/15 border border-[#d4af37]/40 flex items-center justify-center text-[#d4af37]">
               <ImageIcon className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">{title}</h3>
-              <p className="text-xs text-emerald-200/90 font-medium">{subtitle || "Importez une photo depuis votre appareil"}</p>
+              <h3 className="font-display font-extrabold text-sm uppercase tracking-wider text-white">{title}</h3>
+              <p className="text-xs text-neutral-400 font-medium">{subtitle || "Importez une photo depuis votre appareil"}</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>

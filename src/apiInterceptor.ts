@@ -3206,7 +3206,11 @@ function sanitizeUserForResponse(user: any): any {
 // Override the global Window fetch definition
 const customFetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const urlStr = typeof input === "string" ? input : (input instanceof URL ? input.href : (input as Request).url || "");
-  const isCriticalPaymentOrOrderRoute = urlStr.includes("/api/payments/") || urlStr.includes("/api/orders/");
+  const isStrictServerPaymentRoute =
+    urlStr.includes("/api/payments/") ||
+    urlStr.includes("/api/subscriptions/") ||
+    urlStr.includes("/api/paydunya/");
+  const isCriticalPaymentOrOrderRoute = isStrictServerPaymentRoute || urlStr.includes("/api/orders/");
 
   try {
     let res = await originalFetch(input, init);
@@ -3227,6 +3231,11 @@ const customFetch = async function(input: RequestInfo | URL, init?: RequestInit)
         } catch (retryErr) {}
       }
 
+      // Never replace payment/subscription endpoints with client mock emulation
+      if (isStrictServerPaymentRoute) {
+        return res;
+      }
+
       if (isHtmlResponse || isNonJsonFailure) {
         console.warn(`[API Interceptor] Route ${urlStr} returned Non-JSON (status: ${res.status}, Content-Type: ${contentType}). Falling back to client emulation.`);
         return await handleEmulatedRequest(urlStr, init);
@@ -3238,11 +3247,20 @@ const customFetch = async function(input: RequestInfo | URL, init?: RequestInit)
       try {
         await new Promise(r => setTimeout(r, 350));
         const retryRes = await originalFetch(input, init);
+        if (isStrictServerPaymentRoute) {
+          return retryRes;
+        }
         const ct = (retryRes.headers.get("content-type") || "").toLowerCase();
         if (!ct.includes("text/html") && (retryRes.ok || ct.includes("application/json"))) {
           return retryRes;
         }
       } catch (retryErr) {}
+    }
+    if (isStrictServerPaymentRoute) {
+      return makeResponse({
+        success: false,
+        error: "Impossible de contacter le serveur de paiement. Veuillez vérifier votre connexion internet."
+      }, 503, false);
     }
     console.warn(`[API Interceptor] Fetch to ${urlStr} failed. Falling back to client emulation.`, err);
     const isApiRoute = urlStr.includes("/api/") || urlStr.includes("/auth/") || urlStr.endsWith("/api") || urlStr.endsWith("/auth");
